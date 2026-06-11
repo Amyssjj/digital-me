@@ -31,7 +31,7 @@ import type {
 } from "../store/tasks.js";
 import type { TracesStore } from "../store/traces.js";
 import type { WorkflowsStore } from "../store/workflows.js";
-import { refreshGoalStatus } from "./resolver-status.js";
+import { isTerminalGoalStatus, refreshGoalStatus } from "./resolver-status.js";
 
 // After N consecutive dispatch failures for the same task, the
 // orphan-dispatch path terminal-fails the task instead of retrying every tick.
@@ -40,6 +40,13 @@ const MAX_FAILED_DISPATCHES_BEFORE_TERMINAL_FAIL = 5;
 // Watchdog horizon multiplier for "ready" tasks whose parent goal is old
 // enough that dispatch should have completed.
 const READY_WATCHDOG_MULTIPLIER = 2;
+
+// A step with retryPolicy="auto_once" earns exactly one fresh re-dispatch when
+// its run goes silent past the stall threshold. attemptCount is bumped on every
+// dispatch, so the first stall sees attemptCount === 1 and the retry lifts it to
+// 2 — a second stall (attemptCount === 2) is terminal. Without this, the
+// retryPolicy field is inert: nothing else in the scheduler reads it.
+const AUTO_ONCE_MAX_ATTEMPTS = 2;
 
 // Magic-string match for the gateway-scope transient. The openclaw subagent
 // proxy throws this when the request scope isn't bound — a benign race
@@ -414,19 +421,69 @@ export function reconcileStaleRuns(
       const threshold = task.timeoutMs ?? defaultStallThresholdMs;
       const lastActivity =
         task.latestCheckpoint?.checkpointAt ?? task.startedAt ?? 0;
-      if (nowMs - lastActivity > threshold) {
+      if (nowMs - lastActivity <= threshold) continue;
+
+      const silentMin = Math.round((nowMs - lastActivity) / 60_000);
+
+      // auto_once: hand a silent run one fresh re-dispatch before declaring it
+      // stalled. Three guards keep the retry from corrupting state:
+      //  - attemptCount < MAX bounds it to a single retry (every dispatch bumps
+      //    the count, so the first stall sees attemptCount === 1).
+      //  - the parent goal must still be active — otherwise the same tick's
+      //    dispatchOrphanedReadyTasks (which does not filter by goal status)
+      //    would launch fresh work for an already failed/cancelled workflow.
+      //  - the abandoned attempt is closed (stalled) before the reset, so a
+      //    later completion finalizes the retry's attempt rather than this one
+      //    (finalizeRunningAttempt picks the first running attempt by order).
+      // The reset clears the activity clock (startedAt + latestCheckpoint) and
+      // run identity so dispatchOrphanedReadyTasks re-runs it with a full
+      // timeout window. Clearing startedAt is load-bearing: the dispatcher sets
+      // `startedAt ?? now`, so a stale clock would survive and re-stall the
+      // retry on the next tick instead of giving it its own window.
+      const goal = deps.goals.get(task.goalId);
+      const goalActive = goal !== undefined && !isTerminalGoalStatus(goal.status);
+      if (
+        task.retryPolicy === "auto_once" &&
+        task.attemptCount < AUTO_ONCE_MAX_ATTEMPTS &&
+        goalActive
+      ) {
+        const abandoned = task.attempts.find((a) => a.status === "running");
+        if (abandoned) {
+          deps.tasks.updateAttempt(abandoned.attemptId, {
+            status: "stalled",
+            endedAt: nowMs,
+          });
+        }
         deps.tasks.update({
           ...task,
-          status: "stalled",
-          failureReason: `watchdog: exceeded ${Math.round(threshold / 1000)}s timeout (silent ${Math.round((nowMs - lastActivity) / 60_000)}min)`,
+          status: "ready",
+          activeRunId: undefined,
+          activeSessionKey: undefined,
+          startedAt: undefined,
+          latestCheckpoint: undefined,
+          readyAt: nowMs,
+          failureReason: undefined,
         });
         refreshGoalStatus(deps, task.goalId);
         reconciled++;
         deps.runtime.log(
           "warn",
-          `scheduler: reconciled stale task "${task.name}" (silent ${Math.round((nowMs - lastActivity) / 60_000)}min, threshold ${Math.round(threshold / 60_000)}min)`,
+          `scheduler: re-dispatching stalled auto_once task "${task.name}" (silent ${silentMin}min, retry ${task.attemptCount}/${AUTO_ONCE_MAX_ATTEMPTS - 1})`,
         );
+        continue;
       }
+
+      deps.tasks.update({
+        ...task,
+        status: "stalled",
+        failureReason: `watchdog: exceeded ${Math.round(threshold / 1000)}s timeout (silent ${silentMin}min)`,
+      });
+      refreshGoalStatus(deps, task.goalId);
+      reconciled++;
+      deps.runtime.log(
+        "warn",
+        `scheduler: reconciled stale task "${task.name}" (silent ${silentMin}min, threshold ${Math.round(threshold / 60_000)}min)`,
+      );
     }
   }
 
