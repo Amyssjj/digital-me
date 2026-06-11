@@ -4,11 +4,12 @@
 
 ### The intelligence every agent runs on.
 
-[![CI](https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml/badge.svg)](https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node ≥ 22.5](https://img.shields.io/badge/node-%E2%89%A522.5-brightgreen.svg)](#prerequisites)
-[![Runs on openclaw](https://img.shields.io/badge/runs%20on-openclaw-CC2936.svg)](https://github.com/openclaw/openclaw)
-[![PyPI](https://img.shields.io/pypi/v/digital-me-dream-cycle.svg)](https://pypi.org/project/digital-me-dream-cycle/)
+[![BUILD](https://img.shields.io/github/actions/workflow/status/Amyssjj/digital-me/ci.yml?branch=main&style=flat-square&label=BUILD)](https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml)
+[![RELEASE](https://img.shields.io/badge/RELEASE-V0.1.0--PRE-F46D01?style=flat-square)](https://github.com/Amyssjj/digital-me/tags)
+[![PYPI](https://img.shields.io/pypi/v/digital-me-dream-cycle?style=flat-square&label=PYPI&color=3775A9)](https://pypi.org/project/digital-me-dream-cycle/)
+[![NODE](https://img.shields.io/badge/NODE-%E2%89%A522.5-43853D?style=flat-square)](#prerequisites)
+[![RUNS ON](https://img.shields.io/badge/RUNS%20ON-OPENCLAW-CC2936?style=flat-square)](https://github.com/openclaw/openclaw)
+[![LICENSE](https://img.shields.io/badge/LICENSE-MIT-0B7DBE?style=flat-square)](LICENSE)
 
 **Agents change. Your intelligence compounds.**
 
