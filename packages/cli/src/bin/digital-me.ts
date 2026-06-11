@@ -70,6 +70,7 @@ import {
   DEFAULT_WORKER_SCRIPT as OPENCLAW_CLI_EXEC_WORKER_SCRIPT,
   EXTENSION_PACKAGE_JSON as OPENCLAW_EXTENSION_PACKAGE_JSON,
   PLUGINS as OPENCLAW_PLUGINS,
+  PREBUILT_DIR as OPENCLAW_PREBUILT_DIR,
   updateOpenclaw,
 } from "@digital-me/runtime-openclaw";
 import { build as esbuildBuild } from "esbuild";
@@ -645,28 +646,32 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
     );
     return 2;
   }
+  // Source checkout → editable install from the local package (developer
+  // mode). npm-installed CLI (no source tree) → install the published
+  // package from PyPI instead; same module, same console script.
   const repoRoot = resolveRepoRoot();
-  if (!repoRoot) {
-    console.error(
-      "install dream-cycle: could not locate the digital-me-os repo root " +
-        "from the CLI binary. Are you running from a source checkout? " +
-        "(npm-installed CLIs don't carry the source tree — clone the repo " +
-        "and re-run this command from the checkout.)",
+  let pipTarget: readonly string[];
+  if (repoRoot) {
+    const packagePath = path.join(
+      repoRoot,
+      "packages",
+      "services",
+      "dream-cycle",
     );
-    return 2;
-  }
-  const packagePath = path.join(
-    repoRoot,
-    "packages",
-    "services",
-    "dream-cycle",
-  );
-  if (!existsSync(path.join(packagePath, "pyproject.toml"))) {
-    console.error(
-      `install dream-cycle: package not found at ${packagePath}. ` +
-        `Expected pyproject.toml.`,
+    if (!existsSync(path.join(packagePath, "pyproject.toml"))) {
+      console.error(
+        `install dream-cycle: package not found at ${packagePath}. ` +
+          `Expected pyproject.toml.`,
+      );
+      return 2;
+    }
+    pipTarget = ["-e", `${packagePath}[dev]`];
+  } else {
+    console.log(
+      "install dream-cycle: no source checkout detected — installing the " +
+        "published digital-me-dream-cycle package from PyPI.",
     );
-    return 2;
+    pipTarget = ["digital-me-dream-cycle"];
   }
 
   // Create the venv (idempotent — `python -m venv` is a no-op when the
@@ -684,13 +689,14 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
     return venvResult.status ?? 1;
   }
 
-  // pip install -e the package. The [dev] extras include pytest so
-  // users can run the bundled test suite if they want.
+  // pip install the package (editable from source, or from PyPI — see
+  // pipTarget above). The [dev] extras include pytest so source users can
+  // run the bundled test suite if they want.
   const venvPip = path.join(venvDir, "bin", "pip");
-  console.log(`install dream-cycle: pip install -e ${packagePath}[dev] ...`);
+  console.log(`install dream-cycle: pip install ${pipTarget.join(" ")} ...`);
   const pipResult = spawnSync(
     venvPip,
-    ["install", "-e", `${packagePath}[dev]`],
+    ["install", ...pipTarget],
     { stdio: "inherit" },
   );
   if (pipResult.error || pipResult.status !== 0) {
@@ -773,13 +779,17 @@ function installDashboard(home: string, wikiRoot?: string): number {
   const installDir = path.join(home, ".local", "share", "digital-me", "dashboard");
   const repoRoot = resolveRepoRoot();
   if (!repoRoot) {
-    console.error(
-      "install dashboard: could not locate the digital-me-os repo root " +
-        "from the CLI binary. Are you running from a source checkout? " +
-        "(npm-installed CLIs don't carry the source tree — clone the repo " +
-        "and re-run this command from the checkout.)",
+    // The dashboard runs from the source workspace (its install dir is a
+    // symlink into the checkout), so an npm-installed CLI genuinely cannot
+    // set it up. Skip with guidance instead of failing the whole setup.
+    console.log(
+      "[SKIP] dashboard: requires a source checkout (the dashboard serves " +
+        "from the repo workspace). To add it:\n" +
+        "         git clone https://github.com/Amyssjj/digital-me.git ~/digital-me-os\n" +
+        "         cd ~/digital-me-os && pnpm install && pnpm build\n" +
+        "         pnpm dm install --runtime dashboard",
     );
-    return 2;
+    return 0;
   }
   const packagePath = path.join(repoRoot, "packages", "services", "dashboard");
   if (!existsSync(path.join(packagePath, "package.json"))) {
@@ -1274,6 +1284,31 @@ async function materializeOpenclawOverlay(target: string): Promise<number> {
       );
       return 2;
     }
+    // Published-CLI layout ships publish-time pre-bundled entries (no
+    // workspace to resolve imports against) — copy those when present.
+    const prebuiltEntry = path.join(
+      OPENCLAW_PREBUILT_DIR,
+      plugin.pluginDirname,
+      "index.mjs",
+    );
+    if (existsSync(prebuiltEntry)) {
+      copyFileSync(prebuiltEntry, path.join(pluginDir, "index.mjs"));
+      const pkgJsonPrebuilt = {
+        name: `${plugin.pluginDirname}-extension`,
+        version: "0.0.0-local",
+        private: true,
+        type: "module",
+        description: `Bundled install of ${plugin.pluginDirname} (publish-time esbuild bundle). Auto-generated by \`digital-me install --runtime openclaw\`.`,
+        openclaw: { extensions: ["./index.mjs"] },
+      };
+      writeFileSync(
+        path.join(pluginDir, OPENCLAW_EXTENSION_PACKAGE_JSON),
+        JSON.stringify(pkgJsonPrebuilt, null, 2) + "\n",
+        "utf-8",
+      );
+      console.log(`[OK] installed ${plugin.displayName} (prebuilt): ${pluginDir}`);
+      continue;
+    }
     try {
       await esbuildBuild({
         entryPoints: [entryFile.src],
@@ -1616,7 +1651,16 @@ async function setup(
   let openclawInstallAttempted = false;
   if (isOpenclawInstalled(home)) {
     openclawInstallAttempted = true;
-    openclawInstallRc = await installOpenclaw(home, extensionsDirArg, wikiRoot);
+    try {
+      openclawInstallRc = await installOpenclaw(home, extensionsDirArg, wikiRoot);
+    } catch (err) {
+      // A thrown install (e.g. missing bundled assets) must not kill the
+      // rest of setup with a raw stack — report and let the doctor flag it.
+      openclawInstallRc = 1;
+      console.error(
+        `[FAIL] install openclaw: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   } else {
     // Only reachable with --skip-openclaw-check (the prerequisite gate
     // hard-stops otherwise).

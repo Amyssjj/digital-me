@@ -11,15 +11,35 @@
  * can stay pure-data.
  */
 
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-export const PACKAGE_ROOT = path.resolve(
+const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
 
+// Workspace layout: this module compiles to <pkg>/dist/*.js, so MODULE_ROOT
+// is the package root, which carries templates/ directly. Published CLI
+// bundle: esbuild inlines every workspace module into <npm-pkg>/bin/*.js, so
+// MODULE_ROOT is the npm package root for EVERY package — per-package assets
+// are staged by scripts/build-cli-bundle.mjs under assets/openclaw/ to
+// avoid cross-package collisions (e.g. claude-code and codex both ship hooks/).
+export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "templates"))
+  ? MODULE_ROOT
+  : path.join(MODULE_ROOT, "assets", "openclaw");
+
 export const TEMPLATES_DIR = path.join(PACKAGE_ROOT, "templates");
+
+/**
+ * Publish-time pre-bundled plugin entries (assets/openclaw/prebuilt/<id>/
+ * index.mjs in the npm artifact). Present only in the published CLI layout —
+ * scripts/build-cli-bundle.mjs produces them so `digital-me install --runtime
+ * openclaw` from an npm install copies ready-made bundles instead of
+ * esbuild-resolving workspace imports that don't exist outside a checkout.
+ */
+export const PREBUILT_DIR = path.join(PACKAGE_ROOT, "prebuilt");
 
 // ─── digital-me-brain ────────────────────────────────────────────────────
 

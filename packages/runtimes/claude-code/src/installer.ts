@@ -8,6 +8,7 @@
  * installer is testable without touching `~/.claude/`.
  */
 
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -16,10 +17,20 @@ import path from "node:path";
  * import time so callers can find the bundled hooks/ and skills/
  * directories without knowing the package's npm layout.
  */
-export const PACKAGE_ROOT = path.resolve(
+const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+
+// Workspace layout: this module compiles to <pkg>/dist/*.js, so MODULE_ROOT
+// is the package root, which carries hooks/ directly. Published CLI
+// bundle: esbuild inlines every workspace module into <npm-pkg>/bin/*.js, so
+// MODULE_ROOT is the npm package root for EVERY package — per-package assets
+// are staged by scripts/build-cli-bundle.mjs under assets/claude-code/ to
+// avoid cross-package collisions (e.g. claude-code and codex both ship hooks/).
+export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "hooks"))
+  ? MODULE_ROOT
+  : path.join(MODULE_ROOT, "assets", "claude-code");
 
 export const HOOKS_DIR = path.join(PACKAGE_ROOT, "hooks");
 export const SKILLS_DIR = path.join(PACKAGE_ROOT, "skills");
