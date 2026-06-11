@@ -1,0 +1,94 @@
+# Docs bundle → motusai.co
+#
+# On every release tag (and on manual dispatch), regenerate the public docs
+# bundle and open a PR in Amyssjj/motus-ai-web with the new content/docs/.
+# The website's normal loop takes over from there: Vercel preview on the PR →
+# verify → merge → deploy.
+#
+# INERT UNTIL CONFIGURED: requires the `MOTUS_AI_WEB_TOKEN` repo secret — a
+# fine-grained PAT (or GitHub App token) with contents:write +
+# pull-requests:write on Amyssjj/motus-ai-web. Without it the job skips
+# cleanly. The extractor itself is gated (whitelist sources, leak scan with
+# hard exit), so nothing un-reviewed can flow out of this repo.
+
+name: docs-bundle
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish-docs-pr:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check token configured
+        id: gate
+        env:
+          TOKEN: ${{ secrets.MOTUS_AI_WEB_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "MOTUS_AI_WEB_TOKEN not configured — skipping (workflow is inert)."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout digital-me
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate docs bundle (leak-scanned)
+        if: steps.gate.outputs.enabled == 'true'
+        run: node scripts/gen-docs.mjs --out /tmp/docs-bundle
+
+      - name: Checkout motus-ai-web
+        if: steps.gate.outputs.enabled == 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: Amyssjj/motus-ai-web
+          token: ${{ secrets.MOTUS_AI_WEB_TOKEN }}
+          path: motus-ai-web
+
+      - name: Replace content/docs
+        if: steps.gate.outputs.enabled == 'true'
+        run: |
+          rm -rf motus-ai-web/content/docs
+          mkdir -p motus-ai-web/content
+          cp -R /tmp/docs-bundle motus-ai-web/content/docs
+
+      - name: Open PR in motus-ai-web
+        if: steps.gate.outputs.enabled == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.MOTUS_AI_WEB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          cd motus-ai-web
+          if git diff --quiet -- content/docs; then
+            echo "No docs changes for $REF_NAME — nothing to PR."
+            exit 0
+          fi
+          BRANCH="docs-sync/$REF_NAME"
+          git config user.name "digital-me docs bot"
+          git config user.email "noreply@motusai.co"
+          git checkout -b "$BRANCH"
+          git add content/docs
+          git commit -m "docs: sync from digital-me $REF_NAME"
+          git push -u origin "$BRANCH" --force
+          gh pr create \
+            --repo Amyssjj/motus-ai-web \
+            --base main \
+            --head "$BRANCH" \
+            --title "docs: sync from digital-me $REF_NAME" \
+            --body "Auto-generated docs bundle from digital-me \`$REF_NAME\`. The diff below is the review surface; verify the Vercel preview, then merge to deploy." \
+            || echo "PR already exists for $BRANCH — branch updated."
