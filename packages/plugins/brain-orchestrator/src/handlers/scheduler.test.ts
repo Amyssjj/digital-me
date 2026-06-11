@@ -762,6 +762,81 @@ describe("reconcileStaleRuns", () => {
     expect(reconcileStaleRuns(deps, 1000)).toBe(1);
     expect(deps.tasks.get("t1")!.status).toBe("stalled");
   });
+
+  it("re-dispatches a stalled auto_once task instead of stalling it", () => {
+    const { deps, logs } = makeDeps({ now: 100_000 });
+    seedGoal(deps, { id: "g-1", status: "running" });
+    seedTask(deps, {
+      id: "t1",
+      status: "running",
+      startedAt: 0,
+      attemptCount: 1,
+      retryPolicy: "auto_once",
+      activeRunId: "run-1",
+      activeSessionKey: "sess-1",
+      latestCheckpoint: { checkpointAt: 0, phase: "p", summary: "s" },
+    });
+    expect(reconcileStaleRuns(deps, 1000)).toBe(1);
+    const t = deps.tasks.get("t1")!;
+    expect(t.status).toBe("ready");
+    // Cleared so dispatchOrphanedReadyTasks re-runs it with a fresh clock.
+    expect(t.activeRunId).toBeUndefined();
+    expect(t.activeSessionKey).toBeUndefined();
+    expect(t.startedAt).toBeUndefined();
+    expect(t.latestCheckpoint).toBeUndefined();
+    expect(t.readyAt).toBe(100_000);
+    expect(t.failureReason).toBeUndefined();
+    // reconcile must not burn the retry budget — the dispatcher bumps attemptCount.
+    expect(t.attemptCount).toBe(1);
+    expect(
+      logs.some((l) => l.message.includes("re-dispatching stalled auto_once")),
+    ).toBe(true);
+  });
+
+  it("stalls an auto_once task terminally once its single retry is used", () => {
+    const { deps } = makeDeps({ now: 100_000 });
+    seedGoal(deps, { id: "g-1", status: "running" });
+    seedTask(deps, {
+      id: "t1",
+      status: "running",
+      startedAt: 0,
+      attemptCount: 2, // first run + one retry already dispatched
+      retryPolicy: "auto_once",
+    });
+    expect(reconcileStaleRuns(deps, 1000)).toBe(1);
+    expect(deps.tasks.get("t1")!.status).toBe("stalled");
+  });
+
+  it("re-dispatches a stalled auto_once task in the dispatched state too", () => {
+    const { deps } = makeDeps({ now: 100_000 });
+    seedGoal(deps, { id: "g-1", status: "running" });
+    seedTask(deps, {
+      id: "t1",
+      status: "dispatched",
+      startedAt: 0,
+      attemptCount: 1,
+      retryPolicy: "auto_once",
+    });
+    expect(reconcileStaleRuns(deps, 1000)).toBe(1);
+    expect(deps.tasks.get("t1")!.status).toBe("ready");
+  });
+
+  it("re-runs a stalled auto_once task within the same tick", async () => {
+    const { dispatcher, spawnCalls } = makeDispatcher();
+    const { deps } = makeDeps({ now: 100_000, dispatcher });
+    seedGoal(deps, { id: "g-1", status: "running" });
+    seedTask(deps, {
+      id: "t1",
+      status: "running",
+      startedAt: 0,
+      attemptCount: 1,
+      retryPolicy: "auto_once",
+      activeRunId: "run-1",
+    });
+    await tick(deps, 1000);
+    // reconcileStaleRuns resets it to ready; dispatchOrphanedReadyTasks re-runs it.
+    expect(spawnCalls.map((t) => t.id)).toContain("t1");
+  });
 });
 
 // ── dispatchOrphanedReadyTasks ────────────────────────────────────────────
