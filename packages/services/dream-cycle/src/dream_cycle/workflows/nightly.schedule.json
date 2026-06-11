@@ -1,0 +1,7 @@
+{
+  "scheduleId": "dream-cycle-nightly",
+  "cronExpr": "0 3 * * *",
+  "enabled": true,
+  "variables": {},
+  "_comment": "Companion schedule for nightly.json. install_workflows.py registers this with the openclaw orchestrator right after import, so `digital-me install --runtime dream-cycle` (and `setup`) land a ticking nightly distillation with no manual cron step. wiki_root + python_path are auto-supplied by the installer at materialize time; compile_limit/taste_limit/recent_days use the workflow's own defaults. 0 3 * * * matches config.yaml's dream_cycle.schedule default."
+}

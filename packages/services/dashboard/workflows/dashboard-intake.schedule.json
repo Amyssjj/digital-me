@@ -1,0 +1,9 @@
+{
+  "scheduleId": "dashboard-intake-1m",
+  "cronExpr": "* * * * *",
+  "enabled": true,
+  "variables": {
+    "window_days": "60"
+  },
+  "_comment": "Companion schedule for workflows/dashboard-intake.json. install_workflows.py reads this sibling file and calls tasks.schedule_add after workflow_import so a fresh `digital-me install --runtime dashboard` lands a ticking cron. python_path + dashboard_db are auto-supplied by the installer at materialize time; window_days defaults to 60 here but can be overridden."
+}

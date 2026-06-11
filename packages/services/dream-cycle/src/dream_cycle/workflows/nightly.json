@@ -1,0 +1,158 @@
+{
+  "id": "dream-cycle-nightly",
+  "name": "Dream Cycle (nightly)",
+  "description": "Nightly knowledge distillation, fully agent-driven. Step 1 (stage) gathers raw candidates with NO inline LLM and writes two staging files: compile candidates (one extraction prompt each) and taste-eligible transcripts. Steps 2a/2b are parallel agent spawns — a compiler agent extracts wiki entries, a classifier agent reverse-engineers taste signals — so neither half depends on the legacy inline Gemini engine. Step 3 (apply) writes the agents' output, then runs final housekeeping (consolidate / reindex / Codex refresh); it falls back to an inline engine call for anything an agent left unprocessed and runs even if a spawn stalled (onUpstreamFailure=continue). Parameterized by {{wiki_root}} + {{python_path}} so a fresh `digital-me install --runtime dream-cycle` lands the same workflow against any user's wiki + venv.",
+  "version": 3,
+  "display": {
+    "mechanism_view": true
+  },
+  "variables": [
+    {
+      "name": "wiki_root",
+      "description": "Absolute path to the digital-me wiki root (the directory containing wiki/, inbox/, .cache/, config.yaml). digital-me install --runtime dream-cycle supplies this from the --wiki-root flag or $DIGITAL_ME_WIKI_ROOT.",
+      "required": true
+    },
+    {
+      "name": "python_path",
+      "description": "Absolute path to a python3 interpreter that has the dream_cycle package installed. digital-me install --runtime dream-cycle auto-supplies the venv's interpreter at ~/.venvs/dream-cycle/bin/python3.",
+      "required": true
+    },
+    {
+      "name": "classifier_agent_id",
+      "description": "agentId that the spawn dispatcher uses for the taste-distill step. Should be an agent configured with the openclaw-brain MCP so it can read + write the staging file. Defaults to claude-code; users who route classification through a specialized ops agent (e.g. coo) override here.",
+      "required": false,
+      "defaultValue": "claude-code"
+    },
+    {
+      "name": "compile_limit",
+      "description": "--compile-limit value: cap on wiki entries the compile step extracts in one run. Higher = more coverage per night, more LLM cost.",
+      "required": false,
+      "defaultValue": "10"
+    },
+    {
+      "name": "taste_limit",
+      "description": "--taste-limit value: cap on transcripts the compile step stages for the classifier. Higher = more candidates per night, more classifier cost.",
+      "required": false,
+      "defaultValue": "20"
+    },
+    {
+      "name": "recent_days",
+      "description": "--recent-days value: only inbox files modified within the last N days. 1 = catch up daily; higher = catch up after gaps.",
+      "required": false,
+      "defaultValue": "1"
+    },
+    {
+      "name": "taste_staging_path",
+      "description": "Absolute path to the staging file the stage step writes and the taste-distill + apply steps read. Default lives in /tmp so it doesn't pollute the wiki tree.",
+      "required": false,
+      "defaultValue": "/tmp/dream-cycle-taste-staging.json"
+    },
+    {
+      "name": "compile_staging_path",
+      "description": "Absolute path to the compile staging file the stage step writes (one extraction prompt per candidate, no inline LLM) and the compile-extract + apply steps read. Default lives in /tmp.",
+      "required": false,
+      "defaultValue": "/tmp/dream-cycle-compile-staging.json"
+    },
+    {
+      "name": "compiler_agent_id",
+      "description": "agentId for the compile-extract spawn step. Should be an agent with the openclaw-brain MCP so it can read+write the compile staging file. Defaults to claude-code; this is what makes wiki extraction agent-driven instead of the legacy inline Gemini engine.",
+      "required": false,
+      "defaultValue": "claude-code"
+    }
+  ],
+  "steps": [
+    {
+      "stepKey": "stage",
+      "name": "Compile + stage taste-eligible transcripts",
+      "promptTemplate": "Run dream_cycle.run with the compile + staging args from this dispatch's command. The script writes wiki entries from inbox/ AND stages taste-eligible transcripts to {{taste_staging_path}}.",
+      "blockedByKeys": [],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}",
+          "-m",
+          "dream_cycle.run",
+          "--wiki-root",
+          "{{wiki_root}}",
+          "--compile-limit",
+          "{{compile_limit}}",
+          "--taste-limit",
+          "{{taste_limit}}",
+          "--recent-days",
+          "{{recent_days}}",
+          "--no-drift-check",
+          "--skip-final-steps",
+          "--stage-taste-path",
+          "{{taste_staging_path}}",
+          "--stage-compile-path",
+          "{{compile_staging_path}}"
+        ],
+        "cwd": "{{wiki_root}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 1800000,
+      "sortOrder": 0
+    },
+    {
+      "stepKey": "compile-extract",
+      "name": "Compiler agent extracts wiki entries from staged candidates",
+      "promptTemplate": "You are the nightly wiki COMPILER. Read the staging file at `{{compile_staging_path}}`.\n\nIMPORTANT — tool policy: read the file with `cat` ONLY. Do NOT use `node -e`, `python3 -c`, `jq`, `awk`, or any inline interpreter — those are approval-gated and will hang unattended. Parse the JSON yourself from the cat output. Do NOT write any files.\n\nStaging shape:\n```\n{\n  \"wiki_manifest\": \"...\",        // shared list of existing wiki entries (for dedup)\n  \"candidates\": [{\"content_key\": str, \"source_name\": str, \"title\": str, \"prompt\": str, \"entries\": null}, ...]\n}\n```\n\nFor EACH candidate: treat `candidate.prompt` as the extraction instruction (it carries the source content + rules + the `---SPLIT---` convention). Use the shared top-level `wiki_manifest` for dedup. Produce the wiki entry text(s): ONLY frontmatter + markdown body, each starting with `---`. If it would duplicate a manifest entry, either include `update_path: <relative_path>` in frontmatter with the FULL updated body, or skip it. Prefer skipping over low-quality extraction; do NOT invent knowledge not in the source.\n\nReturn your result by calling `tasks.handoff` with deliverableState=\"complete\" and a `summary` that contains ONLY a fenced ```json block in this EXACT shape:\n```json\n{\"entries\": {\"<content_key>\": [\"<full entry text>\", \"<another entry>\"], \"<content_key2>\": []}}\n```\nMap each candidate's content_key to a LIST of its entry texts (`[]` = nothing to extract). Do NOT write the staging file — the apply step reads your handoff.",
+      "blockedByKeys": [
+        "stage"
+      ],
+      "dispatch": {
+        "mode": "spawn",
+        "agentId": "{{compiler_agent_id}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 1800000,
+      "sortOrder": 1
+    },
+    {
+      "stepKey": "taste-distill",
+      "name": "Classifier distills taste from transcript batch",
+      "promptTemplate": "You are the nightly taste CLASSIFIER. Read the staging file at `{{taste_staging_path}}`.\n\nIMPORTANT — tool policy: read with `cat` ONLY. Do NOT use `node -e`, `python3 -c`, `jq`, `awk`, or any inline interpreter — approval-gated, will hang unattended. Parse the JSON yourself. Do NOT write any files.\n\nStaging shape:\n```\n{ \"principles_manifest\": \"...\", \"valid_domains\": [\"infra\",\"knowledge\",\"storytelling\",\"design\"], \"transcripts\": [{title, source_file, body, user_turns, assistant_turns, body_chars}, ...], \"outcomes\": null }\n```\n\nFor each transcript (in order), decide ONE outcome:\n- CANDIDATE: a new principle fingerprint not in the manifest (belief-shaped \"X is Y\", transfers beyond this project).\n- EVIDENCE: a triangulating instance of an existing manifest principle (`matched_existing_fingerprint` MUST quote it verbatim). PREFER evidence when fingerprints converge.\n- NEITHER: project-specific / log-shaped / no transferable principle. DEFAULT to NEITHER when uncertain — a polluted bundle is worse than a missed capture.\n\nFingerprint ≤15 words, belief-shaped, strip project-specific terms. Domain must be one of valid_domains. One transcript = at most ONE outcome.\n\nReturn via `tasks.handoff` with deliverableState=\"complete\" and a `summary` containing ONLY a fenced ```json block:\n```json\n{\"outcomes\": [{\"transcript_index\": 0, \"outcome\": \"candidate|evidence|neither\", \"domain\": \"<valid_domain>\", \"principle_fingerprint\": \"<=15 words or null\", \"matched_existing_fingerprint\": \"<verbatim or null>\", \"evidence_record\": {\"project_id\": \"...\", \"date\": \"YYYY-MM-DD\", \"wiki_paths\": [], \"what_happened\": \"...\", \"what_triggers_principle\": \"...\"}, \"fire_signature_hints\": [], \"rubric_item_candidates\": [], \"near_miss_observed\": null, \"rationale\": \"...\"}]}\n```\nOne object per transcript, same order as `transcripts`. Do NOT write the staging file — the apply step reads your handoff.",
+      "blockedByKeys": [
+        "stage"
+      ],
+      "dispatch": {
+        "mode": "spawn",
+        "agentId": "{{classifier_agent_id}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 1800000,
+      "sortOrder": 2
+    },
+    {
+      "stepKey": "apply",
+      "name": "Apply compile entries + taste outcomes + final housekeeping",
+      "promptTemplate": "Run dream_cycle.apply against {{compile_staging_path}} + {{taste_staging_path}} for {{wiki_root}}. Writes the compiler agent's wiki entries, materializes the classifier's taste outcomes into skills-proposals/, then runs consolidate/reindex/codex_integration. Both apply steps fall back to an inline engine call for any candidate/transcript the agent left unprocessed, so a stalled spawn never drops the night's work.",
+      "blockedByKeys": [
+        "compile-extract",
+        "taste-distill"
+      ],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}",
+          "-m",
+          "dream_cycle.apply",
+          "--wiki-root",
+          "{{wiki_root}}",
+          "--compile-from",
+          "{{compile_staging_path}}",
+          "--taste-from",
+          "{{taste_staging_path}}"
+        ],
+        "cwd": "{{wiki_root}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "continue",
+      "timeoutMs": 900000,
+      "sortOrder": 3
+    }
+  ]
+}

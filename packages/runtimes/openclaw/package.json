@@ -1,0 +1,43 @@
+{
+  "name": "@digital-me/runtime-openclaw",
+  "version": "0.1.0-pre",
+  "description": "openclaw runtime adapter for the digital-me brain. Wires brain-orchestrator's BrainTool descriptors into openclaw's plugin SDK, implements the Dispatcher interface using openclaw's subagent+exec runtime, and hosts the proactive-learning rule engine.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "scripts",
+    "templates"
+  ],
+  "scripts": {
+    "build": "tsc -b tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/brain-orchestrator": "workspace:*",
+    "@digital-me/contracts": "workspace:*",
+    "typebox": "^1.1.38",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

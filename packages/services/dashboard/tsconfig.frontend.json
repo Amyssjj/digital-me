@@ -1,0 +1,28 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist/frontend",
+    "rootDir": "./src/frontend",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo.frontend",
+    "jsx": "react-jsx",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "isolatedModules": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+    "useDefineForClassFields": true,
+    "types": ["node"],
+    // TODO(§C-§F): mission-control's frontend was authored against React's
+    // stock looser tsconfig. Relaxing these keeps the migrated tree compiling
+    // while §C-§F rewire each view; tighten back at end of the NUX project.
+    "noUncheckedIndexedAccess": false,
+    "verbatimModuleSyntax": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["src/frontend/**/*"],
+  "exclude": ["node_modules", "dist"]
+}

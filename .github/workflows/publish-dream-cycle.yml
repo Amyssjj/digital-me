@@ -1,0 +1,63 @@
+name: Publish dream-cycle to PyPI
+
+# Tag-driven release for the Python package `digital-me-dream-cycle`.
+# Tag convention: dream-cycle-vX.Y.Z (must match pyproject.toml's version).
+#
+# Auth: PyPI Trusted Publishing (OIDC) — no API token/secret needed. Configure
+# once on PyPI: project `digital-me-dream-cycle` → Publishing → add a trusted
+# publisher pointing at owner/repo, workflow `publish-dream-cycle.yml`,
+# environment `pypi`. See docs/RELEASING.md.
+
+on:
+  push:
+    tags:
+      - "dream-cycle-v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build sdist + wheel
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: packages/services/dream-cycle
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: python -m pip install --upgrade pip build
+      - run: python -m build
+      - name: Verify built version matches the tag (push-tag runs only)
+        if: startsWith(github.ref, 'refs/tags/dream-cycle-v')
+        run: |
+          tag="${GITHUB_REF_NAME#dream-cycle-v}"
+          pkg=$(ls dist/digital_me_dream_cycle-*.tar.gz | sed -E 's/.*digital_me_dream_cycle-(.*)\.tar\.gz/\1/')
+          echo "tag=$tag built=$pkg"
+          [ "$tag" = "$pkg" ] || { echo "::error::tag ($tag) != pyproject version ($pkg)"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dream-cycle-dist
+          path: packages/services/dream-cycle/dist/*
+          if-no-files-found: error
+
+  publish:
+    name: Publish to PyPI (trusted publishing)
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/digital-me-dream-cycle
+    permissions:
+      id-token: write # OIDC token for PyPI trusted publishing
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dream-cycle-dist
+          path: dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist

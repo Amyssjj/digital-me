@@ -1,0 +1,101 @@
+{
+  "id": "dashboard-intake",
+  "name": "Dashboard Intake",
+  "description": "Populate the dashboard SQLite DB from primary sources every day. Four independent collectors run in parallel: runtime transcripts (daa), wiki+tastes frontmatter (knowledge_taste_changes + distribution), runtime hook logs (application_rate + breakdowns), brain agent-activity (captured/applied/workflow → delivery feed). Parameterized by {{python_path}} so a fresh `digital-me install --runtime dashboard` lands the same workflow against any user's intake venv.",
+  "version": 1,
+  "display": {
+    "mechanism_view": true
+  },
+  "variables": [
+    {
+      "name": "python_path",
+      "description": "Absolute path to a python3 with the dashboard_intake package installed (e.g. ~/.venvs/dashboard/bin/python3). The dashboard installer auto-supplies this.",
+      "required": true
+    },
+    {
+      "name": "window_days",
+      "description": "How many days back from {{date}} the collectors should aggregate. Default 60 to keep the dashboard charts responsive on first install.",
+      "required": false,
+      "defaultValue": "60"
+    },
+    {
+      "name": "dashboard_db",
+      "description": "Absolute path to the dashboard SQLite DB the intake should upsert into. The dashboard installer auto-supplies this (defaults to ~/.local/share/digital-me/dashboard/data/dashboard.db on a fresh install).",
+      "required": true
+    }
+  ],
+  "steps": [
+    {
+      "stepKey": "collect-transcripts",
+      "name": "Collect runtime session counts into daa",
+      "promptTemplate": "Counts unique sessions per agent_id per day across runtime transcript dirs (~/.claude/projects/, ~/.codex/sessions/, ~/.hermes/sessions/, ~/.openclaw/sessions/). Idempotent.",
+      "blockedByKeys": [],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}", "-m", "dashboard_intake.collect_transcripts",
+          "--db", "{{dashboard_db}}",
+          "--days", "{{window_days}}"
+        ]
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 120000,
+      "sortOrder": 0
+    },
+    {
+      "stepKey": "scan-knowledge-trees",
+      "name": "Scan wiki/ + tastes/ → knowledge_taste_changes + distribution",
+      "promptTemplate": "Walks ~/digital-me/wiki/ and ~/digital-me/tastes/ frontmatter. Upserts daily (created/updated by domain) into knowledge_taste_changes; refreshes knowledge_taste_distribution snapshot. Idempotent.",
+      "blockedByKeys": [],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}", "-m", "dashboard_intake.scan_knowledge_trees",
+          "--db", "{{dashboard_db}}",
+          "--days", "{{window_days}}"
+        ]
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 120000,
+      "sortOrder": 1
+    },
+    {
+      "stepKey": "derive-application-rate",
+      "name": "Derive M1 application_rate from hook logs",
+      "promptTemplate": "Reads ~/.claude/hooks/application_rate.log (and other runtimes' analogous logs), classifies surfaced/acted paths by tree prefix (wiki/ vs tastes/), upserts application_rate + application_rate_by_domain + application_rate_by_agent. Idempotent.",
+      "blockedByKeys": [],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}", "-m", "dashboard_intake.derive_application_rate",
+          "--db", "{{dashboard_db}}",
+          "--days", "{{window_days}}",
+          "--source", "all"
+        ]
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 120000,
+      "sortOrder": 2
+    },
+    {
+      "stepKey": "stream-activity",
+      "name": "Snapshot agent activity (brain + tastes) into the Feed",
+      "promptTemplate": "Merges four streams into the dashboard `activity` table: captured learnings (learning_captured traces joined to the learnings table), applied learnings (knowledge_surfaced m1 events), started workflows (non-cron goals) — all from the openclaw brain DB — plus distilled taste principles read from the tastes tree (~/digital-me/tastes), which is filesystem-sourced and runs even when the brain is absent. Upserts by source-event id, so re-runs over an overlapping window never duplicate cards.",
+      "blockedByKeys": [],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}", "-m", "dashboard_intake.stream_activity",
+          "--db", "{{dashboard_db}}"
+        ]
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 120000,
+      "sortOrder": 3
+    }
+  ]
+}

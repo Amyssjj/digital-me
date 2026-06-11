@@ -1,0 +1,52 @@
+name: Publish CLI to npm
+
+# Tag-driven release for `@digital-me/cli`. Tag convention: cli-vX.Y.Z
+# (must match packages/cli/package.json version).
+#
+# The published artifact is a single esbuild bundle (workspace:* deps inlined,
+# only esbuild external) produced by scripts/build-cli-bundle.mjs, so
+# `npm i -g @digital-me/cli` works with no monorepo. See docs/RELEASING.md.
+#
+# Auth: set the NPM_TOKEN repo secret (an npm automation token with publish
+# rights to the @digital-me scope). Provenance is enabled (needs id-token).
+
+on:
+  push:
+    tags:
+      - "cli-v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build bundle + publish to npm
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # npm provenance
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+      - run: pnpm install --frozen-lockfile
+      # Build workspace dists first so the bundler inlines built output.
+      - run: pnpm build
+      - run: pnpm build:cli-bundle
+      - name: Verify bundle version matches the tag (push-tag runs only)
+        if: startsWith(github.ref, 'refs/tags/cli-v')
+        run: |
+          tag="${GITHUB_REF_NAME#cli-v}"
+          ver=$(node -p "require('./packages/cli/npm-dist/package.json').version")
+          echo "tag=$tag bundle=$ver"
+          [ "$tag" = "$ver" ] || { echo "::error::tag ($tag) != cli version ($ver)"; exit 1; }
+      - name: Publish
+        run: npm publish --provenance
+        working-directory: packages/cli/npm-dist
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

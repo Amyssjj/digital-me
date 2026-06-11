@@ -1,0 +1,43 @@
+{
+  "name": "@digital-me/runtime-codex",
+  "version": "0.1.0-pre",
+  "description": "Codex CLI runtime adapter for the digital-me brain: CODEX.md instructions template, config.toml MCP-server fragment, and lifecycle hooks (UserPromptSubmit / Stop / PreToolUse) with M1 application_rate metrics, plus a TypeScript installer for merging into ~/.codex/.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./hooks/*": "./hooks/*",
+    "./templates/*": "./templates/*"
+  },
+  "files": [
+    "dist",
+    "src",
+    "hooks",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

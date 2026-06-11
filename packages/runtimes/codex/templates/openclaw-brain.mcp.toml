@@ -1,0 +1,11 @@
+# Codex MCP-server fragment for the openclaw-brain proxy.
+# Append (or merge) into ~/.codex/config.toml. The digital-me CLI's
+# `install --runtime codex` command does this idempotently.
+#
+# Pre-requisite: install @digital-me/brain-mcp-proxy and ensure
+# `digital-me-brain-proxy` is on PATH (the CLI's `digital-me doctor`
+# checks this).
+
+[mcp_servers.openclaw-brain]
+command = "digital-me-brain-proxy"
+args = []

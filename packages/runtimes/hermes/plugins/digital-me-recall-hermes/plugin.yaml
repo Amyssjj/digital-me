@@ -1,0 +1,18 @@
+name: digital-me-recall-hermes
+version: 1.0.0
+description: >
+  Auto-applies Digital Me wiki knowledge to every Hermes turn: per-turn
+  recall injection (memory_search via openclaw-brain), per-tool route
+  reminders, memory_search observability, and the M1 application_rate
+  live writer that records per-session JSONL records to
+  ~/.openclaw/data/application_rate_hermes.log. Mirrors the
+  digital-me-recall plugin shipped for OpenClaw native agents and the
+  dm_memory_search_inject + dm_application_rate hooks shipped for
+  Claude Code.
+author: "Digital Me OS"
+hooks:
+  - pre_llm_call
+  - post_llm_call
+  - pre_tool_call
+  - post_tool_call
+  - on_session_end

@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dashboard-intake"
+version = "0.1.0"
+description = "Dashboard intake pipeline: collect runtime sessions, scan wiki+tastes, derive application rate, stream learning captures into the dashboard DB."
+requires-python = ">=3.11"
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.0",
+]
+
+[project.scripts]
+# The 4 entry points the dashboard-intake.json workflow calls via `exec`.
+dashboard-intake-collect-transcripts = "dashboard_intake.collect_transcripts:main"
+dashboard-intake-scan-knowledge-trees = "dashboard_intake.scan_knowledge_trees:main"
+dashboard-intake-derive-application-rate = "dashboard_intake.derive_application_rate:main"
+dashboard-intake-stream-activity = "dashboard_intake.stream_activity:main"
+
+[tool.setuptools.packages.find]
+include = ["dashboard_intake*"]

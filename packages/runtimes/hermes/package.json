@@ -1,0 +1,41 @@
+{
+  "name": "@digital-me/runtime-hermes",
+  "version": "0.1.0-pre",
+  "description": "Hermes Agent runtime adapter for the digital-me brain: a SOUL.md persona template with the digital-me protocol section, plus a TypeScript installer that merges into ~/.hermes/.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./templates/*": "./templates/*"
+  },
+  "files": [
+    "dist",
+    "src",
+    "templates",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

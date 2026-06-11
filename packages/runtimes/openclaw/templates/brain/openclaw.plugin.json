@@ -1,0 +1,36 @@
+{
+  "id": "digital-me-brain",
+  "contracts": {
+    "tools": [
+      "tasks",
+      "agent_identify",
+      "learning_capture",
+      "traces_record",
+      "traces_query",
+      "m1_event_record",
+      "m1_score"
+    ]
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "wikiRoot": {
+        "type": "string",
+        "description": "Override DIGITAL_ME_WIKI_ROOT for this plugin instance. Defaults to the env var."
+      },
+      "dbPath": {
+        "type": "string",
+        "description": "Path to the brain SQLite database. Defaults to ~/.openclaw/data/brain.db."
+      },
+      "stallThresholdMs": {
+        "type": "number",
+        "description": "Milliseconds of inactivity before a running task is marked stalled (default: 3600000)"
+      },
+      "tickIntervalMs": {
+        "type": "number",
+        "description": "Scheduler tick interval (default: 60000 = 1 minute)"
+      }
+    }
+  }
+}

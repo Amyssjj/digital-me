@@ -1,0 +1,42 @@
+{
+  "name": "@digital-me/brain-mcp-proxy",
+  "version": "0.1.0-pre",
+  "description": "Stdio MCP server that forwards tool calls to openclaw's HTTP gateway. Lets any MCP-capable CLI (Claude Code, Codex, Hermes) reach the openclaw-brain.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "digital-me-brain-mcp-proxy": "./bin/brain-mcp-proxy.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./bin/brain-mcp-proxy.mjs": "./bin/brain-mcp-proxy.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

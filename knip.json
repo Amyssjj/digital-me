@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "ignore": [
+    "**/vite-env.d.ts",
+    "packages/runtimes/openclaw/scripts/cli-exec-worker.mjs",
+    "packages/runtimes/openclaw/templates/**",
+    "packages/services/dashboard/src/server/migrate.ts",
+    "scripts/backfill-route-frontmatter.mjs"
+  ],
+  "ignoreDependencies": ["@digital-me/contracts", "yaml"],
+  "ignoreBinaries": ["husky"],
+  "rules": {
+    "files": "error",
+    "dependencies": "error",
+    "unlisted": "error",
+    "binaries": "error",
+    "unresolved": "error",
+    "exports": "warn",
+    "types": "warn",
+    "nsExports": "warn",
+    "nsTypes": "warn",
+    "duplicates": "warn",
+    "enumMembers": "warn"
+  }
+}

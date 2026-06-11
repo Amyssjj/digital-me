@@ -1,0 +1,46 @@
+{
+  "$comment": "Template Claude Code settings — install via `digital-me install --runtime claude-code` (Phase 6 CLI). The installer merges these stanzas into your existing ~/.claude/settings.json without clobbering your other hooks.",
+  "model": "claude-opus-4-7[1m]",
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/dm_memory_search_inject.sh",
+            "timeout": 8,
+            "statusMessage": "Digital Me: searching brain…"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/dm_handoff_reminder.sh",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/dm_session_extract.sh",
+            "timeout": 8,
+            "async": true
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/brain_route_inject.sh",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

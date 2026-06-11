@@ -1,0 +1,16 @@
+{
+  "skills": [],
+  "liveChecks": {
+    "cronJobs": ["dashboard-intake-1m"],
+    "files": [],
+    "dbTables": [
+      "daa",
+      "knowledge_taste_changes",
+      "knowledge_taste_distribution",
+      "application_rate",
+      "application_rate_by_domain",
+      "application_rate_by_agent",
+      "activity"
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+#!/usr/bin/env sh
+# Local pre-commit hook — runs the sanitization gate before allowing a commit.
+# Match the CI behavior so leaks fail fast on the developer's machine.
+
+bash scripts/sanitize-check.sh

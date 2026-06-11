@@ -1,0 +1,19 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"],
+    // TODO(§G): mission-control's server was authored against a looser tsconfig.
+    // Relaxing noUncheckedIndexedAccess here keeps the merged tree compiling
+    // through the §A-§F migration window. §G will replace db.ts + collapse
+    // the .mc duplicates, after which these should be re-enabled.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["src/server/**/*", "src/intake/**/*"],
+  "exclude": ["src/**/*.test.ts", "src/frontend/**/*", "node_modules", "dist"],
+  "references": [
+    { "path": "../../shared/contracts" }
+  ]
+}

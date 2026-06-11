@@ -1,0 +1,10 @@
+packages:
+  - "packages/shared/*"
+  - "packages/plugins/*"
+  - "packages/runtimes/*"
+  - "packages/transport/*"
+  - "packages/services/*"
+  - "packages/cli"
+allowBuilds:
+  better-sqlite3: true
+  esbuild: true

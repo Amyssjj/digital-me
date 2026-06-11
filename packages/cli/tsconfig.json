@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts", "node_modules", "dist"],
+  "references": [
+    { "path": "../shared/contracts" },
+    { "path": "../plugins/brain-orchestrator" },
+    { "path": "../runtimes/claude-code" },
+    { "path": "../runtimes/codex" },
+    { "path": "../runtimes/hermes" },
+    { "path": "../runtimes/openclaw" }
+  ]
+}

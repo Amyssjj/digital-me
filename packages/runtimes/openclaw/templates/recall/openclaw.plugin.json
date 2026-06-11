@@ -1,0 +1,54 @@
+{
+  "id": "digital-me-recall",
+  "contracts": {
+    "tools": ["recall_status"]
+  },
+  "name": "Digital Me Recall",
+  "description": "Auto-applies wiki knowledge: boot-time protocol injection, per-turn memory_search recall with graph expansion, per-tool routed reminders, and memory_search observability. Declares a phantom 'recall_status' tool so the openclaw 2026.5.12 loader's discovery filter accepts this hooks-only plugin (the loader silently drops plugins with empty contracts.tools — see wiki: openclaw-loader-rejects-hook-only-plugins).",
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "wikiRoot": {
+        "type": "string",
+        "description": "Path to the digital-me wiki dir. Defaults to ~/digital-me/wiki/."
+      },
+      "indexPath": {
+        "type": "string",
+        "description": "Path to the wiki _INDEX.md file. Defaults to ~/digital-me/_INDEX.md."
+      },
+      "protocolsDir": {
+        "type": "string",
+        "description": "Optional dir of shared-protocol .md files injected at session start. Defaults to ~/.openclaw/shared_protocols/."
+      },
+      "recallMaxResults": {
+        "type": "number",
+        "description": "Max wiki entries injected per turn by Hook B (default: 5). Set 0 to disable per-turn recall."
+      },
+      "recallGraphDepth": {
+        "type": "number",
+        "description": "How many levels of related: edges to follow from each memory_search hit (default: 1)."
+      },
+      "enableRouteHashmap": {
+        "type": "boolean",
+        "description": "Enable Hook C (per-tool route hashmap lookup). Default: true."
+      },
+      "enableObservability": {
+        "type": "boolean",
+        "description": "Enable Hook D (log memory_search calls to brain.db traces). Default: true."
+      },
+      "brainDbPath": {
+        "type": "string",
+        "description": "Path to brain.db for Hook D observability writes. Defaults to ~/.openclaw/data/brain.db."
+      },
+      "appRateFlushIntervalMs": {
+        "type": "number",
+        "description": "Periodic flush interval for the M1 application_rate writer (ms). Defaults to 300000 (5 min). Set 0 to disable periodic flush and rely solely on session_end / shutdown / exit triggers."
+      },
+      "appRateStaleSessionMs": {
+        "type": "number",
+        "description": "After this many ms of inactivity a session is considered stale: the periodic flush finalises it and drops the in-memory state. Defaults to 86400000 (24h)."
+      }
+    }
+  }
+}

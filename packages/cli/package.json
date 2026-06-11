@@ -1,0 +1,49 @@
+{
+  "name": "@digital-me/cli",
+  "version": "0.1.0-pre",
+  "description": "digital-me — install, doctor, and orchestrate the digital-me ecosystem (runtimes, brain MCP proxy, dream-cycle).",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "digital-me": "./dist/bin/digital-me.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/brain-mcp-proxy": "workspace:*",
+    "@digital-me/brain-orchestrator": "workspace:*",
+    "@digital-me/contracts": "workspace:*",
+    "@digital-me/runtime-claude-code": "workspace:*",
+    "@digital-me/runtime-codex": "workspace:*",
+    "@digital-me/runtime-hermes": "workspace:*",
+    "@digital-me/runtime-openclaw": "workspace:*",
+    "esbuild": "^0.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

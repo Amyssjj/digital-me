@@ -1,0 +1,48 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "digital-me-dream-cycle"
+version = "0.1.0"
+description = "LLM-powered knowledge distillation loop for the Digital Me Living Knowledge Wiki."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Digital Me OS contributors" },
+]
+keywords = ["llm", "knowledge-management", "wiki", "agents", "digital-me"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+digital-me-dream-cycle = "dream_cycle.run:main"
+
+[project.urls]
+Homepage = "https://github.com/Amyssjj/digital-me"
+Repository = "https://github.com/Amyssjj/digital-me"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/dream_cycle"]
+# NB: do NOT add a `force-include` for src/dream_cycle/workflows — `packages`
+# above already bundles the whole src/dream_cycle/ tree (workflows/*.json
+# included), so a force-include re-adds the same paths and hatchling aborts
+# the wheel build with "A second file is being added to the wheel archive at
+# the same path: dream_cycle/workflows/nightly.json".

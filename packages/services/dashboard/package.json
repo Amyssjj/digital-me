@@ -1,0 +1,71 @@
+{
+  "name": "@digital-me/dashboard",
+  "version": "0.1.0-pre",
+  "description": "Digital Me OA Dashboard — minimal 4-view surface (Metrics / Mechanism / Kanban / Delivery) over openclaw brain state + the dashboard-intake pipeline.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/server/lib.js",
+  "exports": {
+    ".": {
+      "types": "./dist/server/lib.d.ts",
+      "import": "./dist/server/lib.js"
+    },
+    "./drift-status": {
+      "types": "./dist/server/drift-status.d.ts",
+      "import": "./dist/server/drift-status.js"
+    }
+  },
+  "files": [
+    "dist",
+    "src",
+    "workflows",
+    "vite.config.ts",
+    "index.html",
+    "tailwind.config.ts",
+    "postcss.config.js"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,client -c blue,magenta \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:server": "tsx watch src/server/server.ts",
+    "dev:client": "vite",
+    "start": "tsx src/server/server.ts",
+    "build": "tsc -p tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.frontend.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/brain-mcp-proxy": "workspace:*",
+    "@digital-me/contracts": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "better-sqlite3": "^12.6.2",
+    "express": "^4.21.0",
+    "framer-motion": "^11.11.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^9.1.0",
+    "recharts": "^3.7.0",
+    "remark-gfm": "^4.0.1"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.0.0",
+    "@types/react": "^18.3.8",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "@vitest/coverage-v8": "^2.1.0",
+    "autoprefixer": "^10.4.20",
+    "concurrently": "^9.0.1",
+    "postcss": "^8.4.47",
+    "tailwindcss": "^3.4.12",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.7",
+    "vitest": "^2.1.0"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}
