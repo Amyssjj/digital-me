@@ -78,10 +78,20 @@ export type AliasResolverOptions = {
   readonly nodeBinary?: string;
 };
 
-const PACKAGE_ROOT = path.resolve(
+const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+
+// Workspace layout: this module compiles to <pkg>/dist/*.js, so MODULE_ROOT
+// is the package root, which carries scripts/ directly. Published CLI
+// bundle: esbuild inlines every workspace module into <npm-pkg>/bin/*.js, so
+// MODULE_ROOT is the npm package root for EVERY package — per-package assets
+// are staged by scripts/build-cli-bundle.mjs under assets/openclaw/ to
+// avoid cross-package collisions (e.g. claude-code and codex both ship hooks/).
+const PACKAGE_ROOT = fs.existsSync(path.join(MODULE_ROOT, "scripts"))
+  ? MODULE_ROOT
+  : path.join(MODULE_ROOT, "assets", "openclaw");
 
 export const DEFAULT_WORKER_SCRIPT = path.join(
   PACKAGE_ROOT,

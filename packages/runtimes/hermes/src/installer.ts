@@ -8,13 +8,24 @@
  * the user's personality text outside the markers is preserved.
  */
 
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
-export const PACKAGE_ROOT = path.resolve(
+const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
+
+// Workspace layout: this module compiles to <pkg>/dist/*.js, so MODULE_ROOT
+// is the package root, which carries templates/ directly. Published CLI
+// bundle: esbuild inlines every workspace module into <npm-pkg>/bin/*.js, so
+// MODULE_ROOT is the npm package root for EVERY package — per-package assets
+// are staged by scripts/build-cli-bundle.mjs under assets/hermes/ to
+// avoid cross-package collisions (e.g. claude-code and codex both ship hooks/).
+export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "templates"))
+  ? MODULE_ROOT
+  : path.join(MODULE_ROOT, "assets", "hermes");
 
 export const TEMPLATES_DIR = path.join(PACKAGE_ROOT, "templates");
 export const SOUL_MD_TEMPLATE = path.join(TEMPLATES_DIR, "SOUL.md");
