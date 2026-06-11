@@ -4,12 +4,12 @@
 
 ### The intelligence every agent runs on.
 
-[![BUILD](https://img.shields.io/github/actions/workflow/status/Amyssjj/digital-me/ci.yml?branch=main&style=flat-square&label=BUILD)](https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml)
-[![RELEASE](https://img.shields.io/badge/RELEASE-V0.1.0--PRE-F46D01?style=flat-square)](https://github.com/Amyssjj/digital-me/tags)
-[![PYPI](https://img.shields.io/pypi/v/digital-me-dream-cycle?style=flat-square&label=PYPI&color=3775A9)](https://pypi.org/project/digital-me-dream-cycle/)
-[![NODE](https://img.shields.io/badge/NODE-%E2%89%A522.5-43853D?style=flat-square)](#prerequisites)
-[![RUNS ON](https://img.shields.io/badge/RUNS%20ON-OPENCLAW-CC2936?style=flat-square)](https://github.com/openclaw/openclaw)
-[![LICENSE](https://img.shields.io/badge/LICENSE-MIT-0B7DBE?style=flat-square)](LICENSE)
+<p align="center">
+  <a href="https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/Amyssjj/digital-me/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
+  <a href="https://github.com/Amyssjj/digital-me/tags"><img src="https://img.shields.io/badge/release-v0.1.0--pre-F46D01?style=for-the-badge" alt="Release"></a>
+  <a href="https://pypi.org/project/digital-me-dream-cycle/"><img src="https://img.shields.io/pypi/v/digital-me-dream-cycle?label=PyPI&logo=pypi&logoColor=white&color=3775A9&style=for-the-badge" alt="PyPI"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
+</p>
 
 **Agents change. Your intelligence compounds.**
 
