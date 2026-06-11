@@ -1,19 +1,40 @@
-# Digital Me OS
+<div align="center">
 
-A curated stack of [openclaw](https://github.com/openclaw/openclaw) plugins, CLI connectors, and supporting services that turn openclaw into a personal knowledge + operations brain you can drive from any LLM CLI (Claude Code, Codex, Hermes, or openclaw itself).
+# Digital Me
+
+### The intelligence every agent runs on.
+
+[![CI](https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml/badge.svg)](https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node ≥ 22.5](https://img.shields.io/badge/node-%E2%89%A522.5-brightgreen.svg)](#prerequisites)
+[![Runs on openclaw](https://img.shields.io/badge/runs%20on-openclaw-CC2936.svg)](https://github.com/openclaw/openclaw)
+
+**Agents change. Your intelligence compounds.**
+
+[Getting Started](#install) · [Architecture](docs/ARCHITECTURE.md) · [Contracts](docs/CONTRACTS.md) · [Releasing](docs/RELEASING.md) · [openclaw](https://github.com/openclaw/openclaw)
+
+</div>
+
+---
+
+**Digital Me** carries your intelligence — knowledge, taste, decisions — to every agent you run. Use Claude Code for deep work, Codex across repos, Hermes or openclaw always-on: each one remembers what the others learned, applies your taste, and reports into the same goals. Switch agents without becoming the memory, translator, and context courier between them.
+
+New install? Start here: [Getting started](#install)
+
+Preferred setup: run `pnpm dm setup` from a clone. It detects your installed CLIs, scaffolds your data directory, wires every runtime, and ends with a doctor pass. Works on macOS and Linux.
 
 > **Status:** pre-release WIP. The packages are functional with ~1,400 unit tests (core stores and handlers at 100% coverage), but nothing is published to npm yet — install from source (see below).
 
 ## What you get
 
-When fully installed, Digital Me OS gives any agent runtime a shared brain:
+When fully installed, every agent runtime shares:
 
 - **memory_search** — retrieve from a personal knowledge wiki
-- **learning_capture** — agents submit observations back to the brain
+- **learning_capture** — agents submit observations back as reusable knowledge
 - **traces** — every agent action recorded and queryable
 - **workflows** — reliable recurring tasks with cron scheduling
 - **goals** — long-running objectives with task hierarchies
-- **dashboard** — a viewer over brain state
+- **dashboard** — a viewer over your accumulated state
 - **dream-cycle** — nightly distillation pipeline that turns raw learnings into clean wiki entries
 
 ## Install
@@ -26,7 +47,7 @@ When fully installed, Digital Me OS gives any agent runtime a shared brain:
 
 ### Prerequisite — openclaw (mandatory)
 
-Install [openclaw](https://github.com/openclaw/openclaw) **first** and verify `openclaw --version` works. digital-me-os is a plugin + CLI-adapter set that rides on top of the openclaw gateway daemon — without it, the brain MCP tools and every runtime adapter have nothing to connect to. `setup` and `install` **hard-stop** with install guidance if openclaw isn't detected (override with `--skip-openclaw-check` for advanced/CI use).
+Install [openclaw](https://github.com/openclaw/openclaw) **first** and verify `openclaw --version` works. Digital Me is a plugin + CLI-adapter set that rides on top of the openclaw gateway daemon — without it, the brain MCP tools and every runtime adapter have nothing to connect to. `setup` and `install` **hard-stop** with install guidance if openclaw isn't detected (override with `--skip-openclaw-check` for advanced/CI use).
 
 ### One-shot install
 
@@ -161,7 +182,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full mental model.
 ## How it relates to openclaw
 
 - **openclaw** owns the brain runtime (gateway daemon, memory-core, active-memory).
-- **digital-me-os** owns everything built on top: one extension plugin (brain-orchestrator), per-runtime protocol adapters, transport, services, CLI.
+- **this repo** owns everything built on top: one extension plugin (brain-orchestrator), per-runtime protocol adapters, transport, services, CLI.
 - **digital-me-data** (separate private repo per user) holds your wiki content and config.
 
 This repo contains **no personal data**. All user-specific configuration lives in your local `digital-me-data` repo and is loaded at runtime via the env-var contract documented in [docs/CONTRACTS.md](docs/CONTRACTS.md).
