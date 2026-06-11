@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/cli",
   "version": "0.1.0-pre",
-  "description": "digital-me — install, doctor, and orchestrate the digital-me ecosystem (runtimes, brain MCP proxy, dream-cycle).",
+  "description": "digital-me \u2014 install, doctor, and orchestrate the digital-me ecosystem (runtimes, brain MCP proxy, dream-cycle).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -45,5 +45,10 @@
   },
   "engines": {
     "node": ">=22.5"
-  }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Amyssjj/digital-me.git"
+  },
+  "homepage": "https://github.com/Amyssjj/digital-me"
 }

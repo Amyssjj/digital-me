@@ -46,7 +46,9 @@ chmodSync(path.join(outDir, "bin", "digital-me.js"), 0o755);
 // Trimmed, registry-ready manifest: workspace:* deps are inlined into the
 // bundle, so the published package only needs esbuild at install time.
 const publishPkg = {
-  name: srcPkg.name,
+  // Published as the unscoped product name (`npm i -g digital-me`); the
+  // workspace package keeps its internal @digital-me/cli name.
+  name: "digital-me",
   version: srcPkg.version,
   description: srcPkg.description,
   license: srcPkg.license,
