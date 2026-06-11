@@ -8,6 +8,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node ≥ 22.5](https://img.shields.io/badge/node-%E2%89%A522.5-brightgreen.svg)](#prerequisites)
 [![Runs on openclaw](https://img.shields.io/badge/runs%20on-openclaw-CC2936.svg)](https://github.com/openclaw/openclaw)
+[![PyPI](https://img.shields.io/pypi/v/digital-me-dream-cycle.svg)](https://pypi.org/project/digital-me-dream-cycle/)
 
 **Agents change. Your intelligence compounds.**
 
