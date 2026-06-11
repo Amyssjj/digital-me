@@ -31,7 +31,7 @@ import type {
 } from "../store/tasks.js";
 import type { TracesStore } from "../store/traces.js";
 import type { WorkflowsStore } from "../store/workflows.js";
-import { refreshGoalStatus } from "./resolver-status.js";
+import { isTerminalGoalStatus, refreshGoalStatus } from "./resolver-status.js";
 
 // After N consecutive dispatch failures for the same task, the
 // orphan-dispatch path terminal-fails the task instead of retrying every tick.
@@ -426,16 +426,34 @@ export function reconcileStaleRuns(
       const silentMin = Math.round((nowMs - lastActivity) / 60_000);
 
       // auto_once: hand a silent run one fresh re-dispatch before declaring it
-      // stalled. Reset to "ready" with a cleared activity clock (startedAt +
-      // latestCheckpoint) and no activeRunId so this tick's
-      // dispatchOrphanedReadyTasks re-runs it — and the retry gets a full
+      // stalled. Three guards keep the retry from corrupting state:
+      //  - attemptCount < MAX bounds it to a single retry (every dispatch bumps
+      //    the count, so the first stall sees attemptCount === 1).
+      //  - the parent goal must still be active — otherwise the same tick's
+      //    dispatchOrphanedReadyTasks (which does not filter by goal status)
+      //    would launch fresh work for an already failed/cancelled workflow.
+      //  - the abandoned attempt is closed (stalled) before the reset, so a
+      //    later completion finalizes the retry's attempt rather than this one
+      //    (finalizeRunningAttempt picks the first running attempt by order).
+      // The reset clears the activity clock (startedAt + latestCheckpoint) and
+      // run identity so dispatchOrphanedReadyTasks re-runs it with a full
       // timeout window. Clearing startedAt is load-bearing: the dispatcher sets
-      // `startedAt ?? now`, so a stale startedAt would survive and the retry
-      // would re-stall on the very next tick instead of getting its own window.
+      // `startedAt ?? now`, so a stale clock would survive and re-stall the
+      // retry on the next tick instead of giving it its own window.
+      const goal = deps.goals.get(task.goalId);
+      const goalActive = goal !== undefined && !isTerminalGoalStatus(goal.status);
       if (
         task.retryPolicy === "auto_once" &&
-        task.attemptCount < AUTO_ONCE_MAX_ATTEMPTS
+        task.attemptCount < AUTO_ONCE_MAX_ATTEMPTS &&
+        goalActive
       ) {
+        const abandoned = task.attempts.find((a) => a.status === "running");
+        if (abandoned) {
+          deps.tasks.updateAttempt(abandoned.attemptId, {
+            status: "stalled",
+            endedAt: nowMs,
+          });
+        }
         deps.tasks.update({
           ...task,
           status: "ready",

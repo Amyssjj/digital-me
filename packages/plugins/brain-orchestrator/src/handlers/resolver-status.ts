@@ -37,6 +37,21 @@ export type ResolverDeps = {
 
 // ── Goal-status derivation ────────────────────────────────────────────────
 
+// A goal in one of these states accepts no further task transitions; callers
+// must not revive or re-dispatch its tasks. Single source of truth so the
+// watchdog and cancelGoal agree on what "terminal" means.
+const TERMINAL_GOAL_STATUSES: ReadonlySet<GoalStatus> = new Set<GoalStatus>([
+  "completed",
+  "cancelled",
+  "failed",
+  "retired",
+]);
+
+/** True when a goal is in a terminal state (no further task work allowed). */
+export function isTerminalGoalStatus(status: GoalStatus): boolean {
+  return TERMINAL_GOAL_STATUSES.has(status);
+}
+
 /**
  * Compute what a goal's status SHOULD be, based on its tasks. Pure: does
  * not mutate the store. Evergreen goals are passed through unchanged
@@ -431,13 +446,7 @@ export function cancelGoal(
 ): TransitionResult & { readonly cancelledTaskCount?: number } {
   const goal = deps.goals.get(goalId);
   if (!goal) return { ok: false, error: `Goal "${goalId}" not found.` };
-  const terminalGoalStatuses: ReadonlySet<GoalStatus> = new Set<GoalStatus>([
-    "completed",
-    "cancelled",
-    "failed",
-    "retired",
-  ] as GoalStatus[]);
-  if (terminalGoalStatuses.has(goal.status)) {
+  if (isTerminalGoalStatus(goal.status)) {
     return {
       ok: false,
       error: `Goal "${goal.name}" is already ${goal.status}.`,

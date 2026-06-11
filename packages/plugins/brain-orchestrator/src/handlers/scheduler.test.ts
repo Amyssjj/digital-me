@@ -763,7 +763,7 @@ describe("reconcileStaleRuns", () => {
     expect(deps.tasks.get("t1")!.status).toBe("stalled");
   });
 
-  it("re-dispatches a stalled auto_once task instead of stalling it", () => {
+  it("re-dispatches a stalled auto_once task and closes the abandoned attempt", () => {
     const { deps, logs } = makeDeps({ now: 100_000 });
     seedGoal(deps, { id: "g-1", status: "running" });
     seedTask(deps, {
@@ -775,6 +775,15 @@ describe("reconcileStaleRuns", () => {
       activeRunId: "run-1",
       activeSessionKey: "sess-1",
       latestCheckpoint: { checkpointAt: 0, phase: "p", summary: "s" },
+    });
+    deps.tasks.createAttempt({
+      attemptId: "a1",
+      taskId: "t1",
+      attemptNumber: 1,
+      runId: "run-1",
+      sessionKey: "sess-1",
+      status: "running",
+      startedAt: 0,
     });
     expect(reconcileStaleRuns(deps, 1000)).toBe(1);
     const t = deps.tasks.get("t1")!;
@@ -788,9 +797,47 @@ describe("reconcileStaleRuns", () => {
     expect(t.failureReason).toBeUndefined();
     // reconcile must not burn the retry budget — the dispatcher bumps attemptCount.
     expect(t.attemptCount).toBe(1);
+    // Abandoned attempt closed so a late completion targets the retry attempt.
+    expect(t.attempts.find((a) => a.attemptId === "a1")!.status).toBe("stalled");
     expect(
       logs.some((l) => l.message.includes("re-dispatching stalled auto_once")),
     ).toBe(true);
+  });
+
+  it("stalls an auto_once task instead of retrying when its goal is terminal", () => {
+    const { deps } = makeDeps({ now: 100_000 });
+    seedGoal(deps, { id: "g-1", status: "failed" });
+    seedTask(deps, {
+      id: "t1",
+      status: "running",
+      startedAt: 0,
+      attemptCount: 1,
+      retryPolicy: "auto_once",
+    });
+    // Goal already failed → no fresh dispatch for a terminal workflow.
+    expect(reconcileStaleRuns(deps, 1000)).toBe(1);
+    expect(deps.tasks.get("t1")!.status).toBe("stalled");
+  });
+
+  it("stalls an auto_once task whose goal no longer exists", () => {
+    const { deps } = makeDeps({ now: 100_000 });
+    deps.tasks.create({
+      id: "t1",
+      goalId: "ghost",
+      name: "x",
+      task: "x",
+      blockedBy: [],
+      dispatch: { mode: "spawn", agentId: "a" },
+      status: "running",
+      startedAt: 0,
+      attemptCount: 1,
+      attempts: [],
+      priority: "normal",
+      onUpstreamFailure: "wait",
+      retryPolicy: "auto_once",
+    });
+    expect(reconcileStaleRuns(deps, 1000)).toBe(1);
+    expect(deps.tasks.get("t1")!.status).toBe("stalled");
   });
 
   it("stalls an auto_once task terminally once its single retry is used", () => {
