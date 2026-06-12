@@ -83,13 +83,18 @@ rate, workflows, feed. Installed as a `launchd` (macOS) / `systemd --user`
 
 The nightly distillation pipeline that turns raw captured learnings into
 clean wiki entries. Requires Python ≥ 3.11 in a venv (Homebrew/Debian enforce
-PEP 668 — `digital-me doctor` prints the exact recipe for your Python):
+PEP 668 — `digital-me doctor` prints the exact recipe for your Python).
+
+It ships on PyPI as `digital-me-dream-cycle`:
 
 ```bash
 python3 -m venv ~/.venvs/dream-cycle
-~/.venvs/dream-cycle/bin/pip install -e "packages/services/dream-cycle[dev]"
+~/.venvs/dream-cycle/bin/pip install digital-me-dream-cycle
 digital-me dream-cycle                        # run it manually
 ```
+
+Working on the pipeline itself? Install it editable from the repo instead:
+`pip install -e "packages/services/dream-cycle[dev]"`.
 
 The nightly schedule (`dream-cycle-nightly`, 3am) is registered with the
 orchestrator at install time — no manual cron needed.
