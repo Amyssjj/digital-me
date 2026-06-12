@@ -45,6 +45,12 @@ What `setup` does:
 Re-running is idempotent — installers merge into existing settings without
 clobbering your other hooks.
 
+> **Packaging status** (pre-release): install from source as above — that one
+> `pnpm dm setup` is the whole build. The dream-cycle pipeline is published on
+> PyPI as [`digital-me-dream-cycle`](https://pypi.org/project/digital-me-dream-cycle/);
+> the npm package is prepared but **not published yet** — `npm install` will
+> not find it until the first release lands.
+
 ```motus-demo
 console
 ```
