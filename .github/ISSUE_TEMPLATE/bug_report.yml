@@ -1,0 +1,70 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please **do not report security vulnerabilities here** —
+        see [SECURITY.md](../blob/main/SECURITY.md) for the private disclosure flow.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, including the actual vs. expected behavior.
+      placeholder: When I run `digital-me setup`, …
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands or actions that trigger the bug.
+      placeholder: |
+        1. `git clone … && pnpm install && pnpm build`
+        2. `pnpm dm setup --minimal`
+        3. …
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output / logs
+      description: Paste any error output. Redact paths, tokens, and personal data.
+      render: shell
+  - type: input
+    id: dm-version
+    attributes:
+      label: Digital Me version / commit
+      placeholder: "0.1.0-pre or git SHA"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: "macOS 15.5 / Ubuntu 24.04"
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      description: Must be ≥ 22.5. Output of `node --version`.
+      placeholder: "v22.5.0"
+    validations:
+      required: true
+  - type: input
+    id: openclaw
+    attributes:
+      label: openclaw version
+      description: Output of `openclaw --version` (or "not installed").
+      placeholder: "v2026.5.26"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`digital-me doctor` output (if relevant)"
+      description: Often the fastest way to diagnose install issues. Redact personal paths.
+      render: shell

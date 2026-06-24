@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/Amyssjj/digital-me/security/advisories/new
+    about: Report security issues privately — please do not open a public issue.
+  - name: Question / discussion
+    url: https://github.com/Amyssjj/digital-me/discussions
+    about: Ask questions, share setups, and discuss ideas.
+  - name: openclaw (upstream)
+    url: https://github.com/openclaw/openclaw/issues
+    about: For bugs in the openclaw gateway/runtime itself, file upstream.
