@@ -1,0 +1,41 @@
+version: 2
+updates:
+  # JS/TS workspace — root manifest plus every package in the pnpm monorepo.
+  - package-ecosystem: npm
+    directories:
+      - "/"
+      - "/packages/**"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+      production-minor-patch:
+        dependency-type: production
+        update-types:
+          - minor
+          - patch
+    commit-message:
+      prefix: "chore(deps)"
+      prefix-development: "chore(deps-dev)"
+
+  # Python dream-cycle service.
+  - package-ecosystem: pip
+    directory: "/packages/services/dream-cycle"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+
+  # GitHub Actions used by the workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "ci(deps)"
