@@ -40,7 +40,7 @@ jobs:
 
       - name: Checkout digital-me
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node
         if: steps.gate.outputs.enabled == 'true'
@@ -54,7 +54,7 @@ jobs:
 
       - name: Checkout motus-ai-web
         if: steps.gate.outputs.enabled == 'true'
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: Amyssjj/motus-ai-web
           token: ${{ secrets.MOTUS_AI_WEB_TOKEN }}

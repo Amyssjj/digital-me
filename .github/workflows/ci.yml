@@ -11,7 +11,7 @@ jobs:
     name: Sanitize gate (forbidden-pattern scan)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Run sanitize-check
         run: bash scripts/sanitize-check.sh
 
@@ -20,7 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: sanitize
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
@@ -46,7 +46,7 @@ jobs:
       run:
         working-directory: packages/services/dream-cycle
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
