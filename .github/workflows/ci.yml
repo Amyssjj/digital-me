@@ -64,7 +64,7 @@ jobs:
           /tmp/wheel-venv/bin/digital-me-dream-cycle --help > /dev/null
           /tmp/wheel-venv/bin/python -c "import dream_cycle.run"
       - name: Upload distribution artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dream-cycle-dist
           path: packages/services/dream-cycle/dist/*
