@@ -38,7 +38,7 @@ jobs:
           pkg=$(ls dist/digital_me_dream_cycle-*.tar.gz | sed -E 's/.*digital_me_dream_cycle-(.*)\.tar\.gz/\1/')
           echo "tag=$tag built=$pkg"
           [ "$tag" = "$pkg" ] || { echo "::error::tag ($tag) != pyproject version ($pkg)"; exit 1; }
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: dream-cycle-dist
           path: packages/services/dream-cycle/dist/*
