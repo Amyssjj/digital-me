@@ -14,6 +14,7 @@ Until `1.0.0`, minor versions may include breaking changes.
   `CODE_OF_CONDUCT.md`, GitHub issue/PR templates, and this changelog.
 - Maintenance automation: Dependabot (npm + pip + actions), a CodeQL scanning
   workflow (JS/TS + Python), `CODEOWNERS`, and `.editorconfig`.
+- `SUPPORT.md` (help-routing) and `.github/FUNDING.yml` (sponsor button).
 
 ### Changed
 - Root `engines.node` raised to `>=22.5` to match all workspace packages and the

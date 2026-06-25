@@ -1,0 +1,7 @@
+# Funding platforms for the GitHub "Sponsor" button.
+# The github: button only renders once GitHub Sponsors is enabled for the account.
+# Uncomment / fill any others you use; delete this file if you don't want the button.
+github: [Amyssjj]
+# open_collective: # Open Collective slug
+# ko_fi: # Ko-fi username
+# custom: # ["https://example.com/donate"]
