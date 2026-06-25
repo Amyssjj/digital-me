@@ -12,8 +12,9 @@ Until `1.0.0`, minor versions may include breaking changes.
 ### Added
 - Open-source community health files: `CONTRIBUTING.md`, `SECURITY.md`,
   `CODE_OF_CONDUCT.md`, GitHub issue/PR templates, and this changelog.
-- Maintenance automation: Dependabot (npm + pip + actions), a CodeQL scanning
-  workflow (JS/TS + Python), `CODEOWNERS`, and `.editorconfig`.
+- Maintenance automation: Dependabot (npm + pip + actions), `CODEOWNERS`, and
+  `.editorconfig`. (CodeQL code scanning is enabled via GitHub's repo-managed
+  "default setup" in Settings rather than a committed workflow.)
 - `SUPPORT.md` (help-routing) and `.github/FUNDING.yml` (sponsor button).
 
 ### Changed
