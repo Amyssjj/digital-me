@@ -23,8 +23,6 @@
 
 New install? Start here: [Getting started](#install)
 
-Preferred setup: `npm install -g digital-me` then `digital-me setup`. It detects your installed CLIs, scaffolds your data directory, wires every runtime, and ends with a doctor pass. Works on macOS and Linux. (Building from source? See [Install from source](#install-from-source).)
-
 > **Status:** v0.1 — live and early. Published to npm as `digital-me` (with provenance) and to PyPI as `digital-me-dream-cycle`, with 1,500+ unit tests (core stores and handlers at 100% coverage). Pre-1.0, so APIs may still shift between minor versions.
 
 ## How it works
