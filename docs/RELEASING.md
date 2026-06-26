@@ -131,22 +131,25 @@ python3 -m venv /tmp/dc-pypi-smoke
 
 ### What's NOT automated yet
 
-- Changelog generation. Add release notes by hand under `docs/CHANGELOG.md` (file not yet created).
+- Changelog generation. Add release notes by hand under `CHANGELOG.md` (repo root).
 
-## TypeScript CLI — `@digital-me/cli` (npm)
+## TypeScript CLI — published as `digital-me` (npm)
 
-The CLI depends on sibling `workspace:*` packages that are **not** published
-individually. Instead, `scripts/build-cli-bundle.mjs` esbuild-bundles the bin
-entry with every workspace dep **inlined** (only `esbuild` stays external — it
-ships a platform binary and is used at runtime), and emits a trimmed,
-registry-ready package under `packages/cli/npm-dist/`. So `npm i -g
-@digital-me/cli` works with no monorepo checkout.
+The workspace package is named `@digital-me/cli`, but it ships to npm under the
+**unscoped `digital-me`** name (`scripts/build-cli-bundle.mjs` rewrites the
+manifest name in `packages/cli/npm-dist/`). The CLI depends on sibling
+`workspace:*` packages that are **not** published individually; the bundler
+esbuild-inlines every workspace dep (only `esbuild` stays external — it ships a
+platform binary and is used at runtime) and emits a trimmed, registry-ready
+package under `packages/cli/npm-dist/`. So `npm i -g digital-me` works with no
+monorepo checkout.
 
 ### One-time setup
 
-1. Reserve/own the `@digital-me` scope on npm.
-2. Create an npm **automation token** with publish rights to the scope, and add
-   it as the repo secret **`NPM_TOKEN`** (Settings → Secrets → Actions).
+1. Reserve/own the unscoped **`digital-me`** name on npm.
+2. Create an npm **automation token** (or granular token with Bypass-2FA) with
+   publish rights to `digital-me`, and add it as the repo secret **`NPM_TOKEN`**
+   (Settings → Secrets → Actions).
 
 ### Cut a release (automated — preferred)
 
@@ -164,8 +167,8 @@ git tag cli-vX.Y.Z && git push origin cli-vX.Y.Z
 
 ```bash
 pnpm build && pnpm build:cli-bundle
-cd packages/cli/npm-dist && npm pack          # → digital-me-cli-X.Y.Z.tgz
+cd packages/cli/npm-dist && npm pack          # → digital-me-X.Y.Z.tgz
 # install the tarball into a throwaway project and run it:
-d=$(mktemp -d); (cd "$d" && npm init -y >/dev/null && npm i "$OLDPWD"/digital-me-cli-*.tgz \
+d=$(mktemp -d); (cd "$d" && npm init -y >/dev/null && npm i "$OLDPWD"/digital-me-*.tgz \
   && ./node_modules/.bin/digital-me help)
 ```

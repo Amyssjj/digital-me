@@ -23,7 +23,7 @@ first saves a round-trip:
 | Gate | Command | Bar |
 |---|---|---|
 | Lint | `pnpm lint` | clean |
-| Tests | `pnpm test` | green (~1,400 unit tests) |
+| Tests | `pnpm test` | green (1,500+ unit tests) |
 | Coverage | `pnpm test:coverage` | **100% on changed files** |
 | Sanitization | `pnpm sanitize:check` | no personal identifiers, user paths, or org names anywhere in code or docs |
 

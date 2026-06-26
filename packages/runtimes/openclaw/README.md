@@ -34,7 +34,7 @@ config schema) and `index.mjs` (the gateway-loaded entry).
 ## Install
 
 ```bash
-# auto-detects ~/openclaw/extensions, or $OPENCLAW_EXTENSIONS_DIR
+# auto-detects ~/.openclaw/extensions, or $OPENCLAW_EXTENSIONS_DIR
 digital-me install --runtime openclaw
 
 # or point at a custom extensions dir
@@ -52,7 +52,7 @@ The installer:
 After installing, enable the plugin in your openclaw config's `plugins.enabled`
 list (if your gateway doesn't auto-discover extensions) and restart the gateway.
 Verify with `digital-me doctor` — it checks for
-`~/openclaw/extensions/digital-me-brain/index.mjs`.
+`~/.openclaw/extensions/digital-me-brain/index.mjs`.
 
 ## Keeping openclaw up to date
 

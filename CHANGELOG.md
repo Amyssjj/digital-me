@@ -23,7 +23,7 @@ Until `1.0.0`, minor versions may include breaking changes.
 
 ## [0.1.0-pre] - 2026-06
 
-Initial pre-release. Functional monorepo with ~1,400 unit tests (core stores and
+Initial pre-release. Functional monorepo with 1,500+ unit tests (core stores and
 handlers at 100% coverage); install from source — nothing published to npm yet.
 
 ### Added
