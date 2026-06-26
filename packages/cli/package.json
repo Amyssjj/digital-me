@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/cli",
-  "version": "0.1.0-pre",
-  "description": "digital-me \u2014 install, doctor, and orchestrate the digital-me ecosystem (runtimes, brain MCP proxy, dream-cycle).",
+  "version": "0.1.0",
+  "description": "digital-me — install, doctor, and orchestrate the digital-me ecosystem (runtimes, brain MCP proxy, dream-cycle).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
