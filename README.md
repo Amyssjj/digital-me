@@ -27,6 +27,31 @@ Preferred setup: `npm install -g digital-me` then `digital-me setup`. It detects
 
 > **Status:** pre-release WIP — 1,500+ unit tests, core stores and handlers at 100% coverage. The CLI ships from npm as `digital-me`; the dream-cycle pipeline ships from PyPI as `digital-me-dream-cycle`.
 
+## How it works
+
+**One intelligence — every agent runs on the same brain.** Your agents come and go; Digital Me is the part that stays.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/one-brain-dark.svg">
+  <img alt="Claude Code, OpenClaw, Codex, and Hermes all connect to one Digital Me core — knowledge, taste, goals, traces, and workflows applied to every agent and captured from every agent." src="assets/readme/one-brain-light.svg" width="100%">
+</picture>
+
+**Every agent turn runs one lifecycle — apply → work → capture.** Matching knowledge and taste inject before the model sees the prompt; anything reusable flows back out, so a lesson paid once in any agent is owned by every agent.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/lifecycle-dark.svg">
+  <img alt="The per-turn lifecycle rail: apply (context injected) → work (any agent, any surface) → capture (learning_capture), with a return arc feeding the next agent's apply." src="assets/readme/lifecycle-light.svg" width="100%">
+</picture>
+
+**The loop closes overnight — capture distills into recall.** The nightly dream-cycle compiles raw captures into clean, reviewable wiki entries that the next apply retrieves — so the intelligence compounds instead of evaporating.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/learning-loop-dark.svg">
+  <img alt="The closed learning loop as a ring around the Digital Me core: apply → work → capture → distill (dream-cycle, nightly) → recall (memory_search) → back to apply." src="assets/readme/learning-loop-light.svg" width="100%">
+</picture>
+
+*See these animated, agent by agent → [motusai.co/docs/how-it-works](https://motusai.co/docs/how-it-works).*
+
 ## What you get
 
 When fully installed, every agent runtime shares:
