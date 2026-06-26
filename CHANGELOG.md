@@ -9,22 +9,14 @@ Until `1.0.0`, minor versions may include breaking changes.
 
 ## [Unreleased]
 
-### Added
-- Open-source community health files: `CONTRIBUTING.md`, `SECURITY.md`,
-  `CODE_OF_CONDUCT.md`, GitHub issue/PR templates, and this changelog.
-- Maintenance automation: Dependabot (npm + pip + actions), `CODEOWNERS`, and
-  `.editorconfig`. (CodeQL code scanning is enabled via GitHub's repo-managed
-  "default setup" in Settings rather than a committed workflow.)
-- `SUPPORT.md` (help-routing) and `.github/FUNDING.yml` (sponsor button).
+_Nothing yet._
 
-### Changed
-- Root `engines.node` raised to `>=22.5` to match all workspace packages and the
-  README (the `node:sqlite` built-in used by the brain stores landed in Node 22.5.0).
+## [0.1.0] - 2026-06-26
 
-## [0.1.0-pre] - 2026-06
-
-Initial pre-release. Functional monorepo with 1,500+ unit tests (core stores and
-handlers at 100% coverage); install from source — nothing published to npm yet.
+Initial public release. Published to npm as `digital-me` (with provenance) and to
+PyPI as `digital-me-dream-cycle`. Functional monorepo with 1,500+ unit tests (core
+stores and handlers at 100% coverage). Pre-1.0 — minor versions may include breaking
+changes.
 
 ### Added
 - `digital-me` CLI: `setup`, `init`, `install --runtime <id>`, `doctor`,
@@ -39,6 +31,15 @@ handlers at 100% coverage); install from source — nothing published to npm yet
   (`digital-me-dream-cycle` on PyPI).
 - Tag-driven release automation for the npm CLI bundle (with provenance) and the
   dream-cycle PyPI package.
+- Open-source community health files: `CONTRIBUTING.md`, `SECURITY.md`,
+  `CODE_OF_CONDUCT.md`, `SUPPORT.md`, GitHub issue/PR templates, and this changelog.
+- Maintenance automation: Dependabot (npm + pip + actions), `CODEOWNERS`,
+  `.editorconfig`, and `.github/FUNDING.yml`. (CodeQL via GitHub's repo-managed
+  "default setup" in Settings rather than a committed workflow.)
 
-[Unreleased]: https://github.com/Amyssjj/digital-me/compare/v0.1.0-pre...HEAD
-[0.1.0-pre]: https://github.com/Amyssjj/digital-me/releases/tag/v0.1.0-pre
+### Changed
+- Root `engines.node` raised to `>=22.5` to match all workspace packages and the
+  README (the `node:sqlite` built-in used by the brain stores landed in Node 22.5.0).
+
+[Unreleased]: https://github.com/Amyssjj/digital-me/compare/cli-v0.1.0...HEAD
+[0.1.0]: https://github.com/Amyssjj/digital-me/releases/tag/cli-v0.1.0
