@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+  <!-- One brain, every agent: agents differ and change; the core never moves.
+       Dashes flow INWARD on the apply lines (context arriving), outward on capture. -->
+  <style>
+    .agent { font-size: 13px; fill: #f4efe6; }
+    .tag   { font-size: 10px; fill: #78716c; }
+    .core  { font-size: 11px; fill: #b0aaa0; letter-spacing: 0.14em; }
+  </style>
+
+  <!-- connecting lines: left agents -->
+  <g stroke="#44403c" stroke-width="1.2" fill="none">
+    <path id="l1" d="M 200 60  C 280 60, 320 110, 380 118"/>
+    <path id="l2" d="M 200 180 C 280 180, 320 130, 380 124"/>
+    <path id="l3" d="M 680 60  C 600 60, 560 110, 500 118"/>
+    <path id="l4" d="M 680 180 C 600 180, 560 130, 500 124"/>
+  </g>
+  <!-- flow: context applying (inward pulses) -->
+  <g stroke="#9be29b" stroke-width="1.6" fill="none" stroke-dasharray="3 14">
+    <path d="M 200 60  C 280 60, 320 110, 380 118">
+      <animate attributeName="stroke-dashoffset" from="34" to="0" dur="2.2s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 200 180 C 280 180, 320 130, 380 124">
+      <animate attributeName="stroke-dashoffset" from="34" to="0" dur="2.6s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 680 60  C 600 60, 560 110, 500 118">
+      <animate attributeName="stroke-dashoffset" from="34" to="0" dur="2.4s" repeatCount="indefinite"/>
+    </path>
+    <path d="M 680 180 C 600 180, 560 130, 500 124">
+      <animate attributeName="stroke-dashoffset" from="34" to="0" dur="2.8s" repeatCount="indefinite"/>
+    </path>
+  </g>
+
+  <!-- agents (left) -->
+  <g>
+    <rect x="60" y="40" width="140" height="40" rx="6" fill="none" stroke="#44403c"/>
+    <text x="74" y="58" class="agent">Claude Code</text>
+    <text x="74" y="72" class="tag">deep coding · CLI</text>
+
+    <rect x="60" y="160" width="140" height="40" rx="6" fill="none" stroke="#44403c"/>
+    <text x="74" y="178" class="agent">OpenClaw</text>
+    <text x="74" y="192" class="tag">always on · Discord</text>
+  </g>
+  <!-- agents (right) -->
+  <g>
+    <rect x="680" y="40" width="140" height="40" rx="6" fill="none" stroke="#44403c"/>
+    <text x="694" y="58" class="agent">Codex</text>
+    <text x="694" y="72" class="tag">repo-wide work</text>
+
+    <rect x="680" y="160" width="140" height="40" rx="6" fill="none" stroke="#44403c"/>
+    <text x="694" y="178" class="agent">Hermes</text>
+    <text x="694" y="192" class="tag">self-learning</text>
+  </g>
+
+  <!-- the core: fixed, never animated -->
+  <g>
+    <rect x="380" y="76" width="120" height="92" rx="8" fill="#f4efe6"/>
+    <!-- Motus M mark (two strokes), scaled -->
+    <g transform="translate(415 96) scale(0.115)" fill="#1c1917">
+      <path d="M 1 0 H 89 L 228 216 H 130 L 76 116 V 216 H 0 Z"/>
+      <path d="M 168 0 H 264 L 394 216 H 298 Z"/>
+    </g>
+    <text x="440" y="152" text-anchor="middle" class="core" fill="#1c1917">DIGITAL ME</text>
+  </g>
+
+  <!-- footer line -->
+  <text x="440" y="222" text-anchor="middle" class="tag">knowledge · taste · goals · traces · workflows — applied to every agent, captured from every agent</text>
+</svg>
