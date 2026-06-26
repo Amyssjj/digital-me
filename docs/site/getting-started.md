@@ -10,26 +10,26 @@ capture → recall loop in about five minutes.
   rides on openclaw's gateway daemon; install it first and verify
   `openclaw --version` works. `setup` hard-stops with install guidance if it's
   missing.
-- **Node.js ≥ 22.5** and **pnpm** — the CLI checks and tells you if your Node
-  is too old.
+- **Node.js ≥ 22.5** — to install and run the CLI from npm. (`pnpm` is only
+  needed for the *From source* path below.)
 - **Python ≥ 3.11** — optional; only needed for the dream-cycle distillation
   pipeline (skip it with `--minimal`).
 
 ## Install
 
 ```bash
-git clone https://github.com/Amyssjj/digital-me.git ~/digital-me-os
-cd ~/digital-me-os && pnpm install && pnpm build
+# Install the CLI from npm
+npm install -g digital-me
 
 # Detect installed CLIs, scaffold ~/digital-me/, install hooks/skills/configs,
-# link the `digital-me` command onto PATH, run doctor:
-pnpm dm setup
+# wire every runtime, run doctor:
+digital-me setup
 
 # Node-only? Skip the optional services (dream-cycle venv + dashboard build):
-pnpm dm setup --minimal
+digital-me setup --minimal
 
 # Pin a custom wiki location:
-pnpm dm setup --wiki-root ~/notes/brain
+digital-me setup --wiki-root ~/notes/brain
 ```
 
 What `setup` does:
@@ -45,11 +45,21 @@ What `setup` does:
 Re-running is idempotent — installers merge into existing settings without
 clobbering your other hooks.
 
-> **Packaging status** (pre-release): install from source as above — that one
-> `pnpm dm setup` is the whole build. The dream-cycle pipeline is published on
-> PyPI as [`digital-me-dream-cycle`](https://pypi.org/project/digital-me-dream-cycle/);
-> the npm package is prepared but **not published yet** — `npm install` will
-> not find it until the first release lands.
+### From source
+
+For contributors, or to run an unreleased version: clone and build, then drive
+the CLI with `pnpm dm <command>` from the repo — that's the in-repo equivalent
+of the `digital-me` command before it's linked onto your PATH.
+
+```bash
+git clone https://github.com/Amyssjj/digital-me.git ~/digital-me-os
+cd ~/digital-me-os && pnpm install && pnpm build
+pnpm dm setup        # `pnpm dm` = the CLI, run from the clone
+```
+
+> **Packaging:** the CLI installs from npm as `digital-me`; during `setup`
+> it pip-installs the dream-cycle pipeline from PyPI
+> ([`digital-me-dream-cycle`](https://pypi.org/project/digital-me-dream-cycle/)).
 
 ```motus-demo
 console
@@ -80,11 +90,16 @@ in a vector store you can't read — the wiki is plain files in git.
 
 ## Where things live
 
+With the npm install, the only directory that's yours to own is `~/digital-me`
+— the CLI itself lives in npm's global packages.
+
 | Path | What it is |
 |---|---|
-| `~/digital-me-os` | this repo — code, no personal data |
 | `~/digital-me/` | **your** data: wiki, inbox, config (own it in a private git repo) |
 | `~/.openclaw/` | openclaw gateway home (brain database, plugins) |
+
+*(Installed [from source](#from-source)? The repo checkout lives at
+`~/digital-me-os` — code only, no personal data.)*
 
 ## Next steps
 

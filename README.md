@@ -23,9 +23,9 @@
 
 New install? Start here: [Getting started](#install)
 
-Preferred setup: run `pnpm dm setup` from a clone. It detects your installed CLIs, scaffolds your data directory, wires every runtime, and ends with a doctor pass. Works on macOS and Linux.
+Preferred setup: `npm install -g digital-me` then `digital-me setup`. It detects your installed CLIs, scaffolds your data directory, wires every runtime, and ends with a doctor pass. Works on macOS and Linux. (Building from source? See [Install from source](#install-from-source).)
 
-> **Status:** pre-release WIP. The packages are functional with ~1,400 unit tests (core stores and handlers at 100% coverage), but nothing is published to npm yet — install from source (see below).
+> **Status:** pre-release WIP — 1,500+ unit tests, core stores and handlers at 100% coverage. The CLI ships from npm as `digital-me`; the dream-cycle pipeline ships from PyPI as `digital-me-dream-cycle`.
 
 ## What you get
 
@@ -43,7 +43,7 @@ When fully installed, every agent runtime shares:
 
 ### Prerequisites
 
-- **Node.js ≥ 22.5** and **pnpm** — the CLI checks and tells you if your Node is too old.
+- **Node.js ≥ 22.5** — to install and run the CLI from npm (`pnpm` is only needed for the *Install from source* path).
 - **[openclaw](https://github.com/openclaw/openclaw)** — mandatory, see below.
 - **Python ≥ 3.11** — optional; only needed for the dream-cycle distillation pipeline (skip with `setup --minimal`).
 
@@ -51,29 +51,29 @@ When fully installed, every agent runtime shares:
 
 Install [openclaw](https://github.com/openclaw/openclaw) **first** and verify `openclaw --version` works. Digital Me is a plugin + CLI-adapter set that rides on top of the openclaw gateway daemon — without it, the brain MCP tools and every runtime adapter have nothing to connect to. `setup` and `install` **hard-stop** with install guidance if openclaw isn't detected (override with `--skip-openclaw-check` for advanced/CI use).
 
-### One-shot install
+### Install (npm)
 
 ```bash
-git clone https://github.com/Amyssjj/digital-me.git ~/digital-me-os
-cd ~/digital-me-os && pnpm install && pnpm build
+# Install the CLI from npm
+npm install -g digital-me
 
 # Detect installed CLIs, scaffold ~/digital-me/, install hooks/skills/configs,
-# link the `digital-me` command onto PATH, run doctor. (`pnpm dm` = the CLI.)
-pnpm dm setup
+# wire every runtime, run doctor:
+digital-me setup
 
 # Or pin a custom wiki location:
-pnpm dm setup --wiki-root ~/notes/brain
+digital-me setup --wiki-root ~/notes/brain
 
 # Node-only? Skip the heavy optional services (dream-cycle Python venv +
 # dashboard build) — add either later with `digital-me install --runtime <id>`:
-pnpm dm setup --minimal
-
-# Then:
-export DIGITAL_ME_WIKI_ROOT=~/digital-me
-# config.yaml is auto-created with `sources` pre-filled from your detected CLIs.
-# Default engine=openclaw reads your LLM key from ~/.openclaw/openclaw.json,
-# so there's usually nothing left to edit. Review ~/digital-me/config.yaml.
+digital-me setup --minimal
 ```
+
+After `setup`, `config.yaml` is auto-created with `sources` pre-filled from your
+detected CLIs; the default `engine=openclaw` reads your LLM key from
+`~/.openclaw/openclaw.json`, so there's usually nothing left to edit. Review
+`~/digital-me/config.yaml` (override the data dir with
+`export DIGITAL_ME_WIKI_ROOT=~/digital-me`).
 
 What `setup` does:
 
@@ -88,10 +88,19 @@ What `setup` does:
 
 Re-running is idempotent — installers merge into existing settings without clobbering your other hooks.
 
-> **The `digital-me` command on your PATH:** `setup` runs `pnpm link --global`
-> for you, so after the one-shot install the bare `digital-me …` commands below
-> work directly. Before that link exists, use `pnpm dm <command>` from the repo
-> (or `node packages/cli/dist/bin/digital-me.js <command>` the long way).
+### Install from source
+
+For contributors, or to run an unreleased version. Build the repo, then drive the
+CLI with `pnpm dm <command>` — the in-repo equivalent of the global `digital-me`
+command. (`setup` runs `pnpm link --global`, so afterwards the bare `digital-me …`
+commands work directly; before that link exists use `pnpm dm <command>` from the
+repo, or `node packages/cli/dist/bin/digital-me.js <command>` the long way.)
+
+```bash
+git clone https://github.com/Amyssjj/digital-me.git ~/digital-me-os
+cd ~/digital-me-os && pnpm install && pnpm build
+pnpm dm setup        # `pnpm dm` = the CLI, run from the clone
+```
 
 ### First-run scenarios
 
@@ -99,8 +108,8 @@ Pick the row that matches you:
 
 | You have… | Run | What you get |
 |---|---|---|
-| openclaw + Claude Code / Codex / Hermes | `pnpm dm setup` | Full install: adapters + brain plugin + dashboard + dream-cycle, `digital-me` on PATH, green doctor |
-| openclaw, but node-only (no Python / no dashboard) | `pnpm dm setup --minimal` | Wiki + agent-runtime wiring + brain plugin only; add the rest later with `digital-me install --runtime dream-cycle\|dashboard` |
+| openclaw + Claude Code / Codex / Hermes | `digital-me setup` | Full install: adapters + brain plugin + dashboard + dream-cycle, `digital-me` on PATH, green doctor |
+| openclaw, but node-only (no Python / no dashboard) | `digital-me setup --minimal` | Wiki + agent-runtime wiring + brain plugin only; add the rest later with `digital-me install --runtime dream-cycle\|dashboard` |
 | **not** openclaw yet | *(install openclaw first)* | `setup` hard-stops and points you at the openclaw install — it's the mandatory foundation |
 | Homebrew / Debian / recent Ubuntu Python | *(see [dream-cycle](#running-the-dream-cycle-distillation-pipeline))* | These enforce PEP 668; install dream-cycle into a venv (recipe below). `digital-me doctor` prints the exact recipe for your Python. |
 
