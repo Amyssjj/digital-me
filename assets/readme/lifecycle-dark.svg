@@ -1,33 +1,47 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
-  <!-- The per-turn lifecycle: apply -> work -> capture. (dark) -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 260" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">
+  <!-- The lifecycle as the master promise (dark): agent chrome swaps, core fixed. -->
   <style>
-    .lbl { font-size: 13px; fill: #b0aaa0; letter-spacing: 0.1em; text-transform: uppercase; }
-    .sub { font-size: 10px; fill: #78716c; }
-    .arr { font-size: 15px; fill: #78716c; }
+    .sub   { font-size: 10px; fill: #78716c; }
+    .agent { font-size: 13px; fill: #f4efe6; }
+    .mono  { font-size: 11px; fill: #b0aaa0; }
+    .inj   { font-size: 11px; fill: #9be29b; }
+    .core  { font-size: 11px; fill: #b0aaa0; letter-spacing: 0.14em; }
   </style>
 
-  <line x1="170" y1="54" x2="710" y2="54" stroke="#44403c" stroke-width="1.5"/>
-  <path d="M 710 54 C 710 116, 170 116, 170 54" fill="none" stroke="#44403c" stroke-width="1.2" stroke-dasharray="3 6"/>
-  <text x="440" y="112" text-anchor="middle" class="sub">a lesson paid once in any agent is owned by every agent</text>
+  <path d="M 196 120 C 340 120, 400 108, 540 106" fill="none" stroke="#44403c" stroke-width="1.2"/>
+  <path d="M 196 120 C 340 120, 400 108, 540 106" fill="none" stroke="#9be29b" stroke-width="1.6" stroke-dasharray="3 14">
+    <animate attributeName="stroke-dashoffset" from="34" to="0" dur="2.4s" repeatCount="indefinite"/>
+  </path>
+  <text x="368" y="100" text-anchor="middle" class="sub">apply &#8594;</text>
 
-  <text x="310" y="49" text-anchor="middle" class="arr">&#8594;</text>
-  <text x="570" y="49" text-anchor="middle" class="arr">&#8594;</text>
+  <path d="M 540 162 C 400 160, 340 150, 196 150" fill="none" stroke="#44403c" stroke-width="1.2"/>
+  <path d="M 540 162 C 400 160, 340 150, 196 150" fill="none" stroke="#9be29b" stroke-width="1.6" stroke-dasharray="3 14">
+    <animate attributeName="stroke-dashoffset" from="0" to="34" dur="2.8s" repeatCount="indefinite"/>
+  </path>
+  <text x="368" y="176" text-anchor="middle" class="sub">&#8592; capture</text>
 
-  <g fill="#f4efe6">
-    <circle cx="170" cy="54" r="5"/>
-    <circle cx="440" cy="54" r="5"/>
-    <circle cx="710" cy="54" r="5"/>
+  <rect x="64" y="104" width="124" height="62" rx="8" fill="#26221f"/>
+  <g transform="translate(100 116) scale(0.10)" fill="#f4efe6">
+    <path d="M 1 0 H 89 L 228 216 H 130 L 76 116 V 216 H 0 Z"/>
+    <path d="M 168 0 H 264 L 394 216 H 298 Z"/>
   </g>
+  <text x="126" y="154" text-anchor="middle" class="core">DIGITAL ME</text>
+  <text x="126" y="190" text-anchor="middle" class="sub">the core never moves</text>
 
-  <text x="170" y="30" text-anchor="middle" class="lbl">apply</text>
-  <text x="170" y="78" text-anchor="middle" class="sub">context injected</text>
-  <text x="440" y="30" text-anchor="middle" class="lbl">work</text>
-  <text x="440" y="78" text-anchor="middle" class="sub">any agent &#183; any surface</text>
-  <text x="710" y="30" text-anchor="middle" class="lbl">capture</text>
-  <text x="710" y="78" text-anchor="middle" class="sub">learning_capture</text>
+  <rect x="540" y="74" width="280" height="118" rx="8" fill="none" stroke="#44403c"/>
+  <circle cx="560" cy="94" r="3" fill="#44403c"/>
+  <circle cx="572" cy="94" r="3" fill="#44403c"/>
+  <circle cx="584" cy="94" r="3" fill="#44403c"/>
+  <g text-anchor="end" class="agent">
+    <text x="806" y="98">Claude Code<animate attributeName="opacity" dur="12s" repeatCount="indefinite" values="1;1;0;0;1" keyTimes="0;0.22;0.25;0.97;1"/></text>
+    <text x="806" y="98">Codex<animate attributeName="opacity" dur="12s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.25;0.27;0.47;0.5;1"/></text>
+    <text x="806" y="98">OpenClaw<animate attributeName="opacity" dur="12s" repeatCount="indefinite" values="0;0;1;1;0;0" keyTimes="0;0.5;0.52;0.72;0.75;1"/></text>
+    <text x="806" y="98">Hermes<animate attributeName="opacity" dur="12s" repeatCount="indefinite" values="0;0;1;1" keyTimes="0;0.75;0.77;1"/></text>
+  </g>
+  <line x1="540" y1="108" x2="820" y2="108" stroke="#33302c" stroke-width="1"/>
+  <text x="558" y="130"><tspan class="inj">[Digital Me] apply</tspan><tspan class="mono"> taste + knowledge</tspan></text>
+  <text x="558" y="152" class="mono">&#9679; work &#183; context already loaded</text>
+  <text x="558" y="174"><tspan class="inj">capture &#8594;</tspan><tspan class="mono"> filed to the brain</tspan></text>
 
-  <circle r="4.5" fill="#9be29b">
-    <animateMotion dur="5s" repeatCount="indefinite" calcMode="linear" path="M170,54 L710,54"/>
-    <animate attributeName="opacity" dur="5s" repeatCount="indefinite" values="0;1;1;1;0" keyTimes="0;0.06;0.5;0.92;1"/>
-  </circle>
+  <text x="440" y="234" text-anchor="middle" class="sub">apply &#8594; work &#8594; capture &#183; one brain, every agent</text>
 </svg>
