@@ -35,7 +35,7 @@
     "@digital-me/runtime-codex": "workspace:*",
     "@digital-me/runtime-hermes": "workspace:*",
     "@digital-me/runtime-openclaw": "workspace:*",
-    "esbuild": "^0.28.0"
+    "esbuild": "^0.28.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
