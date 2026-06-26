@@ -148,7 +148,7 @@ monorepo checkout.
 
 1. Reserve/own the unscoped **`digital-me`** name on npm.
 2. Create an npm **automation token** (or granular token with Bypass-2FA) with
-   publish rights to `digital-me`, and add it as the repo secret **`NPM_TOKEN`**
+   publish rights to `digital-me`, and add it as the repo secret **`DM_NPM_TOKEN`**
    (Settings → Secrets → Actions).
 
 ### Cut a release (automated — preferred)
