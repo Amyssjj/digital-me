@@ -1,0 +1,33 @@
+name: Dependabot auto-merge
+
+# Auto-merges Dependabot patch/minor PRs once all required CI checks pass.
+# Major bumps are skipped on purpose and require manual review (they often need
+# migration work). Requires "Allow auto-merge" enabled in repo settings; with
+# branch protection's required status checks, GitHub holds the merge until CI is
+# green. Squash merge matches the repo's `title (#N)` history.
+
+on: pull_request
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    if: github.actor == 'dependabot[bot]'
+    steps:
+      - name: Fetch Dependabot metadata
+        id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Enable auto-merge for patch and minor updates
+        if: |
+          steps.meta.outputs.update-type == 'version-update:semver-patch' ||
+          steps.meta.outputs.update-type == 'version-update:semver-minor'
+        run: gh pr merge --auto --squash --delete-branch "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
