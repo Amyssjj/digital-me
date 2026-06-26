@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/Amyssjj/digital-me/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://github.com/Amyssjj/digital-me/tags"><img src="https://img.shields.io/badge/release-v0.1.0--pre-F46D01?style=for-the-badge" alt="Release"></a>
+  <a href="https://github.com/Amyssjj/digital-me/releases/tag/cli-v0.1.0"><img src="https://img.shields.io/badge/release-v0.1.0-F46D01?style=for-the-badge" alt="Release"></a>
   <a href="https://pypi.org/project/digital-me-dream-cycle/"><img src="https://img.shields.io/pypi/v/digital-me-dream-cycle?label=PyPI&logo=pypi&logoColor=white&color=3775A9&style=for-the-badge" alt="PyPI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
