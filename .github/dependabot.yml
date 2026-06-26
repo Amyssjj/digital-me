@@ -37,5 +37,17 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # One grouped PR for all action bumps instead of one PR per action.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
     commit-message:
       prefix: "ci(deps)"
+
+# Note on major version updates: they are intentionally left ungrouped so each
+# arrives as its own PR for deliberate review — majors often need migration work
+# (e.g. vitest 4, typescript 6). The dependabot-auto-merge workflow only
+# auto-merges patch/minor, so a major never lands unattended. Majors are NOT
+# ignored here on purpose: that would also suppress security fixes that are only
+# available in a new major (e.g. the vitest 2 → 3 CVE patch, GHSA-5xrq-8626-4rwp).
