@@ -6,7 +6,7 @@
 
 <p align="center">
   <a href="https://github.com/Amyssjj/digital-me/actions/workflows/ci.yml?branch=main"><img src="https://img.shields.io/github/actions/workflow/status/Amyssjj/digital-me/ci.yml?branch=main&style=for-the-badge" alt="CI status"></a>
-  <a href="https://www.npmjs.com/package/digital-me"><img src="https://img.shields.io/npm/v/digital-me?label=npm&logo=npm&logoColor=white&color=CB3837&style=for-the-badge" alt="npm version"></a>
+  <a href="https://www.npmjs.com/package/digital-me"><img src="https://img.shields.io/npm/v/digital-me?label=npm&logo=npm&logoColor=white&color=F97316&style=for-the-badge" alt="npm version"></a>
   <a href="https://pypi.org/project/digital-me-dream-cycle/"><img src="https://img.shields.io/pypi/v/digital-me-dream-cycle?label=PyPI&logo=pypi&logoColor=white&color=3775A9&style=for-the-badge" alt="PyPI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="MIT License"></a>
 </p>
@@ -22,8 +22,6 @@
 **Digital Me** carries your intelligence — knowledge, taste, decisions — to every agent you run. Use Claude Code for deep work, Codex across repos, Hermes or openclaw always-on: each one remembers what the others learned, applies your taste, and reports into the same goals. Switch agents without becoming the memory, translator, and context courier between them.
 
 New install? Start here: [Getting started](#install)
-
-Preferred setup: `npm install -g digital-me` then `digital-me setup`. It detects your installed CLIs, scaffolds your data directory, wires every runtime, and ends with a doctor pass. Works on macOS and Linux. (Building from source? See [Install from source](#install-from-source).)
 
 > **Status:** v0.1 — live and early. Published to npm as `digital-me` (with provenance) and to PyPI as `digital-me-dream-cycle`, with 1,500+ unit tests (core stores and handlers at 100% coverage). Pre-1.0, so APIs may still shift between minor versions.
 
