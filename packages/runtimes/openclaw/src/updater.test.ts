@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_PNPM_SPEC,
   OVERLAY_DIRNAMES,
+  pnpmSpecFromPackageManager,
+  resolvePnpmSpec,
   selectMatureStableTag,
   updateOpenclaw,
   type ExecFn,
@@ -60,6 +62,9 @@ interface ScriptConfig {
   tagObjectSha?: string;
   fromVersion: string;
   toVersion: string;
+  /** Optional package.json `packageManager` field returned by `git show`. */
+  fromPackageManager?: string;
+  targetPackageManager?: string;
   tagsOutput: string;
   porcelain?: string;
   tracked?: string;
@@ -105,8 +110,16 @@ function scriptedExec(cfg: ScriptConfig): ExecFn & { calls: { cmd: string; args:
       if (has("rev-list", "--count")) return ok("7");
       if (has("show")) {
         const spec = a.find((x) => x.endsWith(":package.json")) ?? "";
-        const version = spec.startsWith("HEAD") ? cfg.fromVersion : cfg.toVersion;
-        return ok(JSON.stringify({ version }));
+        const isHead = spec.startsWith("HEAD");
+        const version = isHead ? cfg.fromVersion : cfg.toVersion;
+        const packageManager = isHead
+          ? cfg.fromPackageManager
+          : cfg.targetPackageManager;
+        return ok(
+          JSON.stringify(
+            packageManager ? { version, packageManager } : { version },
+          ),
+        );
       }
       if (has("checkout", "-f")) {
         checkedOut = true;
@@ -261,6 +274,30 @@ describe("updateOpenclaw", () => {
     expect(idxBuild).toBeGreaterThan(idxInstall);
     // default pnpm spec is used
     expect(order.some((l) => l.includes(DEFAULT_PNPM_SPEC))).toBe(true);
+  });
+
+  it("runs install/build under the target tag's packageManager pin (not the default)", async () => {
+    const cfg = base();
+    cfg.hasOpenclaw = true;
+    // Upstream bumped its pin; the updater must match it, not DEFAULT_PNPM_SPEC.
+    cfg.targetPackageManager = "pnpm@11.2.2+sha512.deadbeef";
+    const exec = scriptedExec(cfg);
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec,
+      log: () => {},
+      rematerializeOverlay: writingRematerialize(extensionsDir),
+    });
+    expect(res.status).toBe("updated");
+    const order = exec.calls.map((c) => `${c.cmd} ${c.args.join(" ")}`);
+    // corepack invoked with the upstream-pinned version (hash stripped)…
+    expect(order.some((l) => l.includes("pnpm@11.2.2 install"))).toBe(true);
+    // …and never the stale default.
+    expect(order.some((l) => l.includes(DEFAULT_PNPM_SPEC))).toBe(false);
   });
 
   it("peels annotated tags to their commit (tag-object sha != commit sha)", async () => {
@@ -492,5 +529,43 @@ describe("updateOpenclaw", () => {
         c.cmd === "pnpm" && c.args.some((a) => /^pnpm@\d/.test(a)),
     );
     expect(leakedSpec).toBeUndefined();
+  });
+});
+
+describe("pnpmSpecFromPackageManager", () => {
+  it("extracts pnpm@x.y.z and drops the integrity hash", () => {
+    expect(pnpmSpecFromPackageManager("pnpm@11.2.2+sha512.abc123")).toBe(
+      "pnpm@11.2.2",
+    );
+  });
+
+  it("accepts a bare pnpm@x.y.z (no hash)", () => {
+    expect(pnpmSpecFromPackageManager("pnpm@10.33.2")).toBe("pnpm@10.33.2");
+  });
+
+  it("keeps a prerelease tag but drops the hash", () => {
+    expect(pnpmSpecFromPackageManager("pnpm@11.0.0-rc.1+sha512.x")).toBe(
+      "pnpm@11.0.0-rc.1",
+    );
+  });
+
+  it("returns undefined for missing or non-pnpm specs", () => {
+    expect(pnpmSpecFromPackageManager(undefined)).toBeUndefined();
+    expect(pnpmSpecFromPackageManager("")).toBeUndefined();
+    expect(pnpmSpecFromPackageManager("yarn@4.1.0")).toBeUndefined();
+  });
+});
+
+describe("resolvePnpmSpec", () => {
+  it("prefers the explicit override above all", () => {
+    expect(resolvePnpmSpec("pnpm@9.0.0", "pnpm@11.2.2")).toBe("pnpm@9.0.0");
+  });
+
+  it("falls back to the upstream pin when no override", () => {
+    expect(resolvePnpmSpec(undefined, "pnpm@11.2.2")).toBe("pnpm@11.2.2");
+  });
+
+  it("falls back to DEFAULT_PNPM_SPEC when neither is set", () => {
+    expect(resolvePnpmSpec(undefined, undefined)).toBe(DEFAULT_PNPM_SPEC);
   });
 });

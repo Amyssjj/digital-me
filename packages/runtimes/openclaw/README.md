@@ -56,9 +56,13 @@ Verify with `digital-me doctor` — it checks for
 
 ## Keeping openclaw up to date
 
-digital-me-os tracks openclaw with a **stock + overlay** model (no fork, no
-rebase): each update checks out a fresh mature stable upstream tag, builds stock
-openclaw, then re-materializes this additive overlay *after* the build.
+**Always update openclaw with `digital-me update --runtime openclaw` — not
+`openclaw update`.** On a git checkout, openclaw's own updater tracks the `main`
+branch, which silently moves you onto unreleased/dev commits. The digital-me
+updater instead checks out a fresh **mature stable tag** (a real release, ≥24h
+old, never `*-alpha/-beta/-rc`), builds stock openclaw, then re-materializes this
+additive overlay *after* the build — a **stock + overlay** model (no fork, no
+rebase).
 
 ```bash
 digital-me update --runtime openclaw [--dry-run] [--skip-restart] \
@@ -68,6 +72,27 @@ digital-me update --runtime openclaw [--dry-run] [--skip-restart] \
 - `--dry-run` prints the plan without writing.
 - `--skip-restart` leaves the gateway process untouched.
 - `--repo-dir` points at your openclaw checkout (default `~/openclaw`).
+- `--pnpm-spec` overrides the pnpm used for install/build.
+
+**pnpm is handled for you.** The updater runs install/build under the pnpm
+version openclaw itself pins for the target tag (its `package.json`
+`packageManager`), so a pnpm-major bump upstream (e.g. v10→v11) can't strand you
+on the wrong major. It also runs non-interactively with the node_modules purge
+pre-confirmed, so an upgrade never hangs on pnpm's `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY`
+prompt. If you ever update openclaw by hand, mirror this with
+`CI=1 pnpm install` (or `pnpm install --config.confirm-modules-purge=false`).
+
+### Compatibility contract
+
+Each overlay plugin declares the openclaw range it supports. The **floor** is
+enforced by openclaw: `package.json` `install.minHostVersion` makes the gateway
+refuse to load the plugin on an older host. The **ceiling** is a warn-only
+boot-time check — running on an openclaw newer than the verified range logs a
+warning but never blocks. Both, plus the documented `compat` block in each
+`openclaw.plugin.json`, read from one source of truth:
+[`src/compat.ts`](src/compat.ts). Re-verify against a new openclaw stable, then
+bump `MAX_TESTED_OPENCLAW_VERSION` (and `MIN_OPENCLAW_VERSION` when dropping old
+support) there.
 
 Update logic lives in [`src/updater.ts`](src/updater.ts); install/overlay logic
 in [`src/installer.ts`](src/installer.ts) and the CLI's `materializeOpenclawOverlay`.

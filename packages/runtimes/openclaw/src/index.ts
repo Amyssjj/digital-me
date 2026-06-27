@@ -86,6 +86,15 @@ export type {
 } from "./installer.js";
 
 export {
+  MAX_TESTED_OPENCLAW_VERSION,
+  MIN_OPENCLAW_VERSION,
+  OPENCLAW_MIN_HOST_VERSION,
+  resolveHostOpenclawVersion,
+  warnIfUntestedHost,
+} from "./compat.js";
+export type { CompatHostApi } from "./compat.js";
+
+export {
   applyRecallHygiene,
   buildMemorySearchTrace,
   buildRouteIndex,

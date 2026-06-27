@@ -261,6 +261,11 @@ describe("buildExtensionPackageJson", () => {
     expect(deps["@digital-me/runtime-openclaw"]).toBe("file:/abs/runtime");
     expect(deps["@digital-me/contracts"]).toBe("file:/abs/contracts");
     expect(deps.yaml).toMatch(/^\^?\d/);
+    // Enforced compatibility floor: openclaw refuses to load the plugin on a
+    // host older than this. Keep the ">=x.y.z" shape openclaw's loader expects.
+    expect((out.install as { minHostVersion: string }).minHostVersion).toMatch(
+      /^>=\d+\.\d+\.\d+$/,
+    );
   });
 
   it("emits recall-flavored package.json when pluginDirname is recall", () => {

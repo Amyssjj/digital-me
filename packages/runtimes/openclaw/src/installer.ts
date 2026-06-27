@@ -15,6 +15,8 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
+import { OPENCLAW_MIN_HOST_VERSION } from "./compat.js";
+
 const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
@@ -145,6 +147,10 @@ export function buildExtensionPackageJson(
     // to be discovered via the manifest's contracts.tools field, which
     // hides the bug for tool-providing plugins).
     openclaw: { extensions: ["./index.mjs"] },
+    // Enforced compatibility floor: openclaw refuses to load the plugin on a
+    // host older than this (src/plugins/min-host-version.ts). Source of truth
+    // is compat.ts so the manifest, package.json, and boot warn stay aligned.
+    install: { minHostVersion: OPENCLAW_MIN_HOST_VERSION },
     dependencies: {
       "@digital-me/brain-orchestrator": `file:${paths.brainOrchestrator}`,
       "@digital-me/runtime-openclaw": `file:${paths.runtimeOpenclaw}`,

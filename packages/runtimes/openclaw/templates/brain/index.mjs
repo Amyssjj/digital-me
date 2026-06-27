@@ -61,11 +61,12 @@ import {
   instantiateWorkflow as instantiateWorkflowHandler,
 } from "@digital-me/brain-orchestrator";
 
-// runtime-openclaw: Dispatcher + alias resolver + tool builder.
+// runtime-openclaw: Dispatcher + alias resolver + tool builder + compat check.
 import {
   buildOpenClawBrainTools,
   createOpenClawAliasResolver,
   createOpenClawDispatcher,
+  warnIfUntestedHost,
 } from "@digital-me/runtime-openclaw";
 
 // node:sqlite is experimental — load via createRequire to satisfy Vite/TS.
@@ -88,6 +89,11 @@ export default definePluginEntry({
       api.logger.info("digital-me-brain: skip register — subagent runtime not available (build-time scan)");
       return;
     }
+
+    // Compatibility: warn (never block) if the host openclaw is newer than the
+    // verified range. The hard floor is enforced by openclaw via package.json
+    // install.minHostVersion; this covers the too-new side.
+    warnIfUntestedHost(api, "digital-me-brain");
 
     // 1. Load config — env var or pluginConfig override.
     const wikiRoot =
