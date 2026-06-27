@@ -22,9 +22,10 @@ import { PLUGINS } from "./installer.js";
 export const DEFAULT_TAG_MATURITY_HOURS = 24;
 
 /**
- * pnpm version run via corepack for install/build. Pinned to 10.33.2 to dodge
- * pnpm v11's `minimumReleaseAge` metadata regression (ERR_PNPM_MISSING_TIME).
- * Overridable via `--pnpm-spec` / opts.pnpmSpec.
+ * Last-resort pnpm spec for install/build via corepack, used only when the
+ * target tag's package.json has no `packageManager` field AND no `--pnpm-spec`
+ * is given. Normally the updater matches upstream's own `packageManager` pin
+ * (see {@link resolvePnpmSpec}). 10.33.2 is a known-good conservative floor.
  */
 export const DEFAULT_PNPM_SPEC = "pnpm@10.33.2";
 
@@ -196,6 +197,48 @@ function packageVersionAt(
   }
 }
 
+/** Read the `packageManager` field of package.json at `ref` (e.g.
+ * "pnpm@11.2.2+sha512..."), or undefined if absent/unreadable. */
+function packageManagerAt(
+  exec: ExecFn,
+  repoDir: string,
+  ref: string,
+): string | undefined {
+  const show = exec("git", ["-C", repoDir, "show", `${ref}:package.json`]);
+  if (show.status !== 0) return undefined;
+  try {
+    return (JSON.parse(show.stdout) as { packageManager?: string })
+      .packageManager;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Extract a corepack-usable "pnpm@x.y.z" spec from a package.json
+ * `packageManager` field, dropping the `+sha512…` integrity hash (the
+ * version-only form is all corepack needs to select the right pnpm). Returns
+ * undefined when the field is missing or not a pnpm spec. */
+export function pnpmSpecFromPackageManager(
+  field: string | undefined,
+): string | undefined {
+  if (!field) return undefined;
+  const m = /^pnpm@(\d+\.\d+\.\d+(?:-[^+\s]+)?)/.exec(field.trim());
+  return m ? `pnpm@${m[1]}` : undefined;
+}
+
+/** Resolve which pnpm corepack runs for install/build. Priority: explicit
+ * `--pnpm-spec` override > the pnpm openclaw pins for the target tag
+ * (package.json `packageManager`) > {@link DEFAULT_PNPM_SPEC}. Matching
+ * upstream's own pin keeps install/build on the SAME pnpm as upstream CI, so a
+ * pnpm-major bump (e.g. v10→v11) can't force a full node_modules purge or make
+ * corepack refuse a version different from the `packageManager` pin. */
+export function resolvePnpmSpec(
+  override: string | undefined,
+  repoPinned: string | undefined,
+): string {
+  return override ?? repoPinned ?? DEFAULT_PNPM_SPEC;
+}
+
 export async function updateOpenclaw(
   opts: UpdateOpenclawOptions,
 ): Promise<UpdateResult> {
@@ -228,7 +271,6 @@ export async function updateOpenclaw(
     process.env.OPENCLAW_EXTENSIONS_DIR ??
     path.join(openclawHome, "extensions");
   const maturityHours = opts.tagMaturityHours ?? DEFAULT_TAG_MATURITY_HOURS;
-  const pnpmSpec = opts.pnpmSpec ?? DEFAULT_PNPM_SPEC;
 
   // ── 1. Preflight (read-only) ──────────────────────────────────────────
   if (!existsSync(repoDir)) {
@@ -328,6 +370,23 @@ export async function updateOpenclaw(
   result.toRef = mature ? mature.ref : targetRef;
   result.toVersion = toVersion;
 
+  // Run install/build under the pnpm openclaw pins for the TARGET tag, so we
+  // never fight a pnpm-major mismatch: if upstream bumped pnpm (e.g. v10→v11),
+  // a hardcoded spec would build node_modules under the wrong major and the
+  // next plain `pnpm install` would force a full purge (and corepack would
+  // refuse a version different from the packageManager pin). Explicit
+  // --pnpm-spec still wins; DEFAULT_PNPM_SPEC is the last resort.
+  const repoPinnedPnpm = pnpmSpecFromPackageManager(
+    packageManagerAt(exec, repoDir, toSha),
+  );
+  const pnpmSpec = resolvePnpmSpec(opts.pnpmSpec, repoPinnedPnpm);
+  const pnpmSource = opts.pnpmSpec
+    ? "--pnpm-spec"
+    : repoPinnedPnpm
+      ? "upstream packageManager pin"
+      : "default";
+  log(`[..] pnpm for install/build: ${pnpmSpec} (${pnpmSource})`);
+
   if (toSha === fromSha) {
     log(
       `[OK] already up to date at ${result.toRef} (${toVersion ?? fromVersion ?? "unknown"}).`,
@@ -378,6 +437,12 @@ export async function updateOpenclaw(
     NO_COLOR: "1",
     TERM: "dumb",
     npm_config_verify_deps_before_run: "false",
+    // Auto-confirm node_modules purge in this non-interactive run. pnpm wipes
+    // and rebuilds node_modules when the store layout changes (e.g. a pnpm
+    // major bump) and otherwise aborts without a TTY
+    // (ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY). CI=true already implies
+    // this; set it explicitly so the behavior survives if CI is ever dropped.
+    npm_config_confirm_modules_purge: "false",
   };
   const pnpmRun = (label: string, pnpmArgs: string[]): ExecResult => {
     const [cmd, args] = corepackOk
