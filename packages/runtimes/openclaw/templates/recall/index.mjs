@@ -46,6 +46,7 @@ import {
   matchRouteConditions,
   parseDigitalMeAck,
   parseRelatedField,
+  warnIfUntestedHost,
 } from "@digital-me/runtime-openclaw";
 
 const require = createRequire(import.meta.url);
@@ -515,6 +516,11 @@ export default definePluginEntry({
       api.logger.info("digital-me-recall: skip register — runtime not available (build-time scan)");
       return;
     }
+
+    // Compatibility: warn (never block) if the host openclaw is newer than the
+    // verified range. The hard floor is enforced by openclaw via package.json
+    // install.minHostVersion; this covers the too-new side.
+    warnIfUntestedHost(api, "digital-me-recall");
 
     const wikiRoot = api.pluginConfig?.wikiRoot || DEFAULTS.wikiRoot;
     const indexPath = api.pluginConfig?.indexPath || DEFAULTS.indexPath;

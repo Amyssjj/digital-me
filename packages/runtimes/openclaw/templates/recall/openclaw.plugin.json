@@ -1,5 +1,10 @@
 {
   "id": "digital-me-recall",
+  "compat": {
+    "openclaw": ">=2026.5.12",
+    "testedThrough": "2026.6.10",
+    "note": "Verified openclaw range. The floor is enforced via package.json install.minHostVersion (openclaw refuses older hosts); a newer host only triggers a boot-time warning. Source of truth: @digital-me/runtime-openclaw compat.ts."
+  },
   "contracts": {
     "tools": ["recall_status"]
   },
