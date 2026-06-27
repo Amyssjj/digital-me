@@ -29,7 +29,6 @@
 
 import {
   chmodSync,
-  copyFileSync,
   existsSync,
   mkdirSync,
   readFileSync,
