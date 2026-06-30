@@ -133,6 +133,12 @@ def _register_sibling_schedule(
             schedule_vars[k] = v
 
     enabled = bool(sched.get("enabled", True))
+    # IANA timezone (e.g. "America/Los_Angeles"). If the sibling declares one we
+    # MUST forward it — the brain defaults to UTC otherwise, so a `0 7 * * *`
+    # local-morning cron would silently re-register at 7am UTC on every
+    # re-install. None → brain keeps its UTC default (unchanged behavior).
+    tz_raw = sched.get("timezone")
+    timezone = tz_raw if isinstance(tz_raw, str) and tz_raw.strip() else None
 
     # Idempotent install: drop any prior schedule with this id, then
     # re-create. Swallow not-found on first install.
@@ -147,10 +153,12 @@ def _register_sibling_schedule(
             cron_expr=cron_expr,
             variables=schedule_vars,
             enabled=enabled,
+            timezone=timezone,
         )
     except BrainClientError as e:
         return f"schedule_add failed: {e}"
-    return f"+ schedule '{schedule_id}' cron='{cron_expr}'"
+    tz_note = f" tz='{timezone}'" if timezone else ""
+    return f"+ schedule '{schedule_id}' cron='{cron_expr}'{tz_note}"
 
 
 def install_workflows(

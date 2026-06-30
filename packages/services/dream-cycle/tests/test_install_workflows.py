@@ -12,9 +12,54 @@ from dream_cycle.brain_client import BrainClientError
 from dream_cycle.install_workflows import (
     _apply_template_defaults,
     _build_install_vars,
+    _register_sibling_schedule,
     discover_bundled_workflows,
     install_workflows,
 )
+
+
+# ── _register_sibling_schedule: timezone forwarding ──────────────────────────
+
+
+def _write_sibling(tmp_path: Path, wf_name: str, sched: dict) -> Path:
+    wf = tmp_path / wf_name
+    wf.write_text(json.dumps({"id": sched.get("scheduleId", "wf")}), encoding="utf-8")
+    wf.with_suffix(".schedule.json").write_text(json.dumps(sched), encoding="utf-8")
+    return wf
+
+
+def test_sibling_schedule_forwards_declared_timezone(tmp_path: Path) -> None:
+    """A schedule.json declaring `timezone` must forward it to schedule_add —
+    otherwise the brain defaults to UTC and a local-morning cron drifts hours."""
+    wf = _write_sibling(
+        tmp_path,
+        "digest.json",
+        {
+            "scheduleId": "daily-activity-digest",
+            "cronExpr": "0 7 * * *",
+            "timezone": "America/Los_Angeles",
+            "enabled": True,
+        },
+    )
+    client = MagicMock()
+    status = _register_sibling_schedule(wf, "daily-activity-digest", {}, client)
+    kwargs = client.schedule_add.call_args.kwargs
+    assert kwargs["timezone"] == "America/Los_Angeles"
+    assert kwargs["cron_expr"] == "0 7 * * *"
+    assert "tz='America/Los_Angeles'" in (status or "")
+
+
+def test_sibling_schedule_without_timezone_passes_none(tmp_path: Path) -> None:
+    """No `timezone` key → None forwarded (brain keeps its UTC default; the
+    dream-cycle nightly schedule relies on this unchanged behavior)."""
+    wf = _write_sibling(
+        tmp_path,
+        "nightly.json",
+        {"scheduleId": "dream-cycle-nightly", "cronExpr": "0 3 * * *", "enabled": True},
+    )
+    client = MagicMock()
+    _register_sibling_schedule(wf, "dream-cycle-nightly", {}, client)
+    assert client.schedule_add.call_args.kwargs["timezone"] is None
 
 
 # ── _apply_template_defaults ─────────────────────────────────────────────
