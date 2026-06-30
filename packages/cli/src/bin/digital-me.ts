@@ -759,6 +759,20 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
 }
 
 /**
+ * Run the digest's hermetic smoke gate via the given venv python. Verifies the
+ * publisher contract still holds (schema present, validator agrees, fail-open
+ * floor postable, `content`-keyed blocks accepted) — the invariants whose
+ * silent violation caused the recurring 7am outages. Best-effort + non-fatal:
+ * returns the exit code and prints the smoke's own diagnostics; callers decide
+ * how loudly to react. Skips (returns 0) when the digest isn't installed.
+ */
+function runDigestSmoke(venvPython: string): number {
+  if (!existsSync(venvPython)) return 0; // digest not installed — nothing to check
+  const r = spawnSync(venvPython, ["-m", "digest.smoke"], { stdio: "inherit" });
+  return r.status ?? 1;
+}
+
+/**
  * Install the daily-digest Python sibling package.
  *
  * The digest SHARES the dream-cycle venv (~/.venvs/dream-cycle): it reuses
@@ -850,6 +864,10 @@ function installDigest(home: string, wikiRoot?: string): number {
         `Re-run later with: ${venvPython} -m digest.install_workflows`,
     );
   }
+
+  // Self-verify the publisher contract is intact (hermetic — no brain/LLM/post).
+  // A failure here means the digest can't reliably publish; surface it loudly.
+  runDigestSmoke(venvPython);
 
   console.log(
     `\n[OK] installed digest:\n` +
@@ -1464,6 +1482,30 @@ async function update(
 
   if (result.status === "failed" && result.blockers.length > 0) {
     console.error(`update failed:\n  - ${result.blockers.join("\n  - ")}`);
+  }
+
+  // Post-update smoke gate. An openclaw update re-materializes the worker/
+  // overlay layer, which historically desynced the digest's summarizer→
+  // publisher contract and silently broke the 7am cron. Catch a regression
+  // HERE, at update time, instead of at 7am. Best-effort + non-fatal: the
+  // digest may not be installed, and a digest issue must never fail an openclaw
+  // update — but it must be LOUD when it happens.
+  if (result.status !== "failed" && !opts.dryRun) {
+    const digestVenvPython = path.join(
+      home,
+      ".venvs",
+      DREAM_CYCLE_VENV_DIRNAME,
+      "bin",
+      "python3",
+    );
+    if (runDigestSmoke(digestVenvPython) !== 0) {
+      console.error(
+        "\n[WARN] post-update digest smoke FAILED — the daily digest may not " +
+          "publish (see [digest-smoke] lines above). The openclaw update itself " +
+          "succeeded. Repair with `digital-me install --runtime digest`, then " +
+          "confirm with `python -m digest.smoke`.",
+      );
+    }
   }
   return result.exitCode;
 }
