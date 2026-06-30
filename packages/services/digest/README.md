@@ -70,6 +70,20 @@ digest:
 Whether a given platform actually delivers depends on openclaw supporting that
 transport — the digest just hands it the platform + target.
 
+## Smoke gate
+
+`python -m digest.smoke` is a hermetic check (no brain, LLM, or chat transport)
+that asserts the digest can still publish: the schema ships, the validator
+agrees with it, the fail-open floor renders visible text, and the publisher
+still accepts `content`-keyed summarizer blocks (the exact shape that caused the
+2026-06-28 outage). Exit 0 = postable.
+
+It runs automatically at the end of `digital-me install --runtime digest`, and —
+crucially — after `digital-me update --runtime openclaw`, since an openclaw
+update re-materializes the worker layer that historically desynced the
+contract. A regression is caught at update time and flagged loudly, instead of
+surfacing as a silent 7am no-post.
+
 ## Install
 
 ```bash
