@@ -234,14 +234,19 @@ class BrainClient:
         cron_expr: str,
         variables: Optional[dict[str, str]] = None,
         enabled: bool = True,
+        timezone: Optional[str] = None,
     ) -> dict[str, Any]:
         """Register a cron-style schedule that ticks the named workflow
         template. Used by install_workflows so a fresh `digital-me install`
         lands a ticking schedule alongside the bundled workflow — no
         manual `tasks.schedule_add` step required.
 
-        Re-install path is idempotent: callers should `schedule_remove`
-        first when overwriting, since the brain rejects duplicate ids."""
+        `timezone` is an IANA name (e.g. "America/Los_Angeles"). When omitted
+        the brain defaults the schedule to UTC — so a workflow that wants a
+        local-time cron MUST pass it, or `0 7 * * *` silently fires at 7am UTC
+        instead of 7am local. Re-install path is idempotent: callers should
+        `schedule_remove` first when overwriting, since the brain rejects
+        duplicate ids."""
         args: dict[str, Any] = {
             "action": "schedule_add",
             "scheduleId": schedule_id,
@@ -251,6 +256,8 @@ class BrainClient:
         }
         if variables:
             args["variables"] = variables
+        if timezone:
+            args["timezone"] = timezone
         return self._invoke("tasks", args)
 
     def schedule_remove(self, schedule_id: str) -> dict[str, Any]:
