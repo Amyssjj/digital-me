@@ -124,6 +124,7 @@ const VALID_RUNTIMES: readonly RuntimeId[] = [
   "openclaw",
   "dream-cycle",
   "dashboard",
+  "digest",
 ];
 
 // Canonical venv location for the dream-cycle Python package. Picked to
@@ -758,6 +759,116 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
 }
 
 /**
+ * Install the daily-digest Python sibling package.
+ *
+ * The digest SHARES the dream-cycle venv (~/.venvs/dream-cycle): it reuses
+ * dream-cycle's brain client to register its workflow, and its optional
+ * inline-summary fallback imports dream_cycle. So this ensures that venv +
+ * dream_cycle exist (installing dream-cycle first if needed), then pip-installs
+ * the digest package into it and registers the bundled digest workflow +
+ * 7am schedule with the brain — making `digital-me install --runtime digest`
+ * a one-stop setup with no manual workflow_import.
+ */
+function installDigest(home: string, wikiRoot?: string): number {
+  const venvDir = path.join(home, ".venvs", DREAM_CYCLE_VENV_DIRNAME);
+  const venvPython = path.join(venvDir, "bin", "python3");
+
+  // Shared-venv prerequisite: the digest reuses dream-cycle's brain client and
+  // (optionally) its inline engine. If the venv isn't there yet, stand up
+  // dream-cycle first — idempotent, so this is safe when both are requested.
+  if (!existsSync(venvPython)) {
+    console.log(
+      "install digest: dream-cycle venv not found — installing dream-cycle " +
+        "first (the digest shares its venv).",
+    );
+    const dcRc = installDreamCycle(home, wikiRoot);
+    if (dcRc !== 0) {
+      console.error(
+        "install digest: prerequisite dream-cycle install failed; aborting.",
+      );
+      return dcRc;
+    }
+  }
+
+  // Source checkout → editable install; npm-installed CLI → PyPI package.
+  const repoRoot = resolveRepoRoot();
+  let pipTarget: readonly string[];
+  if (repoRoot) {
+    const packagePath = path.join(repoRoot, "packages", "services", "digest");
+    if (!existsSync(path.join(packagePath, "pyproject.toml"))) {
+      console.error(
+        `install digest: package not found at ${packagePath}. Expected pyproject.toml.`,
+      );
+      return 2;
+    }
+    pipTarget = ["-e", `${packagePath}[dev]`];
+  } else {
+    console.log(
+      "install digest: no source checkout detected — installing the " +
+        "published digital-me-digest package from PyPI.",
+    );
+    pipTarget = ["digital-me-digest"];
+  }
+
+  const venvPip = path.join(venvDir, "bin", "pip");
+  console.log(`install digest: pip install ${pipTarget.join(" ")} ...`);
+  const pipResult = spawnSync(venvPip, ["install", ...pipTarget], {
+    stdio: "inherit",
+  });
+  if (pipResult.error || pipResult.status !== 0) {
+    console.error(
+      `install digest: pip install failed (exit ${pipResult.status ?? "?"}).`,
+    );
+    return pipResult.status ?? 1;
+  }
+
+  // Smoke-check the console script registered correctly.
+  const consoleScript = path.join(venvDir, "bin", "digital-me-digest");
+  const smokeResult = spawnSync(consoleScript, ["--help"], { encoding: "utf-8" });
+  if (smokeResult.status !== 0) {
+    console.error(
+      `install digest: console script smoke-test failed ` +
+        `(exit ${smokeResult.status ?? "?"}). Install may be incomplete.`,
+    );
+    return smokeResult.status ?? 1;
+  }
+
+  // Register the bundled digest workflow + 7am schedule with the brain.
+  const installWorkflowsArgs = ["-m", "digest.install_workflows"];
+  if (wikiRoot) {
+    installWorkflowsArgs.push("--wiki-root", wikiRoot);
+  }
+  console.log(`install digest: importing bundled workflow into the brain ...`);
+  const wfResult = spawnSync(venvPython, installWorkflowsArgs, {
+    stdio: "inherit",
+  });
+  if (wfResult.status !== 0) {
+    console.error(
+      `install digest: workflow import returned exit ${wfResult.status ?? "?"}. ` +
+        `The venv is ready, but the workflow isn't imported. ` +
+        `Common causes: openclaw gateway not running, or auth token missing. ` +
+        `Re-run later with: ${venvPython} -m digest.install_workflows`,
+    );
+  }
+
+  console.log(
+    `\n[OK] installed digest:\n` +
+      `       python:    ${venvPython}\n` +
+      `       script:    ${consoleScript}\n` +
+      `       wiki root: ${wikiRoot ?? "(default; pass --wiki-root to override)"}\n` +
+      `\n` +
+      `Before the first real post, set your chat channel (no default ships):\n` +
+      `  • config.yaml →  digest:\n` +
+      `                     discord_channel: <channel:ID or target>\n` +
+      `                     channel_platform: discord   # or 'slack', etc.\n` +
+      `    or env:  DIGITAL_ME_DIGEST_CHANNEL=... DIGITAL_ME_DIGEST_PLATFORM=slack\n` +
+      `  • The digest is delivered at 07:00 daily (schedule 'daily-activity-digest').\n` +
+      `  • Verify end-to-end with: digital-me doctor`,
+  );
+  return 0;
+}
+
+/**
  * Install the Dashboard service — Vite+React frontend + Express server.
  *
  * Lays the package out at $HOME/.local/share/digital-me/dashboard/, runs
@@ -1268,6 +1379,9 @@ async function install(
     } else if (r === "dream-cycle") {
       const rc = installDreamCycle(home, wikiRoot);
       if (rc !== 0) exit = rc;
+    } else if (r === "digest") {
+      const rc = installDigest(home, wikiRoot);
+      if (rc !== 0) exit = rc;
     } else if (r === "dashboard") {
       const rc = installDashboard(home, wikiRoot);
       if (rc !== 0) exit = rc;
@@ -1469,9 +1583,10 @@ async function setup(
   // (WARN, don't abort) so a failure never blocks the rest of setup.
   if (minimal) {
     console.log(
-      "[SKIP] --minimal: skipping the dream-cycle Python venv + dashboard build.\n" +
+      "[SKIP] --minimal: skipping the dream-cycle Python venv + dashboard build + digest.\n" +
         "       Add them later with:  digital-me install --runtime dream-cycle" +
-        "  and  digital-me install --runtime dashboard",
+        "  and  digital-me install --runtime dashboard" +
+        "  and  digital-me install --runtime digest",
     );
     console.log("");
   } else {
@@ -1489,6 +1604,16 @@ async function setup(
       console.log(
         `[WARN] dashboard install returned exit ${dashRc}. setup will continue ` +
           `but the dashboard won't boot until this is fixed. ` +
+          `(Re-run setup with --minimal to skip it.)`,
+      );
+    }
+
+    // digest shares the dream-cycle venv, so it must install AFTER dream-cycle.
+    const digestRc = installDigest(home, wikiRoot);
+    if (digestRc !== 0) {
+      console.log(
+        `[WARN] digest install returned exit ${digestRc}. setup will continue ` +
+          `but the daily digest won't post until this is fixed. ` +
           `(Re-run setup with --minimal to skip it.)`,
       );
     }

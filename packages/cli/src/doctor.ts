@@ -59,7 +59,8 @@ export type RuntimeId =
   | "hermes"
   | "openclaw"
   | "dream-cycle"
-  | "dashboard";
+  | "dashboard"
+  | "digest";
 
 /** What each runtime expects to find on disk. */
 export const RUNTIME_EXPECTATIONS: Readonly<
@@ -117,6 +118,12 @@ export const RUNTIME_EXPECTATIONS: Readonly<
     "$HOME/digital-me/.data/dashboard.json",
     "$HOME/digital-me/.data/dashboard.db",
   ],
+  // digest is a Python sibling package that SHARES the dream-cycle venv (it
+  // reuses dream-cycle's brain client for workflow registration, and its
+  // optional inline-summary fallback imports dream_cycle). After
+  // `digital-me install --runtime digest`, the console script in that shared
+  // venv marks it as set up.
+  digest: ["$HOME/.venvs/dream-cycle/bin/digital-me-digest"],
 };
 
 export function runDoctor(

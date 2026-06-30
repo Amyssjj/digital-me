@@ -84,7 +84,25 @@ def resolve_discord_channel(channel: Optional[str] = None) -> Optional[str]:
     env = os.environ.get("DIGITAL_ME_DIGEST_CHANNEL")
     if env:
         return env
-    return _channel_from_config()
+    return _config_get("discord_channel")
+
+
+def resolve_channel_platform(platform: Optional[str] = None) -> str:
+    """arg → $DIGITAL_ME_DIGEST_PLATFORM → config.yaml `digest.channel_platform`
+    → "discord".
+
+    This is the chat platform the digest delegates delivery to (the `--channel`
+    value passed to `openclaw message send`). The digest itself is platform-
+    agnostic: a Slack user sets this to "slack" (plus a slack channel target) and
+    nothing in the digest code changes — delivery rides openclaw's transport,
+    which is the layer that actually speaks Discord/Slack/etc.
+    """
+    if platform:
+        return platform
+    env = os.environ.get("DIGITAL_ME_DIGEST_PLATFORM")
+    if env:
+        return env
+    return _config_get("channel_platform") or "discord"
 
 
 def resolve_memory_dir(memory_dir: Optional[Path] = None) -> Optional[Path]:
@@ -102,9 +120,9 @@ def resolve_memory_dir(memory_dir: Optional[Path] = None) -> Optional[Path]:
     return env.resolve() if env is not None else None
 
 
-def _channel_from_config() -> Optional[str]:
-    """Read `digest.discord_channel` from config.yaml if present. Best-effort:
-    never raises, returns None on any problem (missing file, no pyyaml, etc.)."""
+def _config_get(key: str) -> Optional[str]:
+    """Read `digest.<key>` from config.yaml if present. Best-effort: never
+    raises, returns None on any problem (missing file, no pyyaml, etc.)."""
     cfg_env = _env_path("DIGITAL_ME_CONFIG_PATH")
     cfg_path = cfg_env if cfg_env is not None else resolve_wiki_root() / "config.yaml"
     if not cfg_path.exists():
@@ -113,8 +131,8 @@ def _channel_from_config() -> Optional[str]:
         import yaml  # local import: only needed when a config file exists
         raw = yaml.safe_load(cfg_path.read_text()) or {}
         digest = raw.get("digest") or {}
-        chan = digest.get("discord_channel")
-        return str(chan) if chan else None
+        val = digest.get(key)
+        return str(val) if val else None
     except Exception:
         return None
 
@@ -126,6 +144,7 @@ class DigestPaths:
     wiki_root: Path
     brain_db: Path
     discord_channel: Optional[str]
+    channel_platform: str
     openclaw_cli: Optional[str]
     memory_dir: Optional[Path]
 
@@ -156,6 +175,7 @@ def load_paths(
     wiki_root: Optional[Path] = None,
     brain_db: Optional[Path] = None,
     discord_channel: Optional[str] = None,
+    channel_platform: Optional[str] = None,
     openclaw_cli: Optional[str] = None,
     memory_dir: Optional[Path] = None,
 ) -> DigestPaths:
@@ -164,6 +184,7 @@ def load_paths(
         wiki_root=resolve_wiki_root(wiki_root),
         brain_db=resolve_brain_db(brain_db),
         discord_channel=resolve_discord_channel(discord_channel),
+        channel_platform=resolve_channel_platform(channel_platform),
         openclaw_cli=resolve_openclaw_cli(openclaw_cli),
         memory_dir=resolve_memory_dir(memory_dir),
     )

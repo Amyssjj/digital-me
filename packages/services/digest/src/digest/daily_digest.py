@@ -86,6 +86,10 @@ _DEFAULT_GLOBS: dict[str, str] = {
 # Optional[str]: supplied per-install via $DIGITAL_ME_DIGEST_CHANNEL or
 # config.yaml `digest.discord_channel`. Required only for a real --publish.
 DISCORD_CHANNEL = _PATHS.discord_channel
+# Chat platform delivery rides openclaw's transport (the `--channel` value).
+# Defaults to "discord"; a Slack user sets digest.channel_platform=slack (+ a
+# slack target) and no digest code changes — see config.resolve_channel_platform.
+CHANNEL_PLATFORM = _PATHS.channel_platform
 # Optional[str]: resolved from $OPENCLAW_CLI / PATH / ~/.local/bin; None if absent.
 OPENCLAW_CLI = _PATHS.openclaw_cli
 TZ = ZoneInfo("America/Los_Angeles")
@@ -1077,7 +1081,7 @@ def post_discord(presentation: dict, fallback_text: str, *, dry_run: bool) -> No
     for index, batch in enumerate(batches, start=1):
         cmd = [
             OPENCLAW_CLI, "message", "send",
-            "--channel", "discord",
+            "--channel", CHANNEL_PLATFORM,
             "--target", DISCORD_CHANNEL,
             "--presentation", json.dumps(batch),
             "--message", fallback_message,
@@ -1092,7 +1096,7 @@ def post_discord(presentation: dict, fallback_text: str, *, dry_run: bool) -> No
                 f"stdout: {result.stdout.strip()}"
             )
     print(
-        f"[daily-digest] Posted to Discord "
+        f"[daily-digest] Posted to {CHANNEL_PLATFORM} "
         f"({len(presentation.get('blocks', []))} blocks in {len(batches)} messages)"
     )
 

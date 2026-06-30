@@ -94,6 +94,29 @@ def test_openclaw_cli_env_override(monkeypatch):
     assert config.resolve_openclaw_cli() == "/custom/openclaw"
 
 
+def test_channel_platform_defaults_discord(monkeypatch, tmp_path):
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_PLATFORM", raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(tmp_path))  # no config.yaml
+    monkeypatch.delenv("DIGITAL_ME_CONFIG_PATH", raising=False)
+    assert config.resolve_channel_platform() == "discord"
+
+
+def test_channel_platform_env_override(monkeypatch):
+    monkeypatch.setenv("DIGITAL_ME_DIGEST_PLATFORM", "slack")
+    assert config.resolve_channel_platform() == "slack"
+
+
+def test_channel_platform_from_config(monkeypatch, tmp_path):
+    pytest.importorskip("yaml")
+    (tmp_path / "config.yaml").write_text(
+        "digest:\n  channel_platform: slack\n", encoding="utf-8"
+    )
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_PLATFORM", raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(tmp_path))
+    monkeypatch.delenv("DIGITAL_ME_CONFIG_PATH", raising=False)
+    assert config.resolve_channel_platform() == "slack"
+
+
 def test_memory_dir_defaults_none(monkeypatch):
     monkeypatch.delenv("DIGITAL_ME_DIGEST_MEMORY_DIR", raising=False)
     assert config.resolve_memory_dir() is None

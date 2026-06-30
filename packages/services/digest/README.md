@@ -45,13 +45,44 @@ This package pins that seam:
 All machine-specific values resolve via `arg → env → default` (see
 [`config.py`](src/digest/config.py)). Set per install:
 
-| Value | Env var | Default |
-|---|---|---|
-| Wiki root | `DIGITAL_ME_WIKI_ROOT` | `~/digital-me` |
-| Brain DB | `DIGITAL_ME_BRAIN_DB` | `~/.openclaw/data/brain.db` |
-| Discord channel | `DIGITAL_ME_DIGEST_CHANNEL` or `config.yaml` `digest.discord_channel` | **none** (required for a real publish) |
-| openclaw CLI | `OPENCLAW_CLI` | `openclaw` on `PATH` |
-| Secondary memory log | `DIGITAL_ME_DIGEST_MEMORY_DIR` | none (skipped) |
+| Value | Env var | `config.yaml` key | Default |
+|---|---|---|---|
+| Wiki root | `DIGITAL_ME_WIKI_ROOT` | — | `~/digital-me` |
+| Brain DB | `DIGITAL_ME_BRAIN_DB` | — | `~/.openclaw/data/brain.db` |
+| Channel target | `DIGITAL_ME_DIGEST_CHANNEL` | `digest.discord_channel` | **none** (required for a real publish) |
+| Channel platform | `DIGITAL_ME_DIGEST_PLATFORM` | `digest.channel_platform` | `discord` |
+| openclaw CLI | `OPENCLAW_CLI` | — | `openclaw` on `PATH` |
+| Secondary memory log | `DIGITAL_ME_DIGEST_MEMORY_DIR` | — | none (skipped) |
+
+### Discord, Slack, or anything else
+
+The digest is **platform-agnostic**: it never speaks a chat protocol directly —
+it delegates delivery to `openclaw message send --channel <platform> --target
+<channel>`. To switch from Discord to Slack you change **config, not code**:
+
+```yaml
+# config.yaml
+digest:
+  channel_platform: slack          # the --channel value openclaw routes on
+  discord_channel: "<slack target>"  # your Slack channel/target id
+```
+
+Whether a given platform actually delivers depends on openclaw supporting that
+transport — the digest just hands it the platform + target.
+
+## Install
+
+```bash
+digital-me install --runtime digest    # just the digest
+digital-me setup                        # everything, digest included
+```
+
+The digest is a Python sibling package that **shares the dream-cycle venv**
+(`~/.venvs/dream-cycle`) — it reuses dream-cycle's brain client to register its
+workflow, and its optional inline-summary fallback imports `dream_cycle`. The
+installer ensures that venv exists (installing dream-cycle first if needed),
+pip-installs the digest into it, and registers the `daily-activity-digest`
+workflow + a 7:00am schedule with the brain — no manual `workflow_import`.
 
 ## Usage
 
