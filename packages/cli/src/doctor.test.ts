@@ -19,15 +19,20 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 }
 
 describe("RUNTIME_EXPECTATIONS", () => {
-  it("ships paths for all 6 runtimes", () => {
+  it("ships paths for all 7 runtimes", () => {
     expect(Object.keys(RUNTIME_EXPECTATIONS).sort()).toEqual([
       "claude-code",
       "codex",
       "dashboard",
+      "digest",
       "dream-cycle",
       "hermes",
       "openclaw",
     ]);
+    // digest shares the dream-cycle venv — its marker is the console script there.
+    expect(RUNTIME_EXPECTATIONS["digest"]).toContain(
+      "$HOME/.venvs/dream-cycle/bin/digital-me-digest",
+    );
     expect(RUNTIME_EXPECTATIONS["claude-code"]).toContain(
       "$HOME/.claude/hooks/dm_memory_search_inject.sh",
     );

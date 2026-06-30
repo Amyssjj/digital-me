@@ -1,0 +1,92 @@
+{
+  "id": "daily-activity-digest",
+  "name": "Daily Activity Digest",
+  "description": "Single morning digest in 3 steps. Step 1 (stage, exec): gather the day's cross-agent activity with NO inline LLM and write a staging file. Step 2 (summarize, agent spawn): read the staging file and build a presentation + markdown that conforms to presentation.schema.json, returned via tasks.handoff (NOT by writing the staging file — that needs an interpreter and trips OpenClaw's exec-approval gate). Step 3 (publish, exec): read the handoff from brain.db, VALIDATE it against the contract, and post to Discord — failing OPEN to a deterministic regex render if the handoff is missing or violates the contract. Parameterized by {{wiki_root}} + {{python_path}} so a fresh install lands the same workflow against any user's wiki + venv. The summarize<->publish seam is pinned by an explicit versioned schema so a producer drift (e.g. block key `content` vs `text`) is caught loudly instead of silently dropping the digest.",
+  "version": 1,
+  "display": {
+    "mechanism_view": true
+  },
+  "variables": [
+    {
+      "name": "wiki_root",
+      "description": "Absolute path to the digital-me wiki root. The installer supplies this from --wiki-root or $DIGITAL_ME_WIKI_ROOT.",
+      "required": true
+    },
+    {
+      "name": "python_path",
+      "description": "Absolute path to a python3 interpreter that has the digest package installed. The installer auto-supplies the venv interpreter.",
+      "required": true
+    },
+    {
+      "name": "staging_path",
+      "description": "Absolute path to the staging file the stage step writes and the summarize + publish steps read. Default lives in /tmp so it doesn't pollute the wiki tree.",
+      "required": false,
+      "defaultValue": "/tmp/daily-digest-staging.json"
+    },
+    {
+      "name": "summarize_agent_id",
+      "description": "agentId for the summarize step. Should be an agent that can read a file and call tasks.handoff. Defaults to claude-code-cli (the local-CLI exec worker).",
+      "required": false,
+      "defaultValue": "claude-code-cli"
+    }
+  ],
+  "steps": [
+    {
+      "stepKey": "stage",
+      "name": "Gather raw data and stage for the summarizer",
+      "promptTemplate": "Run digest.daily_digest --stage with the staging path from this dispatch's command. Gathers the day's cross-agent activity (counts, wiki entries, taste entries, raw prompts) with NO inline LLM and writes the staging JSON.",
+      "blockedByKeys": [],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}",
+          "-m",
+          "digest.daily_digest",
+          "--stage",
+          "{{staging_path}}"
+        ],
+        "cwd": "{{wiki_root}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "wait",
+      "timeoutMs": 300000,
+      "sortOrder": 0
+    },
+    {
+      "stepKey": "summarize",
+      "name": "Summarizer builds the presentation from staged data",
+      "promptTemplate": "You are building the daily activity digest from raw data staged at `{{staging_path}}`.\n\n## TOOL POLICY (critical — read first)\n- READ the staging file at `{{staging_path}}` with your Read/file tool, then parse the JSON yourself.\n- Do NOT use Bash/cat or any interpreter (node -e / python3 -c / jq / awk) — they are approval-gated and will hang unattended. Do NOT write or edit any file. You return your result ONLY via `tasks.handoff` (see Output).\n\nStaging file shape:\n```\n{\n  \"date\": \"YYYY-MM-DD\",\n  \"tldr\": {active_agents, wiki_new, wiki_updated, taste_total, skill_new, skill_merged, skill_evidence, skill_promoted, skill_neither},\n  \"wiki_entries\": [{title, domains, status: \"created\"|\"updated\"|\"touched\"}, ...],\n  \"taste_entries\": [{title, domains, status, fingerprint}, ...],\n  \"agent_raw_prompts\": { \"<agent label>\": [str, ...] }\n}\n```\n\n## Your job\nRead and understand the day's activity, then build a `presentation` with these blocks IN ORDER:\n1. TL;DR text block: a code-fenced aligned table `Agents  Wiki+  Wiki~  Taste` with the counts from `tldr`. If taste_total>0, add a one-line breakdown.\n2. `{\"type\":\"divider\"}`\n3. Wiki: a `header` block `Wiki`, then a `text` block listing each wiki entry as `N. [created | updated | touched] **title** — _domains_`.\n4. `{\"type\":\"divider\"}`\n5. Taste: a `header` block `Taste`, then a `text` block listing each taste entry the same way (fingerprint as an italic second line).\n6. `{\"type\":\"divider\"}`\n7. Executive Summary: a `header` block `Executive Summary`, then ONE `text` block — a concise 3–6 sentence narrative of what got accomplished across ALL agents. Synthesize; lead with the single most important thing. Plain editorial prose, no per-agent bullets, strip code paths/IDs. If quiet, say so in one sentence.\n\n## OUTPUT CONTRACT (presentation.schema.json — conform EXACTLY)\nThe publisher VALIDATES your output against this schema and will reject a violation (then fall back to a plain render). Match it exactly:\n```json\n{\n  \"title\": \"Daily Digest — <date>\",          // non-empty string; a leading emoji is fine\n  \"tone\": \"success | info | warning | danger\", // success if any wiki/taste growth; info if quiet; warning if breakage\n  \"blocks\": [\n    {\"type\": \"text\", \"text\": \"<string>\"},      // text blocks: key MUST be \"text\" (NOT \"content\"), non-empty\n    {\"type\": \"header\", \"text\": \"<string>\"},    // header blocks: key MUST be \"text\", non-empty\n    {\"type\": \"divider\"}                          // dividers carry no text\n  ]\n}\n```\nCRITICAL: every text/header block's visible string goes under the key `text` (a plain string), never `content`. `type` is one of text|header|divider only.\n\nAlso write a parallel plain-markdown version of the same content.\n\n## How you return data (the ONLY way)\nCall `tasks.handoff` with:\n- `deliverableState`: \"complete\"\n- `summary`: a single fenced ```json block whose object is EXACTLY {\"presentation\": {title, tone, blocks:[...]}, \"markdown\": \"<full markdown>\"}. Nothing else is parsed.\n- `recommendedNextStep`: \"publish digest\"\nThe publish step reads this handoff back from the orchestrator DB. If you write the staging file instead of handing off, publish will fall back to a plain render and your work is lost.",
+      "blockedByKeys": ["stage"],
+      "dispatch": {
+        "mode": "exec",
+        "command": ["true"],
+        "agentId": "{{summarize_agent_id}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "skip",
+      "timeoutMs": 600000,
+      "sortOrder": 1
+    },
+    {
+      "stepKey": "publish",
+      "name": "Validate the handoff and publish the digest to Discord",
+      "promptTemplate": "Run digest.daily_digest --publish with the staging path from this dispatch's command. Reads the summarizer's handoff from brain.db, validates it against presentation.schema.json, and posts to Discord + writes the markdown log. Fails OPEN: if the handoff is missing or violates the contract, it renders deterministically from the staged data (no inline LLM) so the digest still ships.",
+      "blockedByKeys": ["summarize"],
+      "dispatch": {
+        "mode": "exec",
+        "command": [
+          "{{python_path}}",
+          "-m",
+          "digest.daily_digest",
+          "--publish",
+          "{{staging_path}}"
+        ],
+        "cwd": "{{wiki_root}}"
+      },
+      "priority": "normal",
+      "onUpstreamFailure": "continue",
+      "timeoutMs": 120000,
+      "sortOrder": 2
+    }
+  ]
+}
