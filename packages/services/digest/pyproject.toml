@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.18"]
+build-backend = "hatchling.build"
+
+[project]
+name = "digital-me-digest"
+version = "0.1.0"
+description = "Daily cross-agent activity digest for the Digital Me ecosystem, with a contract-pinned, fail-open publish pipeline."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [
+  { name = "Digital Me OS contributors" },
+]
+keywords = ["digest", "agents", "discord", "digital-me", "knowledge-management"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries",
+]
+dependencies = [
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+digital-me-digest = "digest.daily_digest:main_cli"
+
+[project.urls]
+Homepage = "https://github.com/Amyssjj/digital-me"
+Repository = "https://github.com/Amyssjj/digital-me"
+
+[tool.hatch.build.targets.wheel]
+# `packages` bundles the whole src/digest/ tree, including workflows/*.json and
+# presentation.schema.json. Do NOT add a force-include for those (it would
+# re-add the same paths and hatchling aborts the wheel build on the collision).
+packages = ["src/digest"]

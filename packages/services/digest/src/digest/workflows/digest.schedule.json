@@ -1,0 +1,8 @@
+{
+  "scheduleId": "daily-activity-digest",
+  "cronExpr": "0 7 * * *",
+  "timezone": "America/Los_Angeles",
+  "enabled": true,
+  "variables": {},
+  "_comment": "Companion schedule for digest.json. The installer registers this with the openclaw orchestrator right after import, so an install lands a ticking 7:00am-PT digest with no manual cron step. wiki_root + python_path are auto-supplied at materialize time; staging_path + summarize_agent_id use the workflow's own defaults. NOTE: schedule_add may default to UTC if it has no timezone param — register this at 0 7 * * * America/Los_Angeles (or the UTC equivalent 0 14/15 depending on DST) to keep the early-morning PT run."
+}
