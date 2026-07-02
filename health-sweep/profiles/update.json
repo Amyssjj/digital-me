@@ -1,0 +1,22 @@
+{
+  "dimension": "update",
+  "surface": "update",
+  "artifacts": "scoped",
+  "pipelines": [
+    {
+      "id": "digest-smoke",
+      "cmd": "PYTHONPATH=packages/services/digest/src python3 -m digest.smoke",
+      "timeoutSec": 120
+    }
+  ],
+  "contractChecks": [
+    {
+      "id": "digest-presentation-schema",
+      "file": "packages/services/digest/src/digest/presentation.schema.json",
+      "mustContain": "\"blocks\""
+    }
+  ],
+  "captureCmd": "node ~/.agents/skills/motus-update-sweep/engine/lib/run-smokes.mjs --repo . --profile health-sweep/profiles/update.json --out health-sweep/capture-update.json",
+  "requireDeployed": false,
+  "critiques": "none"
+}

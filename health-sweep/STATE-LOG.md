@@ -40,3 +40,26 @@
 - **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
 - **EXIT:** 🔁 loop — fix reds, re-run
 - **note:** baseline-docs locked at green
+
+## 2026-07-02T21:27:33.889Z · update · e366b72
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+
+## 2026-07-02T21:27:53.608Z · update · e366b72
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **note:** baseline-update locked at 0 findings
+
+## 2026-07-02T21:30:05.947Z · update · e366b72
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+- **note:** critiques:none — update profile has no LLM lane; exit codes now hook-trustworthy
