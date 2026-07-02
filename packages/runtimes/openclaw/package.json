@@ -28,7 +28,7 @@
   "dependencies": {
     "@digital-me/brain-orchestrator": "workspace:*",
     "@digital-me/contracts": "workspace:*",
-    "typebox": "^1.1.38",
+    "typebox": "^1.3.3",
     "yaml": "^2.9.0"
   },
   "devDependencies": {
