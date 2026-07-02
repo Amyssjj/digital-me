@@ -2,17 +2,34 @@
   "dimension": "facts",
   "surface": "docs",
   "note": "digital-me-os docs-truth sweep (motus-facts-sweep). packageJsonPath points at the bundle script because the published npm name (`digital-me`) is stamped there at publish time — the workspace package stays @digital-me/cli and the root manifest is digital-me-os, so neither is the published-name ground truth (see .github/workflows/publish-cli.yml).",
-  "surfaces": ["README.md"],
+  "surfaces": [
+    "README.md"
+  ],
   "packageName": "digital-me",
   "packageJsonPath": "scripts/build-cli-bundle.mjs",
   "versionSource": "package.json",
   "scriptsPath": "package.json",
-  "commandAllowlist": ["pnpm", "npm", "npx", "node", "git", "digital-me", "python3", "python"],
-  "cliName": "digital-me",
-  "cliSourceGlobs": ["packages/cli/src/bin/*.ts"],
-  "claimKeys": [
-    { "key": "install", "pattern": "npm install -g digital-me\\b|npm i -g digital-me\\b" }
+  "commandAllowlist": [
+    "pnpm",
+    "npm",
+    "npx",
+    "node",
+    "git",
+    "digital-me",
+    "python3",
+    "python"
   ],
-  "captureCmd": "node ~/.agents/skills/motus-facts-sweep/engine/lib/extract-claims.mjs --repo . --profile health-sweep/profiles/docs.json --out health-sweep/capture.json",
-  "requireDeployed": false
+  "cliName": "digital-me",
+  "cliSourceGlobs": [
+    "packages/cli/src/bin/*.ts"
+  ],
+  "claimKeys": [
+    {
+      "key": "install",
+      "pattern": "npm install -g digital-me\\b|npm i -g digital-me\\b"
+    }
+  ],
+  "captureCmd": "node ~/.agents/skills/motus-facts-sweep/engine/lib/extract-claims.mjs --repo . --profile health-sweep/profiles/docs.json --out health-sweep/capture-docs.json",
+  "requireDeployed": false,
+  "artifacts": "scoped"
 }

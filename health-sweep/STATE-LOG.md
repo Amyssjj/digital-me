@@ -24,3 +24,19 @@
 - **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
 - **EXIT:** 🔁 loop — fix reds, re-run
 - **note:** override recorded: dist path is journey-conditional (README says build first)
+
+## 2026-07-02T21:20:34.712Z · docs · cc86f09
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **note:** scoped artifacts migration — first per-profile baseline lock next
+
+## 2026-07-02T21:20:47.767Z · docs · cc86f09
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **note:** baseline-docs locked at green
