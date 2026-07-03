@@ -7,15 +7,23 @@ Reads frontmatter from every *.md in ~/digital-me/{wiki,tastes}/<domain>/<slug>.
   - per (date, tree, domain) → counts of files attributed to that date.
     Upserts knowledge_taste_changes.
 
-    Attribution date = the *activity date* (when the producing conversation
-    happened), not the *materialization date* (when the dream cycle wrote
-    the file). For tastes this comes from the evidence records embedded in
-    the file (their `date` field); the dream cycle routinely writes a
-    taste at 02:47 on 6/1 for a conversation that happened on 5/31, and the
-    daily-flow chart must count it under 5/31 to match daily-digest
-    semantics. Frontmatter `created`/`updated` (then mtime) are fallbacks
-    when no evidence date is available. Wiki entries have no evidence
-    block, so they fall straight through to frontmatter/mtime.
+    Attribution date = the tree's own chronology: frontmatter `created` for
+    creations (mtime as last resort), and the body-hash store for updates
+    (count an update only on the day a file's BODY genuinely changed) — for
+    BOTH trees.
+
+    Rejected alternative (the 2026-07-03 incident): tastes used to be
+    attributed to their embedded evidence-record dates (the *activity date*
+    of the source conversation) so a taste materialized at 02:47 on 6/1 for
+    a 5/31 conversation counted under 5/31. That assumed the dream cycle
+    processes yesterday's transcripts tonight. Once the taste pipeline went
+    staged/batchy it started materializing leaves DAYS after their source
+    conversations (e.g. evidence dated 06-30 appended on 07-02), so every
+    new leaf and update was back-dated out of the chart's recent window —
+    the taste flow read 0 all July while leaves were landing on disk.
+    Activity-date attribution rewrote history instead of showing flow;
+    the tree's frontmatter chronology is the truth a human can verify
+    (and what motus-data-sweep gates against).
 
   - per (tree, domain) → total file count today. Refreshes
     knowledge_taste_distribution. This is inventory ("what exists on disk
@@ -87,18 +95,20 @@ def _body_hash(md: Path) -> Optional[str]:
     return hashlib.sha256(body.strip().encode("utf-8")).hexdigest()
 
 
-def _resolve_wiki_change_dates(
-    wiki: Path, conn,
+def _resolve_change_dates(
+    root: Path, tree: str, conn,
 ) -> dict[str, Optional[date]]:
-    """Body-hash store for the wiki tree. Returns {path: content_change_date}.
+    """Body-hash store for a knowledge tree. Returns {path: content_change_date}.
 
-    Wiki entries carry no evidence/activity date, so the scanner previously
-    attributed an `updated` to whatever frontmatter `updated` said — but the
-    nightly consolidation rewrites that field on every file it touches, showing
-    up as hundreds of phantom updates per day. Instead we remember each file's
-    body hash + the day its body last actually changed:
+    Frontmatter `updated` cannot be trusted for update counting: the nightly
+    consolidate/reindex (wiki) and apply_taste evidence_count refresh (tastes)
+    rewrite that field on every file they touch, showing up as hundreds of
+    phantom updates per day. Instead we remember each file's body hash + the
+    day its body last actually changed:
       - first time we see a file -> seed (no known update yet -> None).
-      - body hash differs from the stored one -> a real edit happened today.
+      - body hash differs from the stored one -> a real edit happened today
+        (for tastes that includes an appended evidence record — the Evidence
+        block lives in the body).
       - body hash unchanged -> keep the previously recorded change date
         (None if it has never genuinely changed since we started tracking).
     Self-managed table (an internal scanner detail, not part of the dashboard
@@ -109,7 +119,7 @@ def _resolve_wiki_change_dates(
     )
     today_iso = date.today().isoformat()
     out: dict[str, Optional[date]] = {}
-    for _domain, _fm, path in _iter_entries(wiki, "wiki"):
+    for _domain, _fm, path in _iter_entries(root, tree):
         h = _body_hash(path)
         if h is None:
             continue
@@ -121,8 +131,8 @@ def _resolve_wiki_change_dates(
         if row is None:
             conn.execute(
                 "INSERT INTO knowledge_body_hashes (path, tree, body_hash, changed_date)"
-                " VALUES (?, 'wiki', ?, NULL)",
-                (key, h),
+                " VALUES (?, ?, ?, NULL)",
+                (key, tree, h),
             )
             out[key] = None
         elif row["body_hash"] != h:
@@ -155,6 +165,9 @@ def _coerce_date(val) -> Optional[date]:
 # cycle round-trips this block via dream_cycle.compile._read_evidence_records;
 # we re-parse it here with the same contract rather than import across the
 # service boundary (dashboard intake must not depend on dream-cycle internals).
+# Since the 2026-07-03 lag incident these dates are only a `created` FALLBACK
+# for taste files that lack a frontmatter `created` — never the primary
+# attribution (see the module docstring's rejected-alternative note).
 _EVIDENCE_RE = re.compile(
     r"^## Evidence\b.*?\n```json\s*\n(.*?)\n```",
     re.MULTILINE | re.DOTALL,
@@ -238,11 +251,15 @@ def _iter_entries(root: Path, tree: str) -> Iterable[tuple[str, dict, Path]]:
 
 def aggregate(
     wiki: Path, tastes: Path, start: date, end: date,
-    wiki_change_dates: Optional[dict[str, Optional[date]]] = None,
+    change_dates: Optional[dict[str, Optional[date]]] = None,
 ) -> tuple[dict[tuple[str, str, str], dict[str, int]], dict[tuple[str, str], int]]:
     """Pure aggregator. Returns:
       changes[(date, tree, domain)] = {"created": n, "updated": n}
       distribution[(tree, domain)]  = total_file_count
+
+    `change_dates` is the body-hash store's {path: content_change_date} for
+    BOTH trees (see _resolve_change_dates); when omitted (direct/test calls)
+    updates fall back to frontmatter `updated`/mtime.
     """
     changes: dict[tuple[str, str, str], dict[str, int]] = defaultdict(
         lambda: {"created": 0, "updated": 0}
@@ -253,30 +270,29 @@ def aggregate(
         for domain, fm, _path in _iter_entries(root, tree):
             distribution[(tree, domain)] += 1
 
-            # Attribute the file to its *activity* date, not its
-            # *materialization* date. For tastes, the evidence records
-            # carry the activity date (the conversation that produced the
-            # principle); the dream cycle commonly writes a 5/31 taste at
-            # 02:47 on 6/1, and the daily-flow chart must count it under
-            # 5/31 to match daily-digest semantics. Earliest evidence date
-            # seeds "created"; latest reflects the most recent "update".
+            # Attribute the file to the tree's own chronology — the same
+            # truth a human (or motus-data-sweep) checks by reading the
+            # file, for BOTH trees:
             #
-            # Fallback order (when no evidence date exists — always the
-            # case for wiki entries, which have no evidence block):
-            # frontmatter is the next source of truth for "when did this
-            # entry's content semantically change", and mtime is the last
-            # resort for files that lack a date field — without it,
-            # brand-new markdown that hasn't been edited yet would
-            # silently vanish from the daily-flow chart.
+            #   created — frontmatter `created` (the day the leaf landed);
+            #             earliest evidence date, then mtime, as fallbacks
+            #             for files without one. Without the mtime resort,
+            #             brand-new markdown lacking a date field would
+            #             silently vanish from the daily-flow chart.
+            #   updated — the body-hash store: count an update ONLY on the
+            #             day the BODY genuinely changed (an appended taste
+            #             evidence record IS a body change), never when
+            #             consolidation/apply_taste rewrote frontmatter.
             #
-            # Rejected alternative (the older max-merge logic): always
-            # picking max(frontmatter, mtime) over-counted aggressively.
-            # Any producer that rewrites a file as part of routine
-            # maintenance (e.g. dream-cycle's nightly apply_taste pass
-            # refreshing `evidence_count`) bumped mtime without changing
-            # the principle, then showed up as N phantom "updates" every
-            # night. Trust the activity date; if a producer touches a file
-            # with no semantic change, that's not an update.
+            # Rejected alternative №1 (max-merge frontmatter/mtime): any
+            # maintenance rewrite bumped mtime and showed up as N phantom
+            # "updates" every night.
+            # Rejected alternative №2 (evidence-date attribution for
+            # tastes — the 2026-07-03 incident): once the taste pipeline
+            # went staged/batchy, leaves materialized days after their
+            # source conversations and every change was back-dated out of
+            # the chart's window — the taste flow read 0 while leaves were
+            # landing on disk. See the module docstring.
             fm_created = _coerce_date(fm.get("created"))
             fm_updated = _coerce_date(fm.get("updated"))
             mtime_date = _file_mtime_date(_path)
@@ -284,18 +300,10 @@ def aggregate(
             evidence = (
                 _evidence_activity_dates(_path) if tree == "tastes" else None
             )
-            if evidence is not None:
-                created, updated = evidence
-            elif tree == "wiki" and wiki_change_dates is not None:
-                # Wiki has no evidence date. `created` still trusts frontmatter
-                # (consolidation preserves `created`), but `updated` now comes
-                # from the body-hash store: count an update ONLY when the body
-                # actually changed, not when consolidation rewrote `updated`/
-                # `related`. None => no genuine update => no phantom count.
-                created = fm_created or mtime_date
-                updated = wiki_change_dates.get(str(_path))
+            created = fm_created or (evidence[0] if evidence else None) or mtime_date
+            if change_dates is not None:
+                updated = change_dates.get(str(_path))
             else:
-                created = fm_created or mtime_date
                 updated = fm_updated or mtime_date
 
             for kind, d in (("created", created), ("updated", updated)):
@@ -341,12 +349,14 @@ def main(argv: list[str] | None = None) -> int:
 
     today_iso = today.isoformat()
     with connect(db_file) as conn:
-        # Resolve real (body-changed) wiki update dates first — this also
-        # persists the body-hash store that future scans diff against, so
-        # consolidation's frontmatter-only rewrites stop counting as updates.
-        wiki_change_dates = _resolve_wiki_change_dates(wiki, conn)
+        # Resolve real (body-changed) update dates for BOTH trees first —
+        # this also persists the body-hash store that future scans diff
+        # against, so maintenance frontmatter rewrites (wiki consolidation,
+        # taste evidence_count refresh) stop counting as updates.
+        change_dates = _resolve_change_dates(wiki, "wiki", conn)
+        change_dates.update(_resolve_change_dates(tastes, "tastes", conn))
         changes, distribution = aggregate(
-            wiki, tastes, start, today, wiki_change_dates,
+            wiki, tastes, start, today, change_dates,
         )
         # Reset the window before re-inserting. Upserts alone leave
         # stale rows behind whenever a file's contributing date moves

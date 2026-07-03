@@ -1,0 +1,1 @@
+{ "findingCount": 0, "lockedAt": "2026-07-03", "note": "first honest green for the data (metric-truth) profile — 6 pairings, verified against a locally-served fixed build (scratch DB + fixed intake scan) on :3999 while live :3458 awaited deploy; the FIRST capture the same day flagged the live incident pair (D1 taste-flow 0-vs-1, D1 digest-wiki 0-vs-29, D2 7d-flow 5-vs-6)" }
