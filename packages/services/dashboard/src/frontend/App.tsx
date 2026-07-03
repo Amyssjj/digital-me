@@ -29,7 +29,7 @@ function AppInner() {
     <div className="min-h-screen">
       <div className="max-w-7xl mx-auto px-4 py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex flex-wrap items-center justify-between gap-y-3 mb-6">
           <div>
             <h1 className="text-xl font-bold text-gray-900 tracking-tight">
               OA Dashboard
@@ -39,11 +39,12 @@ function AppInner() {
             </p>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-6 min-w-0 max-w-full">
             <DateRangeSelect />
 
-            {/* Tab Navigation */}
-            <nav className="flex gap-6">
+            {/* Tab Navigation — contained horizontal scroll on narrow viewports
+                so the tab row never widens the page itself */}
+            <nav className="flex gap-6 overflow-x-auto whitespace-nowrap">
               <TabButton active={activeTab === "system-health"} onClick={() => setActiveTab("system-health")}>
                 Topline Metrics
               </TabButton>

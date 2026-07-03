@@ -1,0 +1,63 @@
+{
+  "dimension": "visual",
+  "surface": "web",
+  "note": "digital-me-os OA dashboard (packages/services/dashboard). Constitution = Tailwind default scale declared in health-sweep/ds-tokens.css. noEyebrow off: uppercase tracked labels are a legitimate data-UI pattern here, not marketing eyebrows. Selectors verified against the live DOM 2026-07-03 (no <header>/<main>; nav is <button> tabs).",
+  "target": "http://localhost:3458",
+  "dsPath": "health-sweep/ds-tokens.css",
+  "sizeTokenPrefixes": [
+    "scale"
+  ],
+  "tolerancePx": 0.6,
+  "routes": [
+    "/"
+  ],
+  "stateMatrix": {
+    "themes": [
+      "light"
+    ],
+    "viewports": [
+      [
+        1440,
+        900
+      ],
+      [
+        375,
+        812
+      ]
+    ]
+  },
+  "captureSelectors": [
+    {
+      "sel": "h1",
+      "role": "title"
+    },
+    {
+      "sel": "nav button",
+      "role": "cta"
+    },
+    {
+      "sel": "body",
+      "role": "body"
+    },
+    {
+      "sel": ".glass-card",
+      "role": "card",
+      "scope": "free"
+    }
+  ],
+  "captureCmd": null,
+  "requireDeployed": false,
+  "brandRules": {
+    "noItalic": "block",
+    "noEyebrow": "off",
+    "ctaVerb": "off",
+    "terms": {
+      "want": "Digital Me",
+      "forbidden": [
+        "DigitalMe"
+      ],
+      "severity": "block"
+    }
+  },
+  "artifacts": "scoped"
+}
