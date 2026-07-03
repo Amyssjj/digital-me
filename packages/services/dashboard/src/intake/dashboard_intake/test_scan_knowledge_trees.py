@@ -137,50 +137,107 @@ def test_aggregate_normalises_taste_domains(tmp_path: Path) -> None:
     assert "knowledge-management" in taste_domains
 
 
-def test_taste_attributed_to_evidence_date_not_frontmatter(tmp_path: Path) -> None:
-    """The reported bug: dream cycle writes a 5/31 taste at 02:47 on 6/1.
-    Frontmatter says created 6/1, but the evidence record says 5/31. The
-    daily-flow chart must count it under 5/31, matching the daily digest."""
+def test_taste_attributed_to_frontmatter_not_evidence_date(tmp_path: Path) -> None:
+    """The 2026-07-03 incident, inverted from the old contract: the staged
+    taste pipeline materializes leaves DAYS after their source conversations
+    (evidence dated 06-30 appended on 07-02). Attributing to evidence dates
+    back-dated every change out of the chart's recent window — the taste
+    flow read 0 while leaves were landing on disk. The flow must count a
+    leaf under its frontmatter `created` (when it LANDED), not under the
+    stale activity date its evidence carries."""
     wiki = tmp_path / "wiki"
     tastes = tmp_path / "tastes"
-    activity = "2026-05-31"
-    materialized = "2026-06-01"
+    stale_activity = "2026-06-30"
+    materialized = "2026-07-02"
 
     _taste_md(
         tastes / "design",
         "t1",
         created=materialized,
         updated=materialized,
-        evidence_dates=[activity],
+        evidence_dates=[stale_activity, stale_activity],
     )
 
-    start = date(2026, 5, 1)
-    end = date(2026, 6, 30)
+    start = date(2026, 6, 1)
+    end = date(2026, 7, 31)
     changes, _ = aggregate(wiki, tastes, start, end)
 
-    # Counted under the activity date, NOT the materialization date.
-    assert changes[(activity, "tastes", "design")] == {"created": 1, "updated": 1}
-    assert (materialized, "tastes", "design") not in changes
+    # Counted under the day the leaf landed, NOT the stale activity date.
+    assert changes[(materialized, "tastes", "design")] == {"created": 1, "updated": 1}
+    assert (stale_activity, "tastes", "design") not in changes
 
 
-def test_taste_created_and_updated_span_evidence_range(tmp_path: Path) -> None:
-    """A promoted taste with multiple evidence records: earliest evidence
-    seeds 'created', latest reflects the most recent 'update'."""
-    wiki = tmp_path / "wiki"
+def test_taste_evidence_date_is_created_fallback_only(tmp_path: Path) -> None:
+    """A taste file missing frontmatter `created` still lands on the chart:
+    the earliest evidence date is the fallback (before the mtime resort)."""
     tastes = tmp_path / "tastes"
-
-    _taste_md(
-        tastes / "design",
-        "t1",
-        created="2026-06-01",
-        updated="2026-06-01",
-        evidence_dates=["2026-05-12", "2026-05-31"],
+    dom = tastes / "design"
+    dom.mkdir(parents=True)
+    (dom / "t1.md").write_text(
+        "---\ntitle: t1\n---\n\n## Principle\nbody\n\n## Evidence\n\n"
+        '```json\n[{"project_id": "p0", "date": "2026-05-12"}]\n```\n',
+        encoding="utf-8",
     )
 
-    changes, _ = aggregate(wiki, tastes, date(2026, 5, 1), date(2026, 6, 30))
+    changes, _ = aggregate(
+        tmp_path / "wiki", tastes, date(2026, 5, 1), date(2026, 6, 30),
+        {},  # empty body-hash store: no known genuine updates
+    )
 
-    assert changes[("2026-05-12", "tastes", "design")] == {"created": 1, "updated": 0}
-    assert changes[("2026-05-31", "tastes", "design")] == {"created": 0, "updated": 1}
+    assert changes[("2026-05-12", "tastes", "design")]["created"] == 1
+
+
+def test_taste_update_counts_only_on_real_body_change(tmp_path: Path) -> None:
+    """Tastes now share the wiki's body-hash update detection: the nightly
+    apply_taste pass rewriting frontmatter (`evidence_count`, `updated`) is
+    NOT an update; an appended evidence record (a body change) IS — and it
+    counts on the day it landed, not on the evidence record's own date."""
+    import sqlite3 as _sqlite3
+    from datetime import date as _date
+
+    from dashboard_intake.scan_knowledge_trees import _resolve_change_dates
+
+    wiki = tmp_path / "wiki"
+    tastes = tmp_path / "tastes"
+    dom = tastes / "design"
+    dom.mkdir(parents=True)
+    f = dom / "t1.md"
+    today = _date.today()
+
+    def write(evidence_json: str, evidence_count: int) -> None:
+        f.write_text(
+            f"---\ncreated: 2026-01-01\nupdated: {today.isoformat()}\n"
+            f"evidence_count: {evidence_count}\n---\n\n## Principle\nbody\n\n"
+            f"## Evidence\n\n```json\n[{evidence_json}]\n```\n",
+            encoding="utf-8",
+        )
+
+    conn = _sqlite3.connect(":memory:")
+    conn.row_factory = _sqlite3.Row
+    rec = '{"project_id": "p0", "date": "2026-01-01"}'
+
+    # 1. First observation → seeded, no known genuine update yet.
+    write(rec, 1)
+    cd = _resolve_change_dates(tastes, "tastes", conn)
+    assert cd[str(f)] is None
+    changes, _ = aggregate(wiki, tastes, today, today, cd)
+    assert changes.get(
+        (today.isoformat(), "tastes", "design"), {}
+    ).get("updated", 0) == 0
+
+    # 2. Maintenance rewrites frontmatter only (evidence_count bump);
+    #    body unchanged → still no update.
+    write(rec, 2)
+    cd = _resolve_change_dates(tastes, "tastes", conn)
+    assert cd[str(f)] is None
+
+    # 3. A new evidence record lands (body change) → one update TODAY,
+    #    even though the record itself is dated in the past.
+    write(rec + ', {"project_id": "p1", "date": "2026-01-05"}', 2)
+    cd = _resolve_change_dates(tastes, "tastes", conn)
+    assert cd[str(f)] == today
+    changes, _ = aggregate(wiki, tastes, today, today, cd)
+    assert changes[(today.isoformat(), "tastes", "design")]["updated"] == 1
 
 
 def test_taste_without_evidence_falls_back_to_frontmatter(tmp_path: Path) -> None:
@@ -279,7 +336,7 @@ def test_wiki_update_counts_only_on_real_body_change(tmp_path: Path) -> None:
     from datetime import date as _date
 
     from dashboard_intake.scan_knowledge_trees import (
-        _resolve_wiki_change_dates,
+        _resolve_change_dates,
         aggregate,
     )
 
@@ -301,12 +358,12 @@ def test_wiki_update_counts_only_on_real_body_change(tmp_path: Path) -> None:
 
     # 1. First observation → seeded, no known genuine update yet.
     write("## Rule\nOriginal body.", "2026-01-01")
-    cd = _resolve_wiki_change_dates(wiki, conn)
+    cd = _resolve_change_dates(wiki, "wiki", conn)
     assert cd[str(f)] is None
 
     # 2. Consolidation bumps `updated:` to today; BODY UNCHANGED → no update.
     write("## Rule\nOriginal body.", today.isoformat())
-    cd = _resolve_wiki_change_dates(wiki, conn)
+    cd = _resolve_change_dates(wiki, "wiki", conn)
     assert cd[str(f)] is None
     changes, _ = aggregate(wiki, tastes, today, today, cd)
     assert (
@@ -316,7 +373,7 @@ def test_wiki_update_counts_only_on_real_body_change(tmp_path: Path) -> None:
 
     # 3. Real body edit → counts as one update today.
     write("## Rule\nRewritten — genuinely different content.", today.isoformat())
-    cd = _resolve_wiki_change_dates(wiki, conn)
+    cd = _resolve_change_dates(wiki, "wiki", conn)
     assert cd[str(f)] == today
     changes, _ = aggregate(wiki, tastes, today, today, cd)
     assert changes[(today.isoformat(), "wiki", "infrastructure")]["updated"] == 1
