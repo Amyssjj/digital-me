@@ -1,7 +1,7 @@
 {
   "dimension": "visual",
   "surface": "web",
-  "note": "digital-me-os OA dashboard (packages/services/dashboard). Constitution = Tailwind default scale declared in health-sweep/ds-tokens.css. noEyebrow off: uppercase tracked labels are a legitimate data-UI pattern here, not marketing eyebrows. First capture pending — needs the dashboard served (default port 3458).",
+  "note": "digital-me-os OA dashboard (packages/services/dashboard). Constitution = Tailwind default scale declared in health-sweep/ds-tokens.css. noEyebrow off: uppercase tracked labels are a legitimate data-UI pattern here, not marketing eyebrows. Selectors verified against the live DOM 2026-07-03 (no <header>/<main>; nav is <button> tabs).",
   "target": "http://localhost:3458",
   "dsPath": "health-sweep/ds-tokens.css",
   "sizeTokenPrefixes": [
@@ -28,15 +28,15 @@
   },
   "captureSelectors": [
     {
-      "sel": "header h1",
+      "sel": "h1",
       "role": "title"
     },
     {
-      "sel": "nav a",
+      "sel": "nav button",
       "role": "cta"
     },
     {
-      "sel": "main",
+      "sel": "body",
       "role": "body"
     },
     {

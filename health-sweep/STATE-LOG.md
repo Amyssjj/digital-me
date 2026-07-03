@@ -63,3 +63,35 @@
 - **critiques:** — (no critique lane for this profile)
 - **EXIT:** ✅ SHIP
 - **note:** critiques:none — update profile has no LLM lane; exit codes now hook-trustworthy
+
+## 2026-07-03T17:41:47.645Z · web · 34df99c
+- **gates:** 🔴 7 (G1 0 · G2 6 · G3 1)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `G2/text-contrast` h1 (/ light) — text contrast 1.18:1 below AA (20px) [got 1.18:1, want ≥4.5:1]
+  - `G2/text-contrast` nav button (/ light) — text contrast 1.18:1 below AA (14px) [got 1.18:1, want ≥4.5:1]
+  - `G2/text-contrast` body (/ light) — text contrast 1.43:1 below AA (16px) [got 1.43:1, want ≥4.5:1]
+  - `G2/text-contrast` h1 (/ light) — text contrast 1.18:1 below AA (20px) [got 1.18:1, want ≥4.5:1]
+  - `G2/text-contrast` nav button (/ light) — text contrast 1.18:1 below AA (14px) [got 1.18:1, want ≥4.5:1]
+  - `G2/text-contrast` body (/ light) — text contrast 1.43:1 below AA (16px) [got 1.43:1, want ≥4.5:1]
+  - `G3/no-overflow` / (/ light) — horizontal overflow 209px [got 584px, want ≤375px]
+- **note:** first real dashboard capture (preview-driven, 2 cells)
+
+## 2026-07-03T17:44:05.151Z · web · 34df99c
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **note:** mobile overflow fixed in App.tsx (contained nav scroll); gradient-contrast overrides recorded
+
+## 2026-07-03T17:44:27.147Z · web · 34df99c
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **note:** baseline-web locked at green

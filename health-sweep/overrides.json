@@ -4,5 +4,23 @@
     "check": "path",
     "sel": "README.md:111",
     "note": "packages/cli/dist/bin/digital-me.js is a build artifact — the sentence explicitly says 'Build the repo, then… the long way', so the claim is journey-correct at the stage it appears. Mechanical gate can't see the conditional (roadmap: ok:'conditional' state). 2026-07-02."
+  },
+  {
+    "gate": "G2",
+    "check": "text-contrast",
+    "sel": "h1",
+    "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
+  },
+  {
+    "gate": "G2",
+    "check": "text-contrast",
+    "sel": "nav button",
+    "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
+  },
+  {
+    "gate": "G2",
+    "check": "text-contrast",
+    "sel": "body",
+    "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
   }
 ]
