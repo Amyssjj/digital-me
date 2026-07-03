@@ -104,3 +104,31 @@
 - **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
 - **EXIT:** 🔁 loop — fix reds, re-run
 - **note:** candidate lane enabled — first shadow run (facts/claimkey-substring-overlap)
+
+## 2026-07-03T19:49:58.487Z · runtime · 1bb6c4e
+- **gates:** 🔴 3 (R1 0 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R2/pin` openclaw-brain-plugin-entry (runtime openclaw) — installed artifact "openclaw-brain-plugin-entry" has drifted from its repo source — $HOME/.openclaw/extensions/digital-me-brain/index.mjs no longer matches packages/runtimes/openclaw/templates/brain/index.mjs [got sha256 33a09f1dd877… ≠ source 633bd5202dfb…, want installed $HOME/.openclaw/extensions/digital-me-brain/index.mjs byte-identical to packages/runtimes/openclaw/templates/brain/index.mjs]
+  - `R2/pin` openclaw-recall-plugin-entry (runtime openclaw) — installed artifact "openclaw-recall-plugin-entry" has drifted from its repo source — $HOME/.openclaw/extensions/digital-me-recall/index.mjs no longer matches packages/runtimes/openclaw/templates/recall/index.mjs [got sha256 d938d76ca8f8… ≠ source b746d09e0817…, want installed $HOME/.openclaw/extensions/digital-me-recall/index.mjs byte-identical to packages/runtimes/openclaw/templates/recall/index.mjs]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 f1fee2ec129c… ≠ source 7243e20630f3…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+- **note:** first real motus-runtime-sweep run — enrollment
+
+## 2026-07-03T19:52:43.140Z · runtime · 1bb6c4e
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+- **note:** triage applied: 2 openclaw pins intentional (live hotfix bundle, reconcile-at-next-install), claude-code hook re-installed from repo source
+
+## 2026-07-03T19:53:41.498Z · runtime · 1bb6c4e
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+- **note:** baseline-runtime locked at green

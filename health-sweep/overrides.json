@@ -22,5 +22,17 @@
     "check": "text-contrast",
     "sel": "body",
     "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
+  },
+  {
+    "gate": "R2",
+    "check": "pin",
+    "sel": "openclaw-brain-plugin-entry",
+    "note": "INTENTIONAL for now: installed file is the ratified 2026-07-01 hand-deployed esbuild bundle (M1 agent_end hotfix) — a built artifact will never sha-match the source template. Reconcile at the next `digital-me install --runtime openclaw` (which restores template provenance), then REMOVE this override so the pin guards again. 2026-07-03."
+  },
+  {
+    "gate": "R2",
+    "check": "pin",
+    "sel": "openclaw-recall-plugin-entry",
+    "note": "INTENTIONAL for now: installed file is the ratified 2026-07-01 hand-deployed esbuild bundle (M1 agent_end hotfix) — a built artifact will never sha-match the source template. Reconcile at the next `digital-me install --runtime openclaw` (which restores template provenance), then REMOVE this override so the pin guards again. 2026-07-03."
   }
 ]

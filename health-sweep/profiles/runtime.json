@@ -1,0 +1,65 @@
+{
+  "dimension": "runtime",
+  "surface": "runtime",
+  "artifacts": "scoped",
+  "critiques": "none",
+  "note": "digital-me-os runtime-conformance sweep (motus-runtime-sweep). Checks reuse scripts/verify_m1_application.py — stdlib-only python3, SELECT-only reads over the live ~/.openclaw/data/brain.db ∪ per-runtime WALs (no writes, no LLM, no network). Pin mappings are read from each runtime's installer source: packages/runtimes/openclaw/src/installer.ts copies templates/{brain,recall}/index.mjs verbatim into ~/.openclaw/extensions/digital-me-{brain,recall}/; packages/runtimes/claude-code/src/installer.ts copies hooks/ into ~/.claude/hooks/; the codex installer copies hooks/ into ~/.codex/hooks/. Pins are not required:true — a machine without a runtime installed skips, it isn't drifted.",
+  "checks": [
+    {
+      "id": "m1-application-rate",
+      "runtime": "all",
+      "cmd": "python3 scripts/verify_m1_application.py --days 7",
+      "parse": "exitCode",
+      "timeoutSec": 60
+    },
+    {
+      "id": "m1-application-rate-require-all",
+      "runtime": "all",
+      "cmd": "python3 scripts/verify_m1_application.py --days 7 --require-all",
+      "parse": "exitCode",
+      "timeoutSec": 60,
+      "required": false,
+      "note": "advisory: --require-all also fails on an IDLE runtime (surfaced==0 in the window). Worth seeing, not worth blocking — idle is not broken."
+    }
+  ],
+  "artifactPins": [
+    {
+      "id": "openclaw-brain-plugin-entry",
+      "runtime": "openclaw",
+      "installed": "$HOME/.openclaw/extensions/digital-me-brain/index.mjs",
+      "source": "packages/runtimes/openclaw/templates/brain/index.mjs"
+    },
+    {
+      "id": "openclaw-recall-plugin-entry",
+      "runtime": "openclaw",
+      "installed": "$HOME/.openclaw/extensions/digital-me-recall/index.mjs",
+      "source": "packages/runtimes/openclaw/templates/recall/index.mjs"
+    },
+    {
+      "id": "claude-code-memory-inject-hook",
+      "runtime": "claude-code",
+      "installed": "$HOME/.claude/hooks/dm_memory_search_inject.sh",
+      "source": "packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh"
+    },
+    {
+      "id": "claude-code-route-inject-hook",
+      "runtime": "claude-code",
+      "installed": "$HOME/.claude/hooks/brain_route_inject.sh",
+      "source": "packages/runtimes/claude-code/hooks/brain_route_inject.sh"
+    },
+    {
+      "id": "codex-memory-inject-hook",
+      "runtime": "codex",
+      "installed": "$HOME/.codex/hooks/dm_memory_search_inject.sh",
+      "source": "packages/runtimes/codex/hooks/dm_memory_search_inject.sh"
+    },
+    {
+      "id": "codex-m1-emit-hook",
+      "runtime": "codex",
+      "installed": "$HOME/.codex/hooks/dm_m1_emit.py",
+      "source": "packages/runtimes/codex/hooks/dm_m1_emit.py"
+    }
+  ],
+  "captureCmd": "node ~/.agents/skills/motus-runtime-sweep/engine/lib/capture-runtimes.mjs --repo . --profile health-sweep/profiles/runtime.json --out health-sweep/capture-runtime.json",
+  "requireDeployed": false
+}
