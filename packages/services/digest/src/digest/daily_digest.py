@@ -247,6 +247,35 @@ def _extract_entry_summary(wiki_path: Path) -> tuple[str, str, str, str]:
     return title, domains, created, updated
 
 
+def _wiki_entries_created_on(date_iso: str) -> list[Path]:
+    """Wiki entries whose frontmatter `created` == date_iso — read from the
+    TREE itself (the primary source), not from any pipeline's log.
+
+    Why: wiki entries are written by every agent all day long (in-session
+    graduation, brain materialization), not only by the overnight dream-cycle
+    compiler. Counting `wiki_new` from the dream-cycle log's `files_written`
+    was the 2026-07-03 incident: the compiler failed overnight, the log said
+    `files_written: []`, and the digest reported "Wiki 0" on a day 29 entries
+    landed on disk. The tree cannot lie about what it contains.
+    """
+    if not date_iso or not WIKI_ROOT.is_dir():
+        return []
+    out: list[Path] = []
+    for md in sorted(WIKI_ROOT.rglob("*.md")):
+        if md.name.startswith("_"):
+            continue
+        try:
+            head = md.read_text(encoding="utf-8", errors="ignore")[:4096]
+        except OSError:
+            continue
+        fm = re.match(r"^---\n.*?\n---", head, re.DOTALL)
+        if not fm:
+            continue
+        if _extract_yaml_date(fm.group(0), "created") == date_iso:
+            out.append(md)
+    return out
+
+
 def _extract_principle_summary(skill_path: Path) -> tuple[str, str, str, str]:
     """Return (title, domains, created_date, updated_date) from a skill-proposal file."""
     text = _confined_read(skill_path)
@@ -771,19 +800,31 @@ def render_full(date_str: str) -> tuple[str, dict]:
     files_written = compile_stats.get("files_written") or []
     if not isinstance(files_written, list):
         files_written = []
-    # Per-file truth (executive view), not per-write counts from the log.
-    # files_written can list the same path multiple times if the dream cycle
-    # wrote to it multiple times; dedupe + classify by frontmatter dates.
-    seen_paths: set = set()
+    # Per-file truth (executive view). `wiki_new` counts entries that LANDED
+    # on the digest's day — frontmatter `created` == date_str, read from the
+    # wiki TREE itself (see _wiki_entries_created_on: log-only counting was
+    # the 2026-07-03 "Wiki 0 on a 29-entry day" incident). Dream-cycle
+    # entries materialized at ~02:47 the morning after carry created ==
+    # target+1 and count in the NEXT digest — a 1-day skew, never a loss.
+    #
+    # `wiki_updated` stays log-classified: the tree alone has no churn-safe
+    # update signal here (nightly consolidation rewrites `updated:` on every
+    # file it touches — counting frontmatter would report hundreds of
+    # phantom updates; the dashboard intake solves this with a body-hash
+    # store the digest doesn't have).
+    wiki_created_paths = _wiki_entries_created_on(date_str)
+    wiki_new = len(wiki_created_paths)
+    seen_paths: set = set(str(p) for p in wiki_created_paths)
     unique_wiki_paths = [p for p in files_written if not (p in seen_paths or seen_paths.add(p))]
-    wiki_new = 0
     wiki_updated = 0
+    wiki_updated_paths: list = []
     for raw_path in unique_wiki_paths:
         _, _, created, updated = _extract_entry_summary(Path(raw_path))
-        if created == dream_cycle_date:
-            wiki_new += 1
-        elif updated == dream_cycle_date:
+        if created in (date_str, dream_cycle_date):
+            continue  # creations are counted from the tree, on landing day
+        if updated == dream_cycle_date:
             wiki_updated += 1
+            wiki_updated_paths.append(raw_path)
 
     skill_new = compile_stats.get("skill_candidates_new", 0) or 0
     skill_merged = compile_stats.get("skill_candidates_merged", 0) or 0
@@ -874,13 +915,15 @@ def render_full(date_str: str) -> tuple[str, dict]:
         return "⚪ touched"
 
     lines.append("### Wiki (edited yesterday — created + updated)")
-    if files_written:
-        seen = set()
-        unique_paths = [p for p in files_written if not (p in seen or seen.add(p))]
-        for i, raw_path in enumerate(unique_paths, 1):
-            p = Path(raw_path)
-            title, domains, created, updated = _extract_entry_summary(p)
-            label = _entry_label(created, updated)
+    # Created entries come from the TREE (frontmatter created == the digest's
+    # day, any producer); updated entries from the dream-cycle log
+    # classification — same sources as the TL;DR counts above.
+    wiki_listing = [(p, "🟢 created") for p in wiki_created_paths] + [
+        (Path(p), "🔵 updated") for p in wiki_updated_paths
+    ]
+    if wiki_listing:
+        for i, (p, label) in enumerate(wiki_listing, 1):
+            title, domains, _created, _updated = _extract_entry_summary(p)
             domain_tag = f" — _{domains}_" if domains else ""
             lines.append(f"{i}. [{label}] **{title}**{domain_tag}")
     else:
@@ -1438,8 +1481,6 @@ def write_raw_staging(path: Path, target_iso: str, dream_cycle_iso: str) -> None
     files_written = compile_stats.get("files_written") or []
     if not isinstance(files_written, list):
         files_written = []
-    seen_paths: set = set()
-    unique_wiki_paths = [p for p in files_written if not (p in seen_paths or seen_paths.add(p))]
 
     def _classify(created: str, updated: str) -> str:
         if created and created == dream_cycle_iso:
@@ -1448,14 +1489,31 @@ def write_raw_staging(path: Path, target_iso: str, dream_cycle_iso: str) -> None
             return "updated"
         return "touched"
 
+    # `wiki_new` counts entries that LANDED on the digest's day — frontmatter
+    # `created` == target_iso, read from the wiki TREE itself (any producer:
+    # in-session agents, brain materialization, dream cycle). Counting only
+    # the dream-cycle log's files_written was the 2026-07-03 incident: the
+    # compiler failed overnight, files_written came back [], and the digest
+    # said "Wiki 0" on a day 29 entries landed. `wiki_updated` stays
+    # log-classified — the tree has no churn-safe update signal (nightly
+    # consolidation rewrites `updated:` frontmatter on files it merely
+    # touches). Dream-cycle entries materialized at ~02:47 on target+1 count
+    # in the NEXT digest (1-day skew, never a loss).
     wiki_entries = []
-    wiki_new = wiki_updated = 0
+    wiki_created_paths = _wiki_entries_created_on(target_iso)
+    wiki_new = len(wiki_created_paths)
+    for p in wiki_created_paths:
+        title, domains, _created, _updated = _extract_entry_summary(p)
+        wiki_entries.append({"title": title, "domains": domains, "status": "created"})
+    seen_paths: set = set(str(p) for p in wiki_created_paths)
+    unique_wiki_paths = [p for p in files_written if not (p in seen_paths or seen_paths.add(p))]
+    wiki_updated = 0
     for raw_path in unique_wiki_paths:
         title, domains, created, updated = _extract_entry_summary(Path(raw_path))
+        if created in (target_iso, dream_cycle_iso):
+            continue  # creations are counted from the tree, on landing day
         status = _classify(created, updated)
-        if status == "created":
-            wiki_new += 1
-        elif status == "updated":
+        if status == "updated":
             wiki_updated += 1
         wiki_entries.append({"title": title, "domains": domains, "status": status})
 
