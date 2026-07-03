@@ -31,5 +31,6 @@
   ],
   "captureCmd": "node ~/.agents/skills/motus-facts-sweep/engine/lib/extract-claims.mjs --repo . --profile health-sweep/profiles/docs.json --out health-sweep/capture-docs.json",
   "requireDeployed": false,
-  "artifacts": "scoped"
+  "artifacts": "scoped",
+  "candidates": true
 }

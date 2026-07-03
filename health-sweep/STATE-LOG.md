@@ -95,3 +95,12 @@
 - **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
 - **EXIT:** 🔁 loop — fix reds, re-run
 - **note:** baseline-web locked at green
+
+## 2026-07-03T18:06:02.040Z · docs · 543d7a7
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** ⏳ pending (LLM C1/C2/C3) · **stories:** ⏳
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **note:** candidate lane enabled — first shadow run (facts/claimkey-substring-overlap)
