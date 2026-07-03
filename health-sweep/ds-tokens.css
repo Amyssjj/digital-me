@@ -1,0 +1,24 @@
+/* digital-me-os · health-sweep constitution — the dashboard's effective type scale.
+ *
+ * The dashboard frontend styles with Tailwind and extends only fontFamily
+ * (packages/services/dashboard/tailwind.config.ts), so its de-facto design
+ * system is Tailwind's default fontSize scale. This file declares that scale
+ * as tokens so the visual sweep's G1 gate derives from a committed constitution
+ * instead of an unstated framework default.
+ *
+ * If tailwind.config.ts ever declares its own fontSize scale, THAT becomes the
+ * constitution — update dsPath in profiles/web.json and delete this file.
+ * Source of the values: tailwindcss defaultTheme fontSize (v3).
+ */
+:root {
+  --scale-xs: 12px;
+  --scale-sm: 14px;
+  --scale-base: 16px;
+  --scale-lg: 18px;
+  --scale-xl: 20px;
+  --scale-2xl: 24px;
+  --scale-3xl: 30px;
+  --scale-4xl: 36px;
+  --scale-5xl: 48px;
+  --scale-6xl: 60px;
+}

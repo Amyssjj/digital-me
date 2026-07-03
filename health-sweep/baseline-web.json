@@ -1,0 +1,1 @@
+{ "findingCount": 0, "lockedAt": "2026-07-03", "note": "first honest green for the visual (web) profile — dashboard, 2 cells (1440/375 light); real catch on first run: 209px mobile overflow (fixed in App.tsx, contained nav scroll); 3 gradient-contrast overrides (adapter limitation, documented)" }

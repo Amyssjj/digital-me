@@ -1491,20 +1491,46 @@ async function update(
   // digest may not be installed, and a digest issue must never fail an openclaw
   // update — but it must be LOUD when it happens.
   if (result.status !== "failed" && !opts.dryRun) {
-    const digestVenvPython = path.join(
-      home,
-      ".venvs",
-      DREAM_CYCLE_VENV_DIRNAME,
-      "bin",
-      "python3",
-    );
-    if (runDigestSmoke(digestVenvPython) !== 0) {
-      console.error(
-        "\n[WARN] post-update digest smoke FAILED — the daily digest may not " +
-          "publish (see [digest-smoke] lines above). The openclaw update itself " +
-          "succeeded. Repair with `digital-me install --runtime digest`, then " +
-          "confirm with `python -m digest.smoke`.",
+    // When this machine is enrolled in the update sweep (health-sweep/profiles/
+    // update.json in the source checkout + the global motus-sweep engine), run
+    // the FULL gate: every registered pipeline smoke + contract pin, one verdict,
+    // trustworthy exit codes (the update profile has no critique lane). Falls
+    // back to the original single digest smoke when not enrolled, so a plain
+    // OSS install behaves exactly as before.
+    const sweepRepoRoot = resolveRepoRoot();
+    const sweepCli = path.join(home, ".agents", "skills", "motus-sweep", "bin", "cli.mjs");
+    const updateProfile = sweepRepoRoot
+      ? path.join(sweepRepoRoot, "health-sweep", "profiles", "update.json")
+      : null;
+    if (updateProfile && existsSync(updateProfile) && existsSync(sweepCli)) {
+      const sweep = spawnSync(
+        "node",
+        [sweepCli, "run", "update", "--repo", sweepRepoRoot!, "--note", "post-update gate (digital-me update)"],
+        { stdio: "inherit" },
       );
+      if ((sweep.status ?? 1) !== 0) {
+        console.error(
+          "\n[WARN] post-update sweep NOT green — one or more dependent pipelines " +
+            "may be broken (see the sweep verdict above; report in " +
+            "health-sweep/scorecard-update.md). The openclaw update itself succeeded.",
+        );
+      }
+    } else {
+      const digestVenvPython = path.join(
+        home,
+        ".venvs",
+        DREAM_CYCLE_VENV_DIRNAME,
+        "bin",
+        "python3",
+      );
+      if (runDigestSmoke(digestVenvPython) !== 0) {
+        console.error(
+          "\n[WARN] post-update digest smoke FAILED — the daily digest may not " +
+            "publish (see [digest-smoke] lines above). The openclaw update itself " +
+            "succeeded. Repair with `digital-me install --runtime digest`, then " +
+            "confirm with `python -m digest.smoke`.",
+        );
+      }
     }
   }
   return result.exitCode;
