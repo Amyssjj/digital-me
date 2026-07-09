@@ -455,3 +455,82 @@
 - **regression vs baseline:** 🟢 none
 - **critiques:** 🟢 cleared · **stories:** 🟢
 - **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:23:36.688Z · runtime · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:24:46.130Z · runtime · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:24:59.655Z · data · ecda974
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:24:59.763Z · docs · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:24:59.972Z · runtime · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:25:00.126Z · update · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:25:18.082Z · data · ecda974
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:25:18.190Z · docs · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:25:18.395Z · runtime · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:25:18.545Z · update · ecda974
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-09T23:25:18.594Z · web · 8b51565
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP

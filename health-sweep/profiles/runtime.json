@@ -3,7 +3,7 @@
   "surface": "runtime",
   "artifacts": "scoped",
   "critiques": "none",
-  "note": "digital-me-os runtime-conformance sweep (motus-runtime-sweep). Checks reuse scripts/verify_m1_application.py — stdlib-only python3, SELECT-only reads over the live ~/.openclaw/data/brain.db ∪ per-runtime WALs (no writes, no LLM, no network). Pin mappings are read from each runtime's installer source: packages/runtimes/openclaw/src/installer.ts copies templates/{brain,recall}/index.mjs verbatim into ~/.openclaw/extensions/digital-me-{brain,recall}/; packages/runtimes/claude-code/src/installer.ts copies hooks/ into ~/.claude/hooks/; the codex installer copies hooks/ into ~/.codex/hooks/. Pins are not required:true — a machine without a runtime installed skips, it isn't drifted.",
+  "note": "digital-me-os runtime-conformance sweep (motus-runtime-sweep). Checks reuse scripts/verify_m1_application.py \u2014 stdlib-only python3, SELECT-only reads over the live ~/.openclaw/data/brain.db \u222a per-runtime WALs (no writes, no LLM, no network). Pin mappings are read from each runtime's installer source: the openclaw brain/recall entries are NOT pinned: since the cli-exec-worker migration the installer esbuild-BUNDLES templates/{brain,recall}/index.mjs (+imports) into ~/.openclaw/extensions/digital-me-{brain,recall}/index.mjs, so a file-hash pin against the raw template can never match (verified 2026-07-09: installed 2.5MB bundle vs 10KB template); deployed-matches-source for those two is verified by `digital-me deploy`'s live recall assistant_ack fingerprint check instead; packages/runtimes/claude-code/src/installer.ts copies hooks/ into ~/.claude/hooks/; the codex installer copies hooks/ into ~/.codex/hooks/. Pins are not required:true \u2014 a machine without a runtime installed skips, it isn't drifted.",
   "checks": [
     {
       "id": "m1-application-rate",
@@ -19,22 +19,10 @@
       "parse": "exitCode",
       "timeoutSec": 60,
       "required": false,
-      "note": "advisory: --require-all also fails on an IDLE runtime (surfaced==0 in the window). Worth seeing, not worth blocking — idle is not broken."
+      "note": "advisory: --require-all also fails on an IDLE runtime (surfaced==0 in the window). Worth seeing, not worth blocking \u2014 idle is not broken."
     }
   ],
   "artifactPins": [
-    {
-      "id": "openclaw-brain-plugin-entry",
-      "runtime": "openclaw",
-      "installed": "$HOME/.openclaw/extensions/digital-me-brain/index.mjs",
-      "source": "packages/runtimes/openclaw/templates/brain/index.mjs"
-    },
-    {
-      "id": "openclaw-recall-plugin-entry",
-      "runtime": "openclaw",
-      "installed": "$HOME/.openclaw/extensions/digital-me-recall/index.mjs",
-      "source": "packages/runtimes/openclaw/templates/recall/index.mjs"
-    },
     {
       "id": "claude-code-memory-inject-hook",
       "runtime": "claude-code",
