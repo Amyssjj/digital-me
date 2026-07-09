@@ -93,7 +93,10 @@ export interface UpdateResult {
 
 const MINUTE = 60_000;
 
-function defaultExec(
+/** Default {@link ExecFn}: a spawnSync wrapper. Exported for direct unit
+ * testing of the process-runner edge cases (missing binary, signal kill);
+ * production callers go through {@link updateOpenclaw}'s `opts.exec` default. */
+export function defaultExec(
   cmd: string,
   args: readonly string[],
   opts: {

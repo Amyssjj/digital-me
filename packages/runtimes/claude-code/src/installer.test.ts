@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   HOOK_NAMES,
   HOOKS_DIR,
@@ -17,6 +17,23 @@ describe("PACKAGE_ROOT + paths", () => {
     // path string shape so downstream tooling can rely on the layout.
     expect(HOOKS_DIR).toBe(`${PACKAGE_ROOT}/hooks`);
     expect(SKILLS_DIR).toBe(`${PACKAGE_ROOT}/skills`);
+  });
+
+  it("falls back to assets/claude-code when hooks/ is absent (published CLI bundle layout)", async () => {
+    // In the workspace, hooks/ sits at the package root so the ternary's
+    // first arm wins. The published CLI bundle stages per-package assets
+    // under assets/claude-code/ instead — simulate that layout by mocking
+    // existsSync and re-importing the module.
+    vi.resetModules();
+    vi.doMock("node:fs", () => ({ existsSync: () => false }));
+    try {
+      const fresh = await import("./installer.js");
+      expect(fresh.PACKAGE_ROOT.endsWith("assets/claude-code")).toBe(true);
+      expect(fresh.HOOKS_DIR).toBe(`${fresh.PACKAGE_ROOT}/hooks`);
+    } finally {
+      vi.doUnmock("node:fs");
+      vi.resetModules();
+    }
   });
 
   it("exposes the 6 hooks + 1 helper script + 1 skill name", () => {

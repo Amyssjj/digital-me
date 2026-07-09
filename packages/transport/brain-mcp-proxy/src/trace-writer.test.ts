@@ -160,6 +160,26 @@ describe("createSqliteTraceWriter", () => {
     expect(warnings).toHaveLength(3);
     expect(warnings[0]).toMatch(/trace INSERT failed/);
   });
+
+  it("stringifies non-Error throwables in warnings", () => {
+    createTracesTable(dbPath);
+    const warnings: string[] = [];
+    const write = createSqliteTraceWriter({
+      brainDbPath: dbPath,
+      warn: (l) => warnings.push(l),
+    });
+    // A trace whose property access throws a non-Error value — the warning
+    // path must String() it rather than assume an Error instance.
+    const trace = baseTrace();
+    Object.defineProperty(trace, "query", {
+      get() {
+        throw "query-getter-exploded";
+      },
+    });
+    write(trace);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/trace INSERT failed: query-getter-exploded/);
+  });
 });
 
 describe("defaultBrainDbPath", () => {

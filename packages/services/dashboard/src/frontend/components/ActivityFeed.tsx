@@ -16,8 +16,11 @@ import remarkGfm from "remark-gfm";
  * (see server/activity-feed.ts).
  */
 
-type ActivityKind = "captured" | "applied" | "workflow" | "taste";
-type ActivityFilter = "all" | ActivityKind;
+/** `knowledge` is frontend-only: it badges search results (wiki entries and
+ *  memory leaves surfaced by /api/search) in the same post design the four
+ *  live streams use. The feed API itself never emits it. */
+type ActivityKind = "captured" | "applied" | "workflow" | "taste" | "knowledge";
+type ActivityFilter = "all" | Exclude<ActivityKind, "knowledge">;
 
 const FILTERS: { key: ActivityFilter; label: string }[] = [
   { key: "all", label: "All" },
@@ -92,6 +95,8 @@ function agentMeta(agent: string): AgentMeta {
   const id = (agent || "").toLowerCase();
   // The dream-cycle distills taste principles — it gets the brain avatar.
   if (id === "dream-cycle") return { name: "Dream Cycle", handle: "dreamcycle", brain: true, accent: "#DB2777" };
+  // Search results are authored by the knowledge base itself, not a runtime.
+  if (id === "wiki") return { name: "Living Knowledge", handle: "wiki", brain: true, accent: "#0F766E" };
   for (const r of RUNTIMES) if (r.match.test(id)) return r.meta;
   // Everything else (coo, podcast, youtube, orchestrator, …) is an
   // OpenClaw-runtime agent: keep its readable name, give it the OpenClaw logo.
@@ -134,6 +139,7 @@ const ACTIVITY_VERB: Record<ActivityKind, string> = {
   applied: "applied knowledge",
   workflow: "started a workflow",
   taste: "distilled a taste",
+  knowledge: "matched your search",
 };
 
 const ACTIVITY_BADGE: Record<ActivityKind, { label: string; cls: string; icon: string }> = {
@@ -141,7 +147,52 @@ const ACTIVITY_BADGE: Record<ActivityKind, { label: string; cls: string; icon: s
   applied: { label: "Applied learning", cls: "bg-cyan-50 text-cyan-700 border-cyan-200", icon: "↻" },
   workflow: { label: "Workflow", cls: "bg-violet-50 text-violet-700 border-violet-200", icon: "▸" },
   taste: { label: "Taste principle", cls: "bg-rose-50 text-rose-700 border-rose-200", icon: "◆" },
+  knowledge: { label: "Knowledge", cls: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: "◈" },
 };
+
+// ── Search (ranked memory_search over the knowledge base) ──────────────────
+
+interface SearchResult {
+  id: string;
+  rank: number;
+  title: string;
+  path: string;
+  score: number | null;
+  snippet: string;
+  markdown: string | null;
+}
+
+interface SearchResponse {
+  query: string;
+  results: SearchResult[];
+}
+
+const SEARCH_DEBOUNCE_MS = 300;
+const SEARCH_LIMIT = 20;
+
+/** Present a ranked search hit in the feed's own vocabulary: a post authored
+ *  by the knowledge base, carrying the entry as a previewable attachment. */
+function searchResultToItem(r: SearchResult): ActivityItem {
+  return {
+    id: r.id,
+    ts: "", // rank replaces recency in search mode; the preview hides it
+    agent_id: "wiki",
+    activity: "knowledge",
+    title: r.title,
+    description: snippetTeaser(r.snippet),
+    meta: r.path,
+    attachments: [{ title: r.title, path: r.path, markdown: r.markdown }],
+  };
+}
+
+/** Body teaser from a raw snippet: drop the frontmatter block, the tool's
+ *  trailing "Source: <path>#Lx-Ly" citation line, and markdown noise so the
+ *  post preview reads as prose. */
+function snippetTeaser(snippet: string): string | null {
+  const body = stripFrontmatter(snippet ?? "").replace(/^Source:\s.*$/gm, " ");
+  const teaser = headline(body);
+  return teaser.length > 0 ? teaser : null;
+}
 
 export function ActivityFeed() {
   const [items, setItems] = useState<ActivityItem[]>([]);
@@ -151,7 +202,16 @@ export function ActivityFeed() {
   const [preview, setPreview] = useState<PreviewTarget | null>(null);
   const newIdsRef = useRef<Set<string>>(new Set());
 
+  // Search mode: a non-empty query pauses the live feed poll and shows
+  // ranked memory_search results in the same post design instead.
+  const [query, setQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const searching = query.trim().length > 0;
+
   useEffect(() => {
+    if (searching) return; // paused while a search is active
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
     // Reset to the loading state when the filter changes so the feed doesn't
@@ -188,7 +248,44 @@ export function ActivityFeed() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [filter]);
+  }, [filter, searching]);
+
+  // Debounced ranked search. Results arrive pre-ranked from the brain's
+  // memory_search; stale responses are dropped via the cancelled flag.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length === 0) {
+      setSearchResults(null);
+      setSearchError(null);
+      setIsSearching(false);
+      return;
+    }
+    let cancelled = false;
+    setIsSearching(true);
+    const timer = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/search?q=${encodeURIComponent(q)}&limit=${SEARCH_LIMIT}`);
+        if (!res.ok) {
+          const body = (await res.json().catch(() => null)) as { error?: string } | null;
+          throw new Error(body?.error ?? `HTTP ${res.status}`);
+        }
+        const json = (await res.json()) as SearchResponse;
+        if (cancelled) return;
+        setSearchResults(json.results);
+        setSearchError(null);
+      } catch (e) {
+        if (cancelled) return;
+        setSearchResults(null);
+        setSearchError(e instanceof Error ? e.message : "Unknown error");
+      } finally {
+        if (!cancelled) setIsSearching(false);
+      }
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [query]);
 
   return (
     <div className="space-y-5">
@@ -207,29 +304,70 @@ export function ActivityFeed() {
             </p>
           </div>
           <span className="text-[10px] font-mono uppercase tracking-wider text-gray-300 whitespace-nowrap">
-            live · {POLL_INTERVAL_MS / 1000}s · {items.length} post{items.length === 1 ? "" : "s"}
+            {searching
+              ? `search · ${searchResults?.length ?? 0} result${(searchResults?.length ?? 0) === 1 ? "" : "s"}`
+              : `live · ${POLL_INTERVAL_MS / 1000}s · ${items.length} post${items.length === 1 ? "" : "s"}`}
           </span>
         </div>
 
-        {/* Filter chips */}
-        <div className="flex gap-2 mt-4">
-          {FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setFilter(f.key)}
-              className={`text-xs px-3 py-1 rounded-full border transition-colors ${
-                filter === f.key
-                  ? "bg-gray-900 text-white border-gray-900"
-                  : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
-              }`}
-            >
-              {f.label}
-            </button>
-          ))}
+        {/* Search + filter chips */}
+        <div className="flex flex-wrap items-center gap-3 mt-4">
+          <div className="relative">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-300" aria-hidden>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <circle cx="11" cy="11" r="7" />
+                <path d="m20 20-3.5-3.5" />
+              </svg>
+            </span>
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search knowledge…"
+              aria-label="Search knowledge"
+              className="w-56 rounded-full border border-gray-200 bg-white pl-8 pr-8 py-1 text-xs text-gray-700 placeholder:text-gray-300 outline-none transition-colors focus:border-gray-400 [&::-webkit-search-cancel-button]:hidden"
+            />
+            {searching ? (
+              <button
+                onClick={() => setQuery("")}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 flex h-4 w-4 items-center justify-center rounded-full text-gray-300 transition-colors hover:text-gray-600"
+              >
+                ✕
+              </button>
+            ) : null}
+          </div>
+          {!searching
+            ? FILTERS.map((f) => (
+                <button
+                  key={f.key}
+                  onClick={() => setFilter(f.key)}
+                  className={`text-xs px-3 py-1 rounded-full border transition-colors ${
+                    filter === f.key
+                      ? "bg-gray-900 text-white border-gray-900"
+                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))
+            : (
+                <span className="text-xs text-gray-400">
+                  ranked by relevance · memory_search
+                </span>
+              )}
         </div>
       </motion.div>
 
-      {isLoading && items.length === 0 ? (
+      {searching ? (
+        <SearchResults
+          results={searchResults}
+          isSearching={isSearching}
+          error={searchError}
+          query={query.trim()}
+          onOpen={(item, attachment) => setPreview({ item, attachment })}
+        />
+      ) : isLoading && items.length === 0 ? (
         <div className="flex items-center justify-center py-24">
           <p className="text-[10px] text-gray-400 uppercase tracking-[0.3em] font-mono">Loading feed</p>
         </div>
@@ -263,6 +401,110 @@ export function ActivityFeed() {
 
       <PreviewPanel target={preview} onClose={() => setPreview(null)} />
     </div>
+  );
+}
+
+/** Ranked search results, rendered with the feed's own post design: each hit
+ *  is a post authored by the knowledge base, its entry a previewable
+ *  attachment card that opens the right-side panel. */
+function SearchResults({
+  results,
+  isSearching,
+  error,
+  query,
+  onOpen,
+}: {
+  results: SearchResult[] | null;
+  isSearching: boolean;
+  error: string | null;
+  query: string;
+  onOpen: (item: ActivityItem, attachment: Attachment) => void;
+}) {
+  if (isSearching && results === null) {
+    return (
+      <div className="flex items-center justify-center py-24">
+        <p className="text-[10px] text-gray-400 uppercase tracking-[0.3em] font-mono">Searching knowledge</p>
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+        Search failed: {error}
+      </div>
+    );
+  }
+  if (!results || results.length === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white py-16 text-center">
+        <p className="text-sm text-gray-500">No knowledge matches “{query}”.</p>
+        <p className="text-xs text-gray-400 mt-1">
+          Results are ranked by the brain's memory_search across the wiki and captured learnings.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white overflow-hidden">
+      <ol>
+        {results.map((r, i) => (
+          <SearchPost key={r.id} result={r} isFirst={i === 0} onOpen={onOpen} />
+        ))}
+      </ol>
+    </div>
+  );
+}
+
+/** One ranked hit in the FeedPost layout — the byline carries rank + match
+ *  strength where a live post shows its relative timestamp. */
+function SearchPost({
+  result,
+  isFirst,
+  onOpen,
+}: {
+  result: SearchResult;
+  isFirst: boolean;
+  onOpen: (item: ActivityItem, attachment: Attachment) => void;
+}) {
+  const item = searchResultToItem(result);
+  const m = agentMeta(item.agent_id);
+  const attachment = item.attachments![0]!;
+  return (
+    <li className={`px-5 py-5 ${isFirst ? "" : "border-t border-gray-100"}`}>
+      <div className="flex items-start gap-3">
+        <Avatar agent={item.agent_id} />
+        <div className="min-w-0 flex-1">
+          {/* Byline — rank + match strength instead of recency */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[15px] font-semibold text-gray-900">{m.name}</span>
+            <VerifiedCheck color={m.accent} />
+            <span className="text-xs text-gray-300">·</span>
+            <span className="text-xs text-gray-400 font-mono">
+              #{result.rank}
+              {result.score !== null ? ` · ${Math.round(result.score * 100)}% match` : ""}
+            </span>
+          </div>
+          <p className="text-xs text-gray-400 -mt-0.5">
+            @{m.handle} · {ACTIVITY_VERB[item.activity]}
+          </p>
+
+          <p className="font-serif text-lg leading-snug text-gray-900 mt-2 line-clamp-3">{headline(item.title)}</p>
+
+          {item.description ? (
+            <p className="text-sm text-gray-500 mt-1.5 leading-relaxed line-clamp-2">{item.description}</p>
+          ) : null}
+
+          <div className="mt-3">
+            <AttachmentCard
+              activity={item.activity}
+              attachment={attachment}
+              accent={m.accent}
+              onOpen={() => onOpen(item, attachment)}
+            />
+          </div>
+        </div>
+      </div>
+    </li>
   );
 }
 
@@ -525,9 +767,15 @@ function RenderedLearning({ target, onClose }: { target: PreviewTarget; onClose:
               <span className="text-sm font-semibold text-gray-900">{m.name}</span>
               <VerifiedCheck color={m.accent} />
             </div>
-            <p className="text-xs text-gray-400" title={new Date(item.ts).toLocaleString()}>
-              {new Date(item.ts).toLocaleString()}
-            </p>
+            {/* Search results carry no event timestamp — show their source
+                verb instead of an "Invalid Date". */}
+            {Number.isNaN(new Date(item.ts).getTime()) ? (
+              <p className="text-xs text-gray-400">{ACTIVITY_VERB[item.activity]}</p>
+            ) : (
+              <p className="text-xs text-gray-400" title={new Date(item.ts).toLocaleString()}>
+                {new Date(item.ts).toLocaleString()}
+              </p>
+            )}
           </div>
         </div>
 

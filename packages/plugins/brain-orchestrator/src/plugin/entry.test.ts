@@ -31,6 +31,10 @@ import {
   createWorkflowsStore,
   WORKFLOWS_MIGRATIONS,
 } from "../store/workflows.js";
+import {
+  createM1EventsStore,
+  M1_EVENTS_MIGRATIONS,
+} from "../store/m1-events.js";
 import type { Migration } from "../store/migrations.js";
 import {
   registerMigration,
@@ -45,6 +49,8 @@ import {
   buildBrainOrchestratorTools,
   handleAgentIdentify,
   handleLearningCapture,
+  handleM1EventRecord,
+  handleM1Score,
   handleTracesQuery,
   handleTracesRecord,
   type BrainOrchestratorPluginDeps,
@@ -63,6 +69,7 @@ beforeEach(() => {
     ...AGENTS_MIGRATIONS,
     ...LEARNINGS_MIGRATIONS,
     ...TRACES_MIGRATIONS,
+    ...M1_EVENTS_MIGRATIONS,
   ] as Migration[]) {
     registerMigration(m);
   }
@@ -102,6 +109,10 @@ function makeDeps(): BrainOrchestratorPluginDeps {
     now: () => 1000,
     newId: () => `id-${++counter}`,
   };
+}
+
+function makeM1Deps(): BrainOrchestratorPluginDeps {
+  return { ...makeDeps(), m1Events: createM1EventsStore({ db }) };
 }
 
 // ── buildBrainOrchestratorTools ────────────────────────────────────────────
@@ -209,6 +220,64 @@ describe("buildBrainOrchestratorTools", () => {
       traces: unknown[];
     };
     expect(parsed.traces).toHaveLength(1);
+  });
+
+  it("registers the two M1 tools when an m1Events store is provided", () => {
+    const tools = buildBrainOrchestratorTools(makeM1Deps());
+    const names = tools.map((t) => t.name);
+    expect(names).toContain("m1_event_record");
+    expect(names).toContain("m1_score");
+    expect(tools).toHaveLength(7);
+  });
+
+  it("'m1_event_record' end-to-end roundtrip via the tool execute", async () => {
+    const deps = makeM1Deps();
+    const tools = buildBrainOrchestratorTools(deps);
+    const tool = tools.find((t) => t.name === "m1_event_record")!;
+    const result = await tool.execute({
+      runtime: "hermes",
+      agent_id: "hermes-discord",
+      session_id: "S1",
+      turn_id: "T1",
+      event_type: "knowledge_surfaced",
+      event_id: "ev-1",
+      entries: [{ path: "infra/foo.md", score: 0.8 }],
+      t: 1700000000_000,
+    });
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0]!.text) as {
+      ok: true;
+      inserted: boolean;
+    };
+    expect(parsed.ok).toBe(true);
+    expect(parsed.inserted).toBe(true);
+    expect(deps.m1Events!.query({})).toHaveLength(1);
+  });
+
+  it("'m1_score' end-to-end roundtrip via the tool execute", async () => {
+    const deps = makeM1Deps();
+    deps.m1Events!.create({
+      eventId: "s-1",
+      schemaVersion: 1,
+      metric: "m1_application_rate",
+      runtime: "hermes",
+      agentId: "hermes-discord",
+      sessionId: "S1",
+      turnId: "T1",
+      eventType: "knowledge_surfaced",
+      entries: [{ path: "infra/foo.md" }],
+      t: 1700000000_000,
+    });
+    const tools = buildBrainOrchestratorTools(deps);
+    const tool = tools.find((t) => t.name === "m1_score")!;
+    const result = await tool.execute({ since: 0, until: 1800000000_000 });
+    expect(result.isError).toBeUndefined();
+    const parsed = JSON.parse(result.content[0]!.text) as {
+      ok: true;
+      rollups: Array<{ surfacedTurns: number }>;
+    };
+    expect(parsed.rollups).toHaveLength(1);
+    expect(parsed.rollups[0]!.surfacedTurns).toBe(1);
   });
 });
 
@@ -479,5 +548,256 @@ describe("handleTracesQuery", () => {
     const r = handleTracesQuery(makeDeps(), { kind: "totally-invented" });
     expect(r.ok).toBe(false);
     expect(r.text).toMatch(/Invalid trace kind/);
+  });
+});
+
+// ── handleM1EventRecord ────────────────────────────────────────────────────
+
+describe("handleM1EventRecord", () => {
+  it("returns ok=false when no m1Events store is configured", () => {
+    const r = handleM1EventRecord(makeDeps(), {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      event_type: "session_start",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/m1Events store not configured/);
+  });
+
+  it("requires runtime, agent_id, session_id, and event_type", () => {
+    const r = handleM1EventRecord(makeM1Deps(), {
+      runtime: "hermes",
+      agent_id: "a",
+      // session_id missing
+      event_type: "session_start",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/requires runtime, agent_id, session_id/);
+  });
+
+  it("rejects event types outside the v1 vocabulary", () => {
+    const r = handleM1EventRecord(makeM1Deps(), {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      event_type: "knowledge_used", // v2 — not in v1
+    });
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/unknown event_type "knowledge_used"/);
+  });
+
+  it("records with snake_case params (entries array, extra object)", () => {
+    const deps = makeM1Deps();
+    const r = handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "hermes-discord",
+      session_id: "S1",
+      turn_id: "T1",
+      event_id: "ev-snake",
+      ack_signal: "explicit_path",
+      schema_version: 1,
+      event_type: "assistant_ack",
+      entries: [
+        { path: "infra/foo.md", title: "Foo", score: 0.8, source: "memory_search" },
+        { title: "no path — dropped" },
+        "not-an-object",
+        null,
+      ],
+      extra: { excerpt: "…" },
+      t: 1700000000_000,
+    });
+    expect(r.ok).toBe(true);
+    const stored = deps.m1Events!.query({})[0]!;
+    expect(stored.eventId).toBe("ev-snake");
+    expect(stored.turnId).toBe("T1");
+    expect(stored.ackSignal).toBe("explicit_path");
+    expect(stored.schemaVersion).toBe(1);
+    expect(stored.entries).toEqual([
+      { path: "infra/foo.md", title: "Foo", score: 0.8, source: "memory_search" },
+    ]);
+    expect(stored.extra).toEqual({ excerpt: "…" });
+    expect(stored.t).toBe(1700000000_000);
+  });
+
+  it("records with camelCase aliases (agentId/sessionId/eventType/…)", () => {
+    const deps = makeM1Deps();
+    const r = handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agentId: "hermes-discord",
+      sessionId: "S1",
+      turnId: "T1",
+      eventId: "ev-camel",
+      ackSignal: "title_match",
+      schemaVersion: 1,
+      eventType: "assistant_ack",
+      t: 1700000000_000,
+    });
+    expect(r.ok).toBe(true);
+    const stored = deps.m1Events!.query({})[0]!;
+    expect(stored.eventId).toBe("ev-camel");
+    expect(stored.agentId).toBe("hermes-discord");
+    expect(stored.ackSignal).toBe("title_match");
+  });
+
+  it("defaults t/schema_version and derives the event_id when omitted", () => {
+    const deps = makeM1Deps();
+    const before = Date.now();
+    const r = handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      turn_id: "T1",
+      event_type: "knowledge_surfaced",
+      entries: [{ path: "infra/foo.md" }],
+    });
+    expect(r.ok).toBe(true);
+    const stored = deps.m1Events!.query({})[0]!;
+    expect(stored.eventId).toMatch(/^S::T1::knowledge_surfaced::/);
+    expect(stored.schemaVersion).toBe(1);
+    expect(stored.t).toBeGreaterThanOrEqual(before);
+  });
+
+  it("accepts entries as a JSON-array string (with junk items filtered)", () => {
+    const deps = makeM1Deps();
+    const r = handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      event_type: "knowledge_surfaced",
+      event_id: "ev-json-entries",
+      entries: JSON.stringify([
+        { path: "infra/foo.md", title: "Foo", score: 0.8, source: "wiki_inject" },
+        { path: "infra/bare.md" },
+        { title: "no path — dropped" },
+        "not-an-object",
+        null,
+      ]),
+      t: 1,
+    });
+    expect(r.ok).toBe(true);
+    expect(deps.m1Events!.query({})[0]!.entries).toEqual([
+      { path: "infra/foo.md", title: "Foo", score: 0.8, source: "wiki_inject" },
+      { path: "infra/bare.md" },
+    ]);
+  });
+
+  it("ignores an entries JSON string that parses to a non-array", () => {
+    const deps = makeM1Deps();
+    const r = handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      event_type: "knowledge_surfaced",
+      event_id: "ev-obj-entries",
+      entries: JSON.stringify({ not: "an array" }),
+      t: 1,
+    });
+    expect(r.ok).toBe(true);
+    expect(deps.m1Events!.query({})[0]!.entries).toEqual([]);
+  });
+
+  it("rejects malformed entries JSON", () => {
+    const r = handleM1EventRecord(makeM1Deps(), {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      event_type: "knowledge_surfaced",
+      entries: "{not json",
+      t: 1,
+    });
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/entries.*must be an array or JSON-array string/);
+  });
+
+  it("accepts extra as a JSON-object string", () => {
+    const deps = makeM1Deps();
+    const r = handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "a",
+      session_id: "S",
+      event_type: "session_start",
+      event_id: "ev-extra-json",
+      extra: JSON.stringify({ version: "1.2.3" }),
+      t: 1,
+    });
+    expect(r.ok).toBe(true);
+    expect(deps.m1Events!.query({})[0]!.extra).toEqual({ version: "1.2.3" });
+  });
+
+  it("silently drops extra that is malformed JSON, a JSON array, or a non-object", () => {
+    const deps = makeM1Deps();
+    for (const [eventId, extra] of [
+      ["ev-extra-bad", "{not json"],
+      ["ev-extra-arr", JSON.stringify([1, 2])],
+      ["ev-extra-null", "null"],
+      ["ev-extra-num", "42"],
+      ["ev-extra-direct-arr", [1, 2]],
+    ] as const) {
+      const r = handleM1EventRecord(deps, {
+        runtime: "hermes",
+        agent_id: "a",
+        session_id: "S",
+        event_type: "session_start",
+        event_id: eventId,
+        extra,
+        t: 1,
+      });
+      expect(r.ok).toBe(true);
+    }
+    for (const e of deps.m1Events!.query({})) {
+      expect(e.extra).toEqual({});
+    }
+  });
+});
+
+// ── handleM1Score ──────────────────────────────────────────────────────────
+
+describe("handleM1Score", () => {
+  it("returns ok=false when no m1Events store is configured", () => {
+    const r = handleM1Score(makeDeps(), {});
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/m1Events store not configured/);
+  });
+
+  it("computes rollups for the given window + runtime filter", () => {
+    const deps = makeM1Deps();
+    handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "hermes-discord",
+      session_id: "S1",
+      turn_id: "T1",
+      event_type: "knowledge_surfaced",
+      event_id: "s-1",
+      entries: [{ path: "infra/foo.md" }],
+      t: 1700000000_000,
+    });
+    handleM1EventRecord(deps, {
+      runtime: "hermes",
+      agent_id: "hermes-discord",
+      session_id: "S1",
+      turn_id: "T1",
+      event_type: "assistant_ack",
+      event_id: "a-1",
+      ack_signal: "explicit_path",
+      entries: [{ path: "infra/foo.md" }],
+      t: 1700000001_000,
+    });
+    const r = handleM1Score(deps, {
+      since: 0,
+      until: 1800000000_000,
+      runtime: "hermes",
+    });
+    expect(r.ok).toBe(true);
+    const rollups = (r.json as { rollups: Array<{ ackRate: number }> }).rollups;
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0]!.ackRate).toBe(1);
+  });
+
+  it("defaults the window to the last 24h when since/until are omitted", () => {
+    const deps = makeM1Deps();
+    const r = handleM1Score(deps, {});
+    expect(r.ok).toBe(true);
+    expect((r.json as { rollups: unknown[] }).rollups).toEqual([]);
   });
 });

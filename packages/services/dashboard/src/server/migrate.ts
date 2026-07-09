@@ -226,23 +226,32 @@ export function migrate(
   return { dbPath, droppedLegacy: dropped, createdNew: created, backupPath };
 }
 
-/** CLI entry: `tsx migrate.ts <dbPath>` */
-async function main(): Promise<void> {
-  const dbPath = process.argv[2];
+/** CLI entry: `tsx migrate.ts <dbPath>`. The process seams (argv/log/error/
+ *  exit) are injectable so tests can drive it as a plain function; the
+ *  defaults keep the CLI behavior identical. */
+export async function main(
+  argv: readonly string[] = process.argv,
+  log: (msg: string) => void = console.log,
+  error: (msg: string) => void = console.error,
+  exit: (code: number) => void = process.exit,
+): Promise<void> {
+  const dbPath = argv[2];
   if (!dbPath) {
-    console.error("usage: tsx migrate.ts <db-path>");
-    process.exit(2);
+    error("usage: tsx migrate.ts <db-path>");
+    exit(2);
+    return; // unreachable in production (process.exit never returns)
   }
   const result = migrate(dbPath);
-  console.log(`migrate: ${result.dbPath}`);
+  log(`migrate: ${result.dbPath}`);
   if (result.backupPath) {
-    console.log(`  backup:  ${result.backupPath} (pre-cutover snapshot — restore with 'cp' to roll back)`);
+    log(`  backup:  ${result.backupPath} (pre-cutover snapshot — restore with 'cp' to roll back)`);
   }
-  console.log(`  dropped: ${result.droppedLegacy} legacy table(s)`);
-  console.log(`  created: ${result.createdNew} statement(s) ` +
-              `(7 tables + 2 indexes)`);
+  log(`  dropped: ${result.droppedLegacy} legacy table(s)`);
+  log(`  created: ${result.createdNew} statement(s) ` +
+      `(7 tables + 2 indexes)`);
 }
 
+/* v8 ignore next 3 -- CLI entry guard; never true when imported by tests. */
 if (import.meta.url === `file://${process.argv[1]}`) {
   void main();
 }

@@ -1,4 +1,7 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import realNodeFs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   bucketKeyFor,
   createAppRateWriter,
@@ -53,6 +56,22 @@ describe("extractHitPaths", () => {
   it("returns empty array for empty content", () => {
     expect(extractHitPaths({ content: [] })).toEqual([]);
   });
+
+  it("returns empty array when the text payload is not a string", () => {
+    expect(
+      extractHitPaths({
+        content: [{ type: "text", text: 42 as unknown as string }],
+      }),
+    ).toEqual([]);
+  });
+
+  it("returns empty array when the JSON payload has no results array", () => {
+    expect(
+      extractHitPaths({
+        content: [{ type: "text", text: JSON.stringify({ other: 1 }) }],
+      }),
+    ).toEqual([]);
+  });
 });
 
 describe("normaliseWikiPath", () => {
@@ -75,6 +94,15 @@ describe("normaliseWikiPath", () => {
   });
   it("filters absolute paths it can't classify", () => {
     expect(normaliseWikiPath("/etc/passwd")).toBeNull();
+  });
+  it("returns null for empty input", () => {
+    expect(normaliseWikiPath("")).toBeNull();
+  });
+  it("returns null when nothing follows the /wiki/ marker", () => {
+    expect(normaliseWikiPath("/home/test/digital-me/wiki/")).toBeNull();
+  });
+  it("returns null for a bare wiki/ prefix with nothing after it", () => {
+    expect(normaliseWikiPath("wiki/")).toBeNull();
   });
 });
 
@@ -381,5 +409,421 @@ describe("createAppRateWriter — recordSearch + flushAll integration", () => {
     expect(JSON.parse(writes[0].data).flush_reason).toBe("exit");
     writer.shutdown(); // no-op
     expect(writes).toHaveLength(1);
+  });
+});
+
+describe("createAppRateWriter — record edge cases", () => {
+  it("ignores memory_search responses with zero hits (no bucket created)", () => {
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => Date.now(),
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult([]),
+    });
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("records application_rate=null when every hit normalises away (injection still counted)", () => {
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => new Date("2026-05-26T10:00:00Z").getTime(),
+    });
+    // memory/ + absolute paths both normalise to null → surfaced stays empty.
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["memory/abc/1.md", "/etc/passwd"]),
+    });
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(1);
+    const rec = JSON.parse(writes[0].data);
+    expect(rec.hook_injections).toBe(1);
+    expect(rec.surfaced_unique).toBe(0);
+    expect(rec.application_rate).toBeNull();
+  });
+
+  it("a repeat search with no new paths keeps the bucket alive without re-flushing", () => {
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => new Date("2026-05-26T10:00:00Z").getTime(),
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    writer.flushAll("manual");
+    // Identical hit set → added=0, hookInjections=2 → keep-alive, no bump.
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(1);
+  });
+
+  it("never writes a record for a get-only bucket (no surfaced, no injections)", () => {
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => Date.now(),
+    });
+    writer.recordGet({
+      agentId: "coo",
+      toolName: "memory_get",
+      args: { path: "foo/a.md" },
+    });
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("stale GC drops a get-only bucket without ever writing", () => {
+    const { fs, writes } = fakeFs();
+    let clock = new Date("2026-05-26T10:00:00Z").getTime();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      staleBucketMs: 60_000,
+      fs,
+      now: () => clock,
+    });
+    writer.recordGet({
+      agentId: "coo",
+      toolName: "memory_get",
+      args: { path: "foo/a.md" },
+    });
+    clock += 120_000;
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(0);
+    // Bucket was dropped — nothing left to flush on later passes either.
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("stale GC drops buckets of skipped runtimes (logPath=null) silently", () => {
+    const { fs, writes } = fakeFs();
+    let clock = new Date("2026-05-26T10:00:00Z").getTime();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => null,
+      flushIntervalMs: 0,
+      staleBucketMs: 60_000,
+      fs,
+      now: () => clock,
+    });
+    writer.recordSearch({
+      agentId: "claude-code",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    clock += 120_000;
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("flushAll warns and continues when logPathForAgent itself throws (non-Error)", () => {
+    const { fs } = fakeFs();
+    const warn = vi.fn();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => {
+        // Non-Error throwable — exercises the String(err) fallback too.
+        throw "policy exploded";
+      },
+      flushIntervalMs: 0,
+      fs,
+      now: () => Date.now(),
+      warn,
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    expect(() => writer.flushAll("manual")).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("app_rate flush failed"),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("policy exploded"),
+    );
+  });
+
+  it("uses a no-op warn by default (write failure still never throws)", () => {
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs: {
+        mkdirSync: () => {},
+        appendFileSync: () => {
+          throw new Error("disk full");
+        },
+      },
+      now: () => Date.now(),
+      // no warn injected — default () => {} must absorb the failure
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    expect(() => writer.flushAll("manual")).not.toThrow();
+  });
+
+  it("recordSearch never throws when the clock is broken", () => {
+    const { fs } = fakeFs();
+    const warn = vi.fn();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => {
+        throw new Error("clock broken");
+      },
+      warn,
+    });
+    expect(() =>
+      writer.recordSearch({
+        agentId: "coo",
+        toolName: "memory_search",
+        result: memorySearchResult(["wiki/foo/a.md"]),
+      }),
+    ).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("recordSearch failed"),
+    );
+  });
+
+  it("recordGet never throws when the clock is broken", () => {
+    const { fs } = fakeFs();
+    const warn = vi.fn();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => {
+        throw new Error("clock broken");
+      },
+      warn,
+    });
+    expect(() =>
+      writer.recordGet({
+        agentId: "coo",
+        toolName: "memory_get",
+        args: { path: "foo/a.md" },
+      }),
+    ).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("recordGet failed"),
+    );
+  });
+
+  it("recordGet accepts the file_path alias for path", () => {
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => new Date("2026-05-26T10:00:00Z").getTime(),
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    writer.recordGet({
+      agentId: "coo",
+      toolName: "memory_get",
+      args: { file_path: "foo/a.md" },
+    });
+    writer.flushAll("manual");
+    expect(JSON.parse(writes[0].data).acted_paths).toEqual(["foo/a.md"]);
+  });
+
+  it("recordGet ignores missing, empty, and unmappable paths", () => {
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => Date.now(),
+    });
+    writer.recordGet({ agentId: "coo", toolName: "memory_get", args: {} });
+    writer.recordGet({
+      agentId: "coo",
+      toolName: "memory_get",
+      args: { path: "" },
+    });
+    writer.recordGet({
+      agentId: "coo",
+      toolName: "memory_get",
+      args: { path: "memory/abc/1.md" }, // normalises to null
+    });
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(0);
+  });
+
+  it("mkdirs '.' when the log path has no directory component", () => {
+    const { fs, writes, mkdirs } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => Date.now(),
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    writer.flushAll("manual");
+    expect(writes).toHaveLength(1);
+    expect(mkdirs[0].path).toBe(".");
+  });
+});
+
+describe("createAppRateWriter — periodic flush timer", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("starts an unref'd interval timer that flushes with reason=periodic", () => {
+    let tick: (() => void) | undefined;
+    const unref = vi.fn();
+    vi.stubGlobal("setInterval", ((fn: () => void) => {
+      tick = fn;
+      return { unref } as unknown as NodeJS.Timeout;
+    }) as unknown as typeof setInterval);
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 60_000,
+      fs,
+      now: () => new Date("2026-05-26T10:00:00Z").getTime(),
+    });
+    expect(unref).toHaveBeenCalledOnce();
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    tick!();
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0].data).flush_reason).toBe("periodic");
+  });
+
+  it("warns instead of throwing when a periodic flush crashes", () => {
+    let tick: (() => void) | undefined;
+    vi.stubGlobal("setInterval", ((fn: () => void) => {
+      tick = fn;
+      // Plain numeric handle — also exercises the "no unref" timer shape.
+      return 42 as unknown as NodeJS.Timeout;
+    }) as unknown as typeof setInterval);
+    const warn = vi.fn();
+    let broken = false;
+    createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 60_000,
+      fs: fakeFs().fs,
+      now: () => {
+        if (broken) throw new Error("clock broken");
+        return Date.now();
+      },
+      warn,
+    });
+    broken = true;
+    expect(() => tick!()).not.toThrow();
+    expect(warn).toHaveBeenCalledWith(
+      expect.stringContaining("periodic flush crashed"),
+    );
+  });
+
+  it("shutdown still emits the exit flush when clearInterval throws", () => {
+    vi.stubGlobal("setInterval", (() =>
+      42 as unknown as NodeJS.Timeout) as unknown as typeof setInterval);
+    vi.stubGlobal("clearInterval", (() => {
+      throw new Error("timer subsystem gone");
+    }) as unknown as typeof clearInterval);
+    const { fs, writes } = fakeFs();
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 60_000,
+      fs,
+      now: () => new Date("2026-05-26T10:00:00Z").getTime(),
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    expect(() => writer.shutdown()).not.toThrow();
+    expect(writes).toHaveLength(1);
+    expect(JSON.parse(writes[0].data).flush_reason).toBe("exit");
+  });
+
+  it("shutdown swallows a crashing final flush", () => {
+    const { fs, writes } = fakeFs();
+    let broken = false;
+    const writer = createAppRateWriter({
+      logPathForAgent: () => ({ path: "/tmp/oc.log", surface: "openclaw" }),
+      flushIntervalMs: 0,
+      fs,
+      now: () => {
+        if (broken) throw new Error("clock broken");
+        return Date.now();
+      },
+    });
+    writer.recordSearch({
+      agentId: "coo",
+      toolName: "memory_search",
+      result: memorySearchResult(["wiki/foo/a.md"]),
+    });
+    broken = true;
+    expect(() => writer.shutdown()).not.toThrow();
+    expect(writes).toHaveLength(0);
+  });
+});
+
+describe("createAppRateWriter — real filesystem default", () => {
+  it("writes JSONL to disk when no fs is injected", () => {
+    const tmpDir = realNodeFs.mkdtempSync(
+      path.join(os.tmpdir(), "app-rate-writer-test-"),
+    );
+    try {
+      const logPath = path.join(tmpDir, "nested", "application_rate.log");
+      const writer = createAppRateWriter({
+        logPathForAgent: () => ({ path: logPath, surface: "openclaw" }),
+        flushIntervalMs: 0,
+        now: () => new Date("2026-05-26T10:00:00Z").getTime(),
+      });
+      writer.recordSearch({
+        agentId: "coo",
+        toolName: "memory_search",
+        result: memorySearchResult(["wiki/foo/a.md"]),
+      });
+      writer.flushAll("manual");
+      const lines = realNodeFs
+        .readFileSync(logPath, "utf8")
+        .trim()
+        .split("\n");
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]).agent_id).toBe("coo");
+    } finally {
+      realNodeFs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

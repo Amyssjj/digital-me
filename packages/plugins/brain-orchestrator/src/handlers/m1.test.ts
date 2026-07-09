@@ -13,6 +13,8 @@ import {
 import {
   M1_EVENTS_MIGRATIONS,
   createM1EventsStore,
+  type M1EventRecord,
+  type M1EventsStore,
 } from "../store/m1-events.js";
 import {
   registerMigration,
@@ -116,6 +118,18 @@ describe("recordM1Event", () => {
     const events = store.query({});
     const stored = events.find((e) => e.eventId === eventId);
     expect(stored?.t).toBe(now);
+  });
+
+  it("falls back to Date.now() when neither t nor now() is provided", () => {
+    const store = createM1EventsStore({ db });
+    const before = Date.now();
+    const { eventId } = recordM1Event(
+      { m1Events: store },
+      baseInput({ t: undefined }),
+    );
+    const stored = store.query({}).find((e) => e.eventId === eventId);
+    expect(stored?.t).toBeGreaterThanOrEqual(before);
+    expect(stored?.t).toBeLessThanOrEqual(Date.now());
   });
 });
 
@@ -255,6 +269,60 @@ describe("scoreM1", () => {
   it("returns empty array when no events in window", () => {
     const store = createM1EventsStore({ db });
     expect(scoreM1({ m1Events: store }, { since: 0, until: 1 })).toEqual([]);
+  });
+
+  it("defaults the window to the last 24h (injected now)", () => {
+    const store = createM1EventsStore({ db });
+    const now = new Date("2026-05-27T10:00:00Z").getTime();
+    recordM1Event({ m1Events: store }, baseInput({
+      eventId: "in-window", sessionId: "S", turnId: "T1",
+      eventType: "knowledge_surfaced", t: now - 60 * 60 * 1000, // 1h ago
+      entries: [{ path: "p/a.md" }],
+    }));
+    recordM1Event({ m1Events: store }, baseInput({
+      eventId: "too-old", sessionId: "S", turnId: "T2",
+      eventType: "knowledge_surfaced", t: now - 25 * 60 * 60 * 1000, // 25h ago
+      entries: [{ path: "p/b.md" }],
+    }));
+    const rollups = scoreM1({ m1Events: store }, { now: () => now });
+    expect(rollups).toHaveLength(1);
+    expect(rollups[0].surfacedTurns).toBe(1);
+  });
+
+  it("tolerates pairs whose entries arrays are missing (useRate=null)", () => {
+    // The real store always materialises `entries: []`, but the contract
+    // allows a store to omit them — the scorer must not crash and reports
+    // useRate=null when nothing was surfaced at the entry level.
+    const t = new Date("2026-05-27T10:00:00Z").getTime();
+    const surfaced: M1EventRecord = {
+      eventId: "s-1",
+      schemaVersion: 1,
+      metric: "m1_application_rate",
+      runtime: "hermes",
+      agentId: "hermes-discord",
+      sessionId: "S",
+      turnId: "T1",
+      eventType: "knowledge_surfaced",
+      t,
+    };
+    const ack: M1EventRecord = {
+      ...surfaced,
+      eventId: "a-1",
+      eventType: "assistant_ack",
+      ackSignal: "explicit_path",
+      t: t + 1000,
+    };
+    const fakeStore: M1EventsStore = {
+      create: () => ({ inserted: true }),
+      query: () => [],
+      pairSurfacedWithAck: () => [{ surfaced, ack }],
+    };
+    const r = scoreM1({ m1Events: fakeStore }, { since: 0, until: t + 10_000 })[0];
+    expect(r.surfacedTurns).toBe(1);
+    expect(r.acknowledgedTurns).toBe(1);
+    expect(r.surfacedEntries).toBe(0);
+    expect(r.actedEntries).toBe(0);
+    expect(r.useRate).toBeNull();
   });
 });
 

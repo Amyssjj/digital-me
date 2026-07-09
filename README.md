@@ -135,7 +135,13 @@ Everything is idempotent — re-run `setup` anytime; it merges and skips what al
 digital-me init                       # scaffold wiki dir only
 digital-me install --runtime codex    # install one runtime
 digital-me doctor                     # diagnose without changes
+digital-me dashboard                  # launch the OA dashboard in your browser
 ```
+
+`digital-me dashboard` opens the dashboard if it's already serving (default
+port 3458), starts the always-on service first if it isn't, and exits with
+install guidance if the dashboard was never installed. `--no-open` prints the
+URL instead of opening a browser; `--port <n>` overrides the port.
 
 ### Installing the brain into openclaw
 

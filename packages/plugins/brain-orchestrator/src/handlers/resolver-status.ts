@@ -98,6 +98,9 @@ export function deriveGoalStatus(
     // Everything has settled. Fail only if some failure was never handled by a
     // downstream continue/skip step; a handled failure whose fallback ran
     // yields a completed goal.
+    // Unreachable "failed" arm: every(isResolved) means any terminal-failure
+    // task passed isHandledFailure, so the some() is always false. Defensive.
+    /* v8 ignore next 3 */
     return tasks.some((t) => isTerminalFailure(t) && !isHandledFailure(t))
       ? "failed"
       : "completed";

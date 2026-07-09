@@ -22,6 +22,10 @@
  *     `python3 -m dream_cycle.run`). All args after `dream-cycle` pass
  *     through verbatim.
  *
+ *   digital-me dashboard [--port <n>] [--no-open]
+ *     Launch the OA dashboard: open the browser if it's already serving,
+ *     otherwise start the always-on service first.
+ *
  * The install path runs filesystem writes; it's intentionally NOT in
  * the unit-test surface. The pure data layer (doctor.ts, setup.ts, and
  * each runtime package's installer) IS tested.
@@ -77,6 +81,14 @@ import {
   isTransientBootstrapError,
   resolveDashboardServiceConfig,
 } from "../dashboard-service.js";
+import {
+  DASHBOARD_COMMAND_USAGE,
+  browserOpenCommand,
+  dashboardInstallDir,
+  parseDashboardArgs,
+  planDashboardLaunch,
+  resolveDashboardPort,
+} from "../dashboard-command.js";
 import {
   analyzeDeployPreflight,
   parseAheadBehind,
@@ -1844,6 +1856,11 @@ function printHelp(): void {
       "    sets up an always-on service (launchd/systemd) so the dashboard",
       "    survives closing the terminal + reboot; --no-service skips that.",
       "",
+      "  digital-me dashboard [--port <n>] [--no-open]",
+      "    Launch the OA dashboard: open it in your browser if it's already",
+      "    serving; otherwise start the always-on service first. --no-open",
+      "    prints the URL instead of opening a browser.",
+      "",
       "  digital-me service dashboard <install|uninstall|status>",
       "    Manage the always-on dashboard service (cross-platform: launchd on",
       "    macOS, systemd --user on Linux). 'install' generates + loads the unit",
@@ -2103,6 +2120,63 @@ function dashboardServiceStatus(home: string): number {
   return 0;
 }
 
+/**
+ * `digital-me dashboard [--port <n>] [--no-open]` — launch the OA dashboard.
+ * Already serving → open the browser. Installed but down → start the
+ * always-on service (which HTTP-verifies), then open. Not installed →
+ * exit 2 with install guidance. All decisions live in dashboard-command.ts.
+ */
+async function dashboardCommand(argv: readonly string[]): Promise<number> {
+  const args = parseDashboardArgs(argv);
+  if (args.help) {
+    console.log(DASHBOARD_COMMAND_USAGE);
+    return 0;
+  }
+  if (args.invalid !== undefined) {
+    console.error(`dashboard: unknown or invalid argument: ${args.invalid}`);
+    console.error(DASHBOARD_COMMAND_USAGE);
+    return 2;
+  }
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  if (!home) {
+    console.error("dashboard: HOME / USERPROFILE not set");
+    return 2;
+  }
+  const port = resolveDashboardPort(home, process.env, args.port);
+  // Quick single-window probe — is something already serving the dashboard?
+  const serving = await pollDashboard(port, 2000);
+  const plan = planDashboardLaunch({
+    serving,
+    installDirExists: existsSync(dashboardInstallDir(home)),
+    port,
+  });
+  if (plan.kind === "not-installed") {
+    console.error(plan.hint);
+    return 2;
+  }
+  if (plan.kind === "start-service") {
+    console.log(`dashboard: not serving on :${port} yet — starting the always-on service ...`);
+    const rc = await setupDashboardService(home);
+    if (rc !== 0) return rc;
+  }
+  if (args.noOpen) {
+    console.log(`[OK] dashboard serving at ${plan.url}`);
+    return 0;
+  }
+  const opener = browserOpenCommand(process.platform, plan.url);
+  if (!opener) {
+    console.log(`[OK] dashboard serving at ${plan.url} (no browser opener on '${process.platform}' — open it manually)`);
+    return 0;
+  }
+  const r = spawnSync(opener.cmd, opener.args as string[], { stdio: "ignore" });
+  if (r.status !== 0) {
+    console.log(`[OK] dashboard serving at ${plan.url} (browser open failed — open it manually)`);
+    return 0;
+  }
+  console.log(`[OK] opened ${plan.url}`);
+  return 0;
+}
+
 /** `digital-me service dashboard <install|uninstall|status>` */
 async function serviceCommand(args: readonly string[]): Promise<number> {
   const target = args[0];
@@ -2339,6 +2413,11 @@ async function main(): Promise<number> {
   // sub-args (target + action), so route before the flag parser.
   if (process.argv[2] === "service") {
     return serviceCommand(process.argv.slice(3));
+  }
+  // `dashboard` launches the OA dashboard (start if needed + open browser).
+  // Owns its own flags (--port/--no-open), so route before the flag parser.
+  if (process.argv[2] === "dashboard") {
+    return dashboardCommand(process.argv.slice(3));
   }
   const {
     cmd,

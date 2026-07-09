@@ -314,9 +314,14 @@ export function readWikiBody(
   let rel: string;
   let treePrefix: "wiki" | "tastes" | null = null;
   if (hitPath.includes("/wiki/")) {
+    // `?? hitPath` only narrows TS's index type — split() after a successful
+    // includes() always yields ≥2 parts, so [1] is never undefined at runtime.
+    /* v8 ignore next */
     rel = hitPath.split("/wiki/")[1] ?? hitPath;
     treePrefix = "wiki";
   } else if (hitPath.includes("/tastes/")) {
+    // Same TS-narrowing-only fallback as the /wiki/ arm above.
+    /* v8 ignore next */
     rel = hitPath.split("/tastes/")[1] ?? hitPath;
     treePrefix = "tastes";
   } else if (hitPath.startsWith("wiki/")) {
@@ -500,6 +505,9 @@ export function matchRouteConditions(
   // `params.X OR params.Y` — existence check
   const orExistMatch = c.match(/^params\.(\w+)(?:\s+OR\s+params\.(\w+))+\s*$/);
   if (orExistMatch) {
+    // `|| []` only narrows TS's null type — the anchored orExistMatch above
+    // guarantees the global scan finds at least two params.X occurrences.
+    /* v8 ignore next */
     const fields = c.match(/params\.(\w+)/g) || [];
     return fields.some((f) => {
       const name = f.slice("params.".length);

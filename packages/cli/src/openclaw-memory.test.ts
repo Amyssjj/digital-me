@@ -1,4 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import {
@@ -46,6 +48,16 @@ describe("digitalMeKnowledgePaths", () => {
 });
 
 describe("mergeMemoryExtraPaths", () => {
+  it("tolerates a null/non-object cfg by starting from an empty root", () => {
+    // Defensive: callers hand in whatever JSON.parse produced.
+    const { cfg, added } = mergeMemoryExtraPaths(
+      null as unknown as Record<string, unknown>,
+      ["/a/wiki"],
+    );
+    expect(added).toEqual(["/a/wiki"]);
+    expect((cfg as any).agents.defaults.memorySearch.extraPaths).toEqual(["/a/wiki"]);
+  });
+
   it("creates the nested structure and appends paths", () => {
     const { cfg, added } = mergeMemoryExtraPaths({}, ["/a/wiki", "/a/tastes"]);
     expect(added).toEqual(["/a/wiki", "/a/tastes"]);
@@ -118,5 +130,40 @@ describe("ensureOpenclawMemoryPaths", () => {
     const res = ensureOpenclawMemoryPaths("/home/u", "/data/dm", { OPENCLAW_HOME: "/oc" }, io);
     expect(res.configPath).toBe(path.join("/oc", "openclaw.json"));
     expect(io.files["/oc/openclaw.json"]).toBeDefined();
+  });
+});
+
+describe("ensureOpenclawMemoryPaths (default disk IO)", () => {
+  let tmp: string;
+
+  beforeAll(() => {
+    tmp = mkdtempSync(path.join(os.tmpdir(), "dm-openclaw-memory-"));
+  });
+
+  afterAll(() => {
+    if (tmp) rmSync(tmp, { recursive: true, force: true });
+  });
+
+  it("writes then re-reads the real config file when no io seam is injected", () => {
+    // Point the config at a nested path that does not exist yet so the
+    // default IO exercises mkdirp + write, then exists + read on rerun.
+    const cfgPath = path.join(tmp, "state", "openclaw.json");
+    const env = { DIGITAL_ME_OPENCLAW_CONFIG: cfgPath };
+
+    const first = ensureOpenclawMemoryPaths("/home/u", path.join(tmp, "dm"), env);
+    expect(first.ok).toBe(true);
+    expect(first.configPath).toBe(cfgPath);
+    expect(first.added).toEqual([path.join(tmp, "dm", "wiki"), path.join(tmp, "dm", "tastes")]);
+    expect(existsSync(cfgPath)).toBe(true);
+    const written = JSON.parse(readFileSync(cfgPath, "utf-8"));
+    expect(written.agents.defaults.memorySearch.extraPaths).toEqual([
+      path.join(tmp, "dm", "wiki"),
+      path.join(tmp, "dm", "tastes"),
+    ]);
+
+    // Second run reads the file back from disk and adds nothing.
+    const second = ensureOpenclawMemoryPaths("/home/u", path.join(tmp, "dm"), env);
+    expect(second.ok).toBe(true);
+    expect(second.added).toEqual([]);
   });
 });

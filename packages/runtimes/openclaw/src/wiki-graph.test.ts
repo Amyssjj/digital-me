@@ -137,4 +137,12 @@ describe("expandViaGraph", () => {
     const out = expandViaGraph([graph["a.md"]], (p) => graph[p] ?? null, 5);
     expect(out.map((e) => e.relPath).sort()).toEqual(["a.md", "b.md"]);
   });
+
+  it("treats a node without a related: field as having no neighbors", () => {
+    // frontmatter.related is optional — entries parsed from files with no
+    // related: line arrive as {} and must not blow up the walk.
+    const bare: WikiEntry = { relPath: "bare.md", frontmatter: {} };
+    const out = expandViaGraph([bare], () => null, 2);
+    expect(out.map((e) => e.relPath)).toEqual(["bare.md"]);
+  });
 });

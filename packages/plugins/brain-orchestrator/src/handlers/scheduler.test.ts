@@ -636,6 +636,15 @@ describe("reconcileCompletedDependencies", () => {
     );
   });
 
+  it("leaves an unblocked pending task untouched", () => {
+    const { deps } = makeDeps({ now: 1234 });
+    seedGoal(deps, { id: "g-1", status: "running" });
+    seedTask(deps, { id: "orphan", status: "pending", blockedBy: [] });
+
+    expect(reconcileCompletedDependencies(deps)).toBe(0);
+    expect(deps.tasks.get("orphan")!.status).toBe("pending");
+  });
+
   it("skip: does NOT skip when upstreams are only still-running (no failure)", () => {
     const { deps } = makeDeps({ now: 1234 });
     seedGoal(deps, { id: "g-1", status: "running" });

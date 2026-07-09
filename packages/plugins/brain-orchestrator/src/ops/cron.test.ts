@@ -59,6 +59,12 @@ describe("parseCron", () => {
     );
   });
 
+  it("rejects malformed range expressions (non-numeric or too many pieces)", () => {
+    expect(() => parseCron("1-x * * * *")).toThrow(/Invalid cron range/);
+    expect(() => parseCron("x-5 * * * *")).toThrow(/Invalid cron range/);
+    expect(() => parseCron("1-2-3 * * * *")).toThrow(/Invalid cron range/);
+  });
+
   it("ignores extra whitespace when splitting", () => {
     const cron = parseCron("  *   *   *   *   *  ");
     expect(cron.minute.size).toBe(60);
