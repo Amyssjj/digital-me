@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   CODEX_MD_TEMPLATE,
   HOOK_NAMES,
@@ -76,6 +76,16 @@ describe("buildCodexMcpConfig", () => {
     expect(toml).not.toContain("codex\nBROKEN");
     expect(toml.split("\n")).toHaveLength(5);
   });
+
+  it("escapes backspace and form-feed control characters", () => {
+    // \b and \f have dedicated TOML short escapes — make sure they don't
+    // fall through to the generic \uXXXX arm.
+    const toml = buildCodexMcpConfig({
+      ...inputs,
+      agentId: "codex\b\f",
+    });
+    expect(toml).toContain(`OPENCLAW_AGENT_ID = "codex\\b\\f"`);
+  });
 });
 
 describe("paths", () => {
@@ -86,6 +96,23 @@ describe("paths", () => {
     expect(MCP_TOML_TEMPLATE.endsWith("templates/openclaw-brain.mcp.toml")).toBe(
       true,
     );
+  });
+
+  it("falls back to assets/codex when hooks/ is absent (published CLI bundle layout)", async () => {
+    // In the workspace, hooks/ sits at the package root so the ternary's
+    // first arm wins. The published CLI bundle stages per-package assets
+    // under assets/codex/ instead — simulate that layout by mocking
+    // existsSync and re-importing the module.
+    vi.resetModules();
+    vi.doMock("node:fs", () => ({ existsSync: () => false }));
+    try {
+      const fresh = await import("./installer.js");
+      expect(fresh.PACKAGE_ROOT.endsWith("assets/codex")).toBe(true);
+      expect(fresh.TEMPLATES_DIR).toBe(`${fresh.PACKAGE_ROOT}/templates`);
+    } finally {
+      vi.doUnmock("node:fs");
+      vi.resetModules();
+    }
   });
 });
 

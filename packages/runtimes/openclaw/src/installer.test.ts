@@ -1,5 +1,5 @@
 import fs from "node:fs";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   BRAIN_ENTRY_TEMPLATE,
   BRAIN_INSTALL_FILES,
@@ -233,6 +233,33 @@ describe("PLUGINS catalog", () => {
         expect(fs.existsSync(f.src)).toBe(true);
       }
     }
+  });
+});
+
+describe("PACKAGE_ROOT resolution — published CLI bundle layout", () => {
+  afterEach(() => {
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  it("falls back to <MODULE_ROOT>/assets/openclaw when templates/ is absent", async () => {
+    // In the published CLI bundle, esbuild inlines this module into
+    // <npm-pkg>/bin/*.js — MODULE_ROOT then has no templates/ dir and the
+    // per-package assets live under assets/openclaw/ instead.
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        existsSync: () => false,
+        default: { ...actual, existsSync: () => false },
+      };
+    });
+    const bundled = await import("./installer.js");
+    expect(bundled.PACKAGE_ROOT.endsWith("/assets/openclaw")).toBe(true);
+    expect(bundled.TEMPLATES_DIR.endsWith("/assets/openclaw/templates")).toBe(
+      true,
+    );
   });
 });
 

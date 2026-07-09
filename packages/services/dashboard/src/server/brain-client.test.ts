@@ -276,6 +276,26 @@ describe("createBrainClient — public tool wrappers", () => {
     expect(out.freshness).toEqual({});
   });
 
+  it("memorySearch forwards the query with corpus/limit defaults and returns the raw payload", async () => {
+    const handler = vi.fn(async (args: Record<string, unknown>) => ({
+      results: [{ path: "wiki/a.md", score: 0.9 }],
+      echoed: args,
+    }));
+    const fake = fakeClient({ memory_search: handler });
+    const client = createBrainClient({ clientFactory: async () => fake });
+    const out = (await client.memorySearch("feed design")) as Record<string, unknown>;
+    expect(handler).toHaveBeenCalledWith({ query: "feed design", corpus: "all", limit: 20 });
+    expect(out.results).toEqual([{ path: "wiki/a.md", score: 0.9 }]);
+  });
+
+  it("memorySearch honors explicit corpus and limit", async () => {
+    const handler = vi.fn(async () => ({ results: [] }));
+    const fake = fakeClient({ memory_search: handler });
+    const client = createBrainClient({ clientFactory: async () => fake });
+    await client.memorySearch("q", { corpus: "wiki", limit: 3 });
+    expect(handler).toHaveBeenCalledWith({ query: "q", corpus: "wiki", limit: 3 });
+  });
+
   it("each wrapper auto-connects on first call", async () => {
     const factory = vi.fn(async () =>
       fakeClient({ tasks: async () => ({ goals: [], stats: {} }) }),

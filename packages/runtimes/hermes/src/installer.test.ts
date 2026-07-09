@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PACKAGE_ROOT,
   SECTION_BEGIN,
@@ -12,6 +12,23 @@ describe("paths", () => {
   it("TEMPLATES_DIR sits under PACKAGE_ROOT", () => {
     expect(TEMPLATES_DIR).toBe(`${PACKAGE_ROOT}/templates`);
     expect(SOUL_MD_TEMPLATE.endsWith("templates/SOUL.md")).toBe(true);
+  });
+
+  it("falls back to assets/hermes when templates/ is absent (published CLI bundle layout)", async () => {
+    // In the workspace, templates/ sits at the package root so the
+    // ternary's first arm wins. The published CLI bundle stages
+    // per-package assets under assets/hermes/ instead — simulate that
+    // layout by mocking existsSync and re-importing the module.
+    vi.resetModules();
+    vi.doMock("node:fs", () => ({ existsSync: () => false }));
+    try {
+      const fresh = await import("./installer.js");
+      expect(fresh.PACKAGE_ROOT.endsWith("assets/hermes")).toBe(true);
+      expect(fresh.TEMPLATES_DIR).toBe(`${fresh.PACKAGE_ROOT}/templates`);
+    } finally {
+      vi.doUnmock("node:fs");
+      vi.resetModules();
+    }
   });
 });
 

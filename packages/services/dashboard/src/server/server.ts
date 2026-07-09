@@ -10,7 +10,9 @@ import { fileURLToPath } from "url";
 import { fetchDashboardData } from "./data.mc.js";
 import { getGoals, getGoalMetrics, getAllGoalMetrics, getImprovements, getFeedback, getInsights, getCronRunsSummary, getCronRunsPerJob, getRecentTraces, getTraceById, getIssuesSummary, getIssuesTimeSeries, getTeamHealthTimeSeries, getAutomationOpportunitiesTimeSeries, getKanbanData, getLayerHealth, getWorkflowsForMechanism, getKnowledgeRows, getValidationRows } from "./db.js";
 import { getSystemStatus, loadSkillsConfig } from "./drift-status.mc.js";
-import { initBrainClient } from "./brain-client.mc.js";
+import { brainMemorySearch, initBrainClient } from "./brain-client.mc.js";
+// Feed search: ranked memory_search results with containment-checked previews.
+import { buildSearchRouter } from "./search.js";
 
 // NUX scope-down §C: new minimal metrics router for the 4-chart Metrics view.
 // Mounted alongside the legacy routes during the §C-§F transition window.
@@ -113,6 +115,21 @@ app.use("/api/mechanism", buildMechanismRouter());
 // split as the metrics endpoints); the stream_activity intake step owns the
 // brain → row mapping. See activity-feed.ts + intake/.../stream_activity.py.
 app.use("/api/activity-feed", buildActivityFeedRouter(DASHBOARD_DB_PATH));
+
+// ── Feed search: ranked knowledge search over the brain's memory_search ──
+// Preview markdown is read from disk, restricted to the user-owned knowledge
+// roots (the digital-me tree + the openclaw agent workspace) — a hit whose
+// path resolves outside them just previews as snippet-only.
+app.use(
+  "/api/search",
+  buildSearchRouter({
+    memorySearch: brainMemorySearch,
+    contentRoots: [
+      path.join(HOME, "digital-me"),
+      path.join(process.env["OPENCLAW_HOME"] ?? path.join(HOME, ".openclaw"), "workspace"),
+    ],
+  }),
+);
 // NUX §E note: buildKanbanRouter is exported but intentionally NOT mounted at
 // /api/kanban. The legacy /api/kanban endpoint below returns a rich
 // {goals, stats, pagination} shape that TaskKanban consumes; replacing it

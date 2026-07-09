@@ -110,6 +110,28 @@ describe("createM1EventsStore — create()", () => {
       turn_text_excerpt: "the M1 application_rate entry says...",
     });
   });
+
+  it("round-trips a missing turn_id as undefined", () => {
+    const store = createM1EventsStore({ db });
+    store.create(makeEvent({ eventId: "no-turn", turnId: undefined }));
+    const out = store.query({});
+    expect(out[0].turnId).toBeUndefined();
+  });
+
+  it("defaults schema_version and metric when a record omits them", () => {
+    const store = createM1EventsStore({ db });
+    // Runtime defensiveness: emitters go through recordM1Event (which fills
+    // these), but the store's INSERT guards them independently.
+    const bare = {
+      ...makeEvent({ eventId: "bare" }),
+      schemaVersion: undefined,
+      metric: undefined,
+    } as unknown as M1EventRecord;
+    expect(store.create(bare).inserted).toBe(true);
+    const out = store.query({});
+    expect(out[0].schemaVersion).toBe(1);
+    expect(out[0].metric).toBe("m1_application_rate");
+  });
 });
 
 describe("createM1EventsStore — query()", () => {
@@ -124,6 +146,41 @@ describe("createM1EventsStore — query()", () => {
     expect(store.query({ runtime: "hermes" }).length).toBe(1);
     expect(store.query({ runtime: "claude-code" }).length).toBe(1);
     expect(store.query({ agentId: "claude-code" }).length).toBe(1);
+  });
+
+  it("filters by sessionId", () => {
+    const store = createM1EventsStore({ db });
+    store.create(makeEvent({ eventId: "a", sessionId: "sess-A" }));
+    store.create(makeEvent({ eventId: "b", sessionId: "sess-B" }));
+    const out = store.query({ sessionId: "sess-B" });
+    expect(out).toHaveLength(1);
+    expect(out[0].eventId).toBe("b");
+  });
+
+  it("falls back to empty entries/extra when stored JSON is corrupt", () => {
+    const store = createM1EventsStore({ db });
+    db.prepare(
+      `INSERT INTO m1_events
+         (event_id, schema_version, metric, runtime, agent_id, session_id,
+          turn_id, event_type, entries_json, ack_signal, extra_json, t)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      "corrupt",
+      1,
+      "m1_application_rate",
+      "hermes",
+      "a",
+      "S",
+      "T1",
+      "knowledge_surfaced",
+      "{not json", // corrupt entries_json
+      null,
+      "also not json", // corrupt extra_json
+      100,
+    );
+    const out = store.query({});
+    expect(out[0].entries).toEqual([]);
+    expect(out[0].extra).toEqual({});
   });
 
   it("filters by time window", () => {

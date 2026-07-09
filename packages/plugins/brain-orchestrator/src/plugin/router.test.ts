@@ -810,6 +810,21 @@ describe("dispatchAction(checkpoint)", () => {
     ]);
   });
 
+  it("treats an empty artifactPaths array as absent", async () => {
+    const deps = makeDeps({ now: 5000 });
+    seedGoalWithTask(deps, { status: "running" });
+    const r = await dispatchAction(deps, "checkpoint", {
+      taskId: "t-1",
+      phase: "validation",
+      summary: "halfway",
+      artifactPaths: ["  ", ""],
+    });
+    expect(r.ok).toBe(true);
+    expect(
+      deps.tasks.get("t-1")!.latestCheckpoint?.artifactPaths,
+    ).toBeUndefined();
+  });
+
   it("returns ok=false when taskId is missing", async () => {
     const r = await dispatchAction(makeDeps(), "checkpoint", {
       phase: "x",
@@ -1172,6 +1187,28 @@ describe("dispatchAction — schedule_* actions", () => {
     const r = await dispatchAction(deps, "schedule_tick", {});
     expect(r.ok).toBe(true);
     expect(r.text).toMatch(/Reconciled \d+ stale tasks/);
+  });
+
+  it("schedule_tick summarizes reconciled completed dependency blockers", async () => {
+    const deps = makeDeps({ now: 5000 });
+    seedGoalWithTask(deps, { id: "upstream", status: "completed" });
+    deps.tasks.create({
+      id: "downstream",
+      goalId: "g-1",
+      name: "Task B",
+      task: "do y",
+      blockedBy: ["upstream"],
+      dispatch: { mode: "manual" },
+      status: "pending",
+      attemptCount: 0,
+      attempts: [],
+      priority: "normal",
+      onUpstreamFailure: "wait",
+    });
+    const r = await dispatchAction(deps, "schedule_tick", {});
+    expect(r.ok).toBe(true);
+    expect(r.text).toMatch(/Reconciled \d+ completed dependency blockers/);
+    expect(deps.tasks.get("downstream")!.status).toBe("ready");
   });
 
   it("schedule_tick summarizes refreshed schedule statuses", async () => {

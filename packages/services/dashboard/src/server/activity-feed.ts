@@ -144,7 +144,9 @@ export function queryActivityFeed(
 
   return {
     items: rows.map(toItem),
-    latest_ts: rows.length > 0 ? (rows[0]?.ts ?? null) : null,
+    // rows[0] is undefined on an empty feed → null; identical to the
+    // length-guarded form but without an unreachable fallback arm.
+    latest_ts: rows[0]?.ts ?? null,
   };
 }
 

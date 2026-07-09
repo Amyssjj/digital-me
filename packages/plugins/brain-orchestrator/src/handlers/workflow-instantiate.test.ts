@@ -25,6 +25,7 @@ import {
 } from "../store/migrations.js";
 import {
   instantiateWorkflow,
+  interpolateDeep,
   interpolateVariables,
   type InstantiateWorkflowDeps,
 } from "./workflow-instantiate.js";
@@ -119,6 +120,26 @@ describe("interpolateVariables", () => {
     expect(interpolateVariables("no vars here", { x: "y" })).toBe(
       "no vars here",
     );
+  });
+});
+
+// ── interpolateDeep ───────────────────────────────────────────────────────
+
+describe("interpolateDeep", () => {
+  it("substitutes inside nested arrays and objects", () => {
+    expect(
+      interpolateDeep(
+        { cmd: ["run", "{{env}}"], meta: { note: "for {{env}}" } },
+        { env: "prod" },
+      ),
+    ).toEqual({ cmd: ["run", "prod"], meta: { note: "for prod" } });
+  });
+
+  it("returns non-string primitives and null unchanged", () => {
+    expect(interpolateDeep(42, { x: "y" })).toBe(42);
+    expect(interpolateDeep(true, { x: "y" })).toBe(true);
+    expect(interpolateDeep(null, { x: "y" })).toBeNull();
+    expect(interpolateDeep(undefined, { x: "y" })).toBeUndefined();
   });
 });
 

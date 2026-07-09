@@ -90,4 +90,46 @@ describe("compat", () => {
   it("never throws on a missing api", () => {
     expect(() => warnIfUntestedHost(undefined, "digital-me-brain")).not.toThrow();
   });
+
+  it("warns when the host is newer by YEAR (not just month/patch)", () => {
+    const { api, warnings } = makeApi("2027.1.0");
+    warnIfUntestedHost(api, "digital-me-brain");
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("2027.1.0");
+  });
+
+  it("does not warn when the host is older by YEAR", () => {
+    const { api, warnings } = makeApi("2025.12.99");
+    warnIfUntestedHost(api, "digital-me-brain");
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("does not warn (and does not throw) on an unparseable host version", () => {
+    const { api, warnings } = makeApi("beta");
+    expect(() => warnIfUntestedHost(api, "digital-me-brain")).not.toThrow();
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("resolveHostOpenclawVersion returns undefined when the api throws on access", () => {
+    // Defensive contract: a hostile/buggy api object (throwing config getter)
+    // must resolve to "unknown version", never propagate.
+    const throwingApi = {
+      get config(): never {
+        throw new Error("boom");
+      },
+    } as unknown as Parameters<typeof resolveHostOpenclawVersion>[0];
+    expect(resolveHostOpenclawVersion(throwingApi)).toBeUndefined();
+  });
+
+  it("warnIfUntestedHost swallows a throwing logger (compat check must never block load)", () => {
+    const api = {
+      config: { meta: { lastTouchedVersion: "2027.1.0" } },
+      logger: {
+        warn: () => {
+          throw new Error("logger exploded");
+        },
+      },
+    };
+    expect(() => warnIfUntestedHost(api, "digital-me-brain")).not.toThrow();
+  });
 });

@@ -1,10 +1,13 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import express from "express";
 import fs from "node:fs";
+import http from "node:http";
 import os from "node:os";
 import path from "node:path";
+import type { AddressInfo } from "node:net";
 import Database from "better-sqlite3";
 
-import { coerceFilter, queryActivityFeed } from "./activity-feed.js";
+import { buildActivityFeedRouter, coerceFilter, queryActivityFeed } from "./activity-feed.js";
 import { migrate } from "./migrate.js";
 
 let tmpDir: string;
@@ -154,6 +157,31 @@ describe("queryActivityFeed", () => {
     expect(item.attachments![1]!.markdown).toContain("body b");
   });
 
+  it("filters non-object attachment entries and defaults missing fields", () => {
+    seed([
+      {
+        id: "mixed",
+        ts: "2026-06-04T03:00:00.000Z",
+        agent_id: "cc",
+        activity: "applied",
+        title: "x",
+        // Non-object entries drop; object entries default non-string fields.
+        attachments: JSON.stringify([null, "str", 42, {}, { title: 7, path: 3, markdown: 9 }]),
+      },
+      // Valid JSON but not an array → null.
+      { id: "obj", ts: "2026-06-04T02:00:00.000Z", agent_id: "cc", activity: "applied", title: "y", attachments: `{"not":"array"}` },
+      // Array whose every entry is filtered out → null, not [].
+      { id: "allbad", ts: "2026-06-04T01:00:00.000Z", agent_id: "cc", activity: "applied", title: "z", attachments: "[42]" },
+    ]);
+    const byId = Object.fromEntries(queryActivityFeed(db).items.map((i) => [i.id, i]));
+    expect(byId["mixed"]!.attachments).toEqual([
+      { title: "", path: null, markdown: null },
+      { title: "", path: null, markdown: null },
+    ]);
+    expect(byId["obj"]!.attachments).toBeNull();
+    expect(byId["allbad"]!.attachments).toBeNull();
+  });
+
   it("degrades malformed/absent attachments to null", () => {
     seed([
       { id: "bad", ts: "2026-06-04T02:00:00.000Z", agent_id: "cc", activity: "applied", title: "x", attachments: "{not json" },
@@ -193,5 +221,102 @@ describe("queryActivityFeed", () => {
     expect(coerceFilter("all")).toBe("all");
     expect(coerceFilter("bogus")).toBe("all");
     expect(coerceFilter(undefined)).toBe("all");
+  });
+});
+
+describe("buildActivityFeedRouter (HTTP)", () => {
+  let server: http.Server;
+  let base: string;
+
+  /** Mount the router against `dbFile` and start listening on an ephemeral
+   *  port. Same pattern as search.test.ts "buildSearchRouter (HTTP)". */
+  async function listen(dbFile: string): Promise<void> {
+    const app = express();
+    app.use("/api/activity-feed", buildActivityFeedRouter(dbFile));
+    server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+  }
+
+  afterEach(async () => {
+    await new Promise((r) => server.close(r));
+  });
+
+  interface FeedJson {
+    items: Array<{ id: string; activity: string }>;
+    latest_ts: string | null;
+  }
+
+  it("serves the feed with the default limit when none is given", async () => {
+    seed([
+      { id: "c1", ts: "2026-06-03T16:00:00.000Z", agent_id: "podcast", activity: "captured", title: "T" },
+      { id: "a1", ts: "2026-06-04T01:00:00.000Z", agent_id: "cc", activity: "applied", title: "A" },
+    ]);
+    await listen(dbPath);
+    const res = await fetch(`${base}/api/activity-feed`);
+    expect(res.status).toBe(200);
+    const json = (await res.json()) as FeedJson;
+    expect(json.items.map((i) => i.id)).toEqual(["a1", "c1"]);
+    expect(json.latest_ts).toBe("2026-06-04T01:00:00.000Z");
+  });
+
+  it("respects an explicit valid limit", async () => {
+    seed(
+      Array.from({ length: 5 }, (_, i) => ({
+        id: `x${i}`,
+        ts: `2026-06-04T0${i}:00:00.000Z`,
+        agent_id: "cc",
+        activity: "applied" as const,
+        title: `t${i}`,
+      })),
+    );
+    await listen(dbPath);
+    const json = (await (await fetch(`${base}/api/activity-feed?limit=2`)).json()) as FeedJson;
+    expect(json.items).toHaveLength(2);
+  });
+
+  it("falls back to the default limit of 100 on bogus/out-of-range limits", async () => {
+    seed(
+      Array.from({ length: 3 }, (_, i) => ({
+        id: `x${i}`,
+        ts: `2026-06-04T0${i}:00:00.000Z`,
+        agent_id: "cc",
+        activity: "applied" as const,
+        title: `t${i}`,
+      })),
+    );
+    await listen(dbPath);
+    for (const bad of ["abc", "0", "-5", "501"]) {
+      const json = (await (await fetch(`${base}/api/activity-feed?limit=${bad}`)).json()) as FeedJson;
+      // Default 100 > seeded 3 → everything comes back.
+      expect(json.items).toHaveLength(3);
+    }
+  });
+
+  it("coerces the kind filter (valid scopes, bogus falls back to all)", async () => {
+    seed([
+      { id: "c1", ts: "2026-06-03T16:00:00.000Z", agent_id: "podcast", activity: "captured", title: "T" },
+      { id: "a1", ts: "2026-06-04T01:00:00.000Z", agent_id: "cc", activity: "applied", title: "A" },
+    ]);
+    await listen(dbPath);
+    const captured = (await (await fetch(`${base}/api/activity-feed?kind=captured`)).json()) as FeedJson;
+    expect(captured.items.map((i) => i.activity)).toEqual(["captured"]);
+    const bogus = (await (await fetch(`${base}/api/activity-feed?kind=bogus`)).json()) as FeedJson;
+    expect(bogus.items).toHaveLength(2);
+  });
+
+  it("500s when the DB path is not a usable database", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // A directory path is unopenable as a sqlite file → the handler's catch.
+      await listen(path.join(tmpDir, "missing-dir", "nope.db"));
+      const res = await fetch(`${base}/api/activity-feed`);
+      expect(res.status).toBe(500);
+      const json = (await res.json()) as { error: string };
+      expect(json.error).toBe("Failed to fetch activity feed");
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

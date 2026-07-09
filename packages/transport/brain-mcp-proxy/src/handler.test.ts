@@ -8,6 +8,8 @@ import {
   type ToolCallTrace,
   type WikiBodyInliner,
 } from "./handler.js";
+import type { AppRateWriter } from "./app-rate-writer.js";
+import type { CallToolResult } from "./gateway.js";
 
 const makeInliner = (impl: WikiBodyInliner["readBody"]): WikiBodyInliner => ({
   readBody: impl,
@@ -233,6 +235,14 @@ describe("extractHitCount", () => {
   it("returns undefined when content is empty", () => {
     expect(extractHitCount("memory_search", { content: [] })).toBeUndefined();
   });
+
+  it("returns undefined when the text payload is not a string", () => {
+    expect(
+      extractHitCount("memory_search", {
+        content: [{ type: "text", text: 42 as unknown as string }],
+      }),
+    ).toBeUndefined();
+  });
 });
 
 describe("createCallToolHandler — traceWriter", () => {
@@ -430,6 +440,185 @@ describe("inlineTopHitBody", () => {
       inliner: { readBody: () => "body" },
     });
     expect(out).toBe(result);
+  });
+
+  it("returns input unchanged when content is empty", () => {
+    const result = { content: [] };
+    const out = inlineTopHitBody({
+      toolName: "memory_search",
+      result,
+      inliner: { readBody: () => "body" },
+    });
+    expect(out).toBe(result);
+  });
+
+  it("returns input unchanged when the text payload is not a string", () => {
+    const result = {
+      content: [{ type: "text" as const, text: 42 as unknown as string }],
+    };
+    const out = inlineTopHitBody({
+      toolName: "memory_search",
+      result,
+      inliner: { readBody: () => "body" },
+    });
+    expect(out).toBe(result);
+  });
+
+  it("returns input unchanged when the top hit is not an object", () => {
+    const result = memorySearchResult([null]);
+    const out = inlineTopHitBody({
+      toolName: "memory_search",
+      result,
+      inliner: { readBody: () => "body" },
+    });
+    expect(out).toBe(result);
+  });
+
+  it("returns input unchanged when the top hit has no path", () => {
+    const result = memorySearchResult([{ score: 0.9 }]);
+    const out = inlineTopHitBody({
+      toolName: "memory_search",
+      result,
+      inliner: { readBody: () => "body" },
+    });
+    expect(out).toBe(result);
+  });
+
+  it("treats a missing score as 0 (below minScore → no inline)", () => {
+    const result = memorySearchResult([{ path: "x.md" }]);
+    const reader = vi.fn().mockReturnValue("body");
+    const out = inlineTopHitBody({
+      toolName: "memory_search",
+      result,
+      inliner: { readBody: reader },
+    });
+    expect(reader).not.toHaveBeenCalled();
+    expect(out).toBe(result);
+  });
+
+  it("falls back to an empty tail when content reads back nullish while building the response", () => {
+    // Defensive path: results[0] is read from content before the augmented
+    // response re-reads content to copy the tail. An exotic result object
+    // whose content getter goes nullish must not crash the inliner.
+    const payload = JSON.stringify({ results: [{ path: "x.md", score: 0.9 }] });
+    let reads = 0;
+    const result = {
+      get content() {
+        reads += 1;
+        return reads === 1
+          ? [{ type: "text" as const, text: payload }]
+          : undefined;
+      },
+    } as unknown as CallToolResult;
+    const out = inlineTopHitBody({
+      toolName: "memory_search",
+      result,
+      inliner: { readBody: () => "BODY" },
+    });
+    expect(out.content).toHaveLength(1);
+    const parsed = JSON.parse((out.content[0] as { text: string }).text) as {
+      results: Array<Record<string, unknown>>;
+    };
+    expect(parsed.results[0]!.full_body).toBe("BODY");
+  });
+});
+
+// ─── appRateWriter wiring (M1 chokepoint, 2026-05-26) ──────────────────────
+
+function makeAppRateWriter() {
+  return {
+    recordSearch: vi.fn<AppRateWriter["recordSearch"]>(),
+    recordGet: vi.fn<AppRateWriter["recordGet"]>(),
+    flushAll: vi.fn<AppRateWriter["flushAll"]>(),
+    shutdown: vi.fn<AppRateWriter["shutdown"]>(),
+  };
+}
+
+describe("createCallToolHandler — appRateWriter wiring", () => {
+  it("routes memory_search responses to recordSearch (not recordGet)", async () => {
+    const searchResult = {
+      content: [
+        {
+          type: "text",
+          text: JSON.stringify({ results: [{ path: "wiki/x.md", score: 0.9 }] }),
+        },
+      ],
+    };
+    const invoke = vi.fn().mockResolvedValue(searchResult);
+    const appRateWriter = makeAppRateWriter();
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "codex",
+      log: vi.fn(),
+      appRateWriter,
+    });
+    await handler({ name: "memory_search", arguments: { query: "x" } });
+    expect(appRateWriter.recordSearch).toHaveBeenCalledOnce();
+    expect(appRateWriter.recordSearch.mock.calls[0]![0]).toMatchObject({
+      agentId: "codex",
+      toolName: "memory_search",
+      result: searchResult,
+    });
+    expect(appRateWriter.recordGet).not.toHaveBeenCalled();
+  });
+
+  it("routes memory_get calls to recordGet with the prepared args", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "entry body" }],
+    });
+    const appRateWriter = makeAppRateWriter();
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "codex",
+      log: vi.fn(),
+      appRateWriter,
+    });
+    await handler({ name: "memory_get", arguments: { path: "foo/a.md" } });
+    expect(appRateWriter.recordGet).toHaveBeenCalledOnce();
+    expect(appRateWriter.recordGet.mock.calls[0]![0]).toMatchObject({
+      agentId: "codex",
+      toolName: "memory_get",
+      args: { path: "foo/a.md", agent_id: "codex" },
+    });
+    expect(appRateWriter.recordSearch).not.toHaveBeenCalled();
+  });
+
+  it("does not observe non-memory tools", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "ok" }],
+    });
+    const appRateWriter = makeAppRateWriter();
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "codex",
+      log: vi.fn(),
+      appRateWriter,
+    });
+    await handler({ name: "tasks", arguments: { action: "board" } });
+    expect(appRateWriter.recordSearch).not.toHaveBeenCalled();
+    expect(appRateWriter.recordGet).not.toHaveBeenCalled();
+  });
+
+  it("never affects the tool response when the writer throws", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "ok" }],
+    });
+    const appRateWriter = makeAppRateWriter();
+    appRateWriter.recordSearch.mockImplementation(() => {
+      throw new Error("writer disk broken");
+    });
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "codex",
+      log: vi.fn(),
+      appRateWriter,
+    });
+    const result = await handler({
+      name: "memory_search",
+      arguments: { query: "x" },
+    });
+    expect(result.isError).toBeFalsy();
+    expect((result.content[0] as { text: string }).text).toBe("ok");
   });
 });
 

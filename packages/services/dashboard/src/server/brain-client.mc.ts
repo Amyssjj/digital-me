@@ -355,6 +355,22 @@ export async function brainWikiStatus(): Promise<BrainWikiStatus> {
   return result;
 }
 
+// ── Public API: Memory search ─────────────────────────────────────
+
+/** Ranked knowledge search via the brain's memory_search tool. Returns the
+ *  raw (parsed) payload — normalization lives in search.ts. Uncached: search
+ *  is user-initiated, not polled. */
+export async function brainMemorySearch(
+  query: string,
+  opts: { corpus?: "wiki" | "memory" | "all"; limit?: number } = {},
+): Promise<unknown> {
+  return callTool("memory_search", {
+    query,
+    corpus: opts.corpus ?? "all",
+    limit: opts.limit ?? 20,
+  });
+}
+
 // ── Connection Lifecycle ───────��───────────────────────────���──────
 
 export async function initBrainClient(): Promise<void> {

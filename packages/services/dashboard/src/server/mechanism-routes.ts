@@ -55,34 +55,36 @@ export function buildMechanismRouter(): Router {
       const eligible = templates.filter(isMechanismEligible);
       // Surface the rule so the UI can render a tooltip/badge explaining
       // why each workflow shows.
-      const rows = eligible.map((w) => ({
-        id: w.id,
-        name: w.name,
-        description: w.description ?? null,
-        version: w.version ?? null,
-        steps: (w.steps ?? []).map((s, i) => ({
-          stepKey: s.stepKey ?? s.step_key ?? `step-${i}`,
-          name: s.name,
-          blockedByKeys:
-            Array.isArray(s.blockedByKeys) ? s.blockedByKeys
-            : Array.isArray(s.blocked_by_keys) ? s.blocked_by_keys
-            : typeof s.blocked_by_keys === "string" && s.blocked_by_keys.length > 0
-              ? s.blocked_by_keys.split(",").map((k) => k.trim()).filter(Boolean)
-              : [],
-          sortOrder: s.sortOrder ?? s.sort_order ?? i,
-        })),
-        latestRun: w.latestRun ?? null,
-        totalRuns: w.totalRuns ?? 0,
-        successRate: w.successRate ?? null,
-        // Echo the inclusion reason — explicit flag vs auto-default.
-        mechanismVisibility: {
-          explicit: typeof w.display?.mechanism_view === "boolean",
-          enabled: w.display?.mechanism_view ?? null,
-          autoIncluded:
-            typeof w.display?.mechanism_view !== "boolean" &&
-            (w.steps ?? []).length >= 3,
-        },
-      }));
+      const rows = eligible.map((w) => {
+        const steps = w.steps ?? [];
+        return {
+          id: w.id,
+          name: w.name,
+          description: w.description ?? null,
+          version: w.version ?? null,
+          steps: steps.map((s, i) => ({
+            stepKey: s.stepKey ?? s.step_key ?? `step-${i}`,
+            name: s.name,
+            blockedByKeys:
+              Array.isArray(s.blockedByKeys) ? s.blockedByKeys
+              : Array.isArray(s.blocked_by_keys) ? s.blocked_by_keys
+              : typeof s.blocked_by_keys === "string" && s.blocked_by_keys.length > 0
+                ? s.blocked_by_keys.split(",").map((k) => k.trim()).filter(Boolean)
+                : [],
+            sortOrder: s.sortOrder ?? s.sort_order ?? i,
+          })),
+          latestRun: w.latestRun ?? null,
+          totalRuns: w.totalRuns ?? 0,
+          successRate: w.successRate ?? null,
+          // Echo the inclusion reason — explicit flag vs auto-default.
+          mechanismVisibility: {
+            explicit: typeof w.display?.mechanism_view === "boolean",
+            enabled: w.display?.mechanism_view ?? null,
+            autoIncluded:
+              typeof w.display?.mechanism_view !== "boolean" && steps.length >= 3,
+          },
+        };
+      });
       res.json({ workflows: rows, rule: "display.mechanism_view ?? (steps.length >= 3)" });
     } catch (err) {
       console.error("[/api/mechanism/workflows]", err);

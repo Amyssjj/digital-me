@@ -53,6 +53,14 @@ describe("parseRecallAckMode", () => {
   it("returns null when no registration line is present", () => {
     expect(parseRecallAckMode("just some gateway noise\n")).toBeNull();
   });
+
+  it("returns null when the registration line carries no assistant_ack field (old build)", () => {
+    expect(
+      parseRecallAckMode(
+        "2026-06-03T08:42:43 [plugins] digital-me-recall: registered hooks (boot=on, m1_emitter=on)\n",
+      ),
+    ).toBeNull();
+  });
 });
 
 describe("planDeployRuntimes", () => {

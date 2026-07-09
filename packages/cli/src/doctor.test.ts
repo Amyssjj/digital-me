@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import {
   OPENCLAW_SHADOW_LOCATIONS,
   RUNTIME_EXPECTATIONS,
+  buildModuleNotImportableReason,
   formatReport,
   parsePythonVersion,
   runDoctor,
+  runLlmAuthCheck,
   runOpenclawShadowCheck,
   type DoctorDeps,
 } from "./doctor.js";
@@ -321,6 +323,74 @@ describe("runDoctor", () => {
       expect(mod.note).toBe("/site-packages/dream_cycle/__init__.py");
   });
 
+  it("dream-cycle: fails when `python3 --version` itself errors (no output)", () => {
+    const r = runDoctor(
+      makeDeps({
+        which: () => "/usr/bin/python3",
+        execCommand: () => ({ status: 1, stdout: "", stderr: "" }),
+      }),
+      ["dream-cycle"],
+    );
+    const py = r.checks.find((c) => c.label === "dream-cycle: python3")!;
+    expect(py.ok).toBe(false);
+    if (!py.ok) {
+      expect(py.reason).toMatch(/--version' failed \(exit 1\)/);
+      expect(py.reason).toMatch(/\(no output\)/);
+    }
+  });
+
+  it("dream-cycle: fails when `python3 --version` prints something unparseable", () => {
+    const r = runDoctor(
+      makeDeps({
+        which: () => "/usr/bin/python3",
+        execCommand: () => ({ status: 0, stdout: "Anaconda mystery build\n", stderr: "" }),
+      }),
+      ["dream-cycle"],
+    );
+    const py = r.checks.find((c) => c.label === "dream-cycle: python3")!;
+    expect(py.ok).toBe(false);
+    if (!py.ok) expect(py.reason).toMatch(/Anaconda mystery build/);
+  });
+
+  it("dream-cycle: reads the version from stderr (pre-3.4 pythons print there)", () => {
+    const r = runDoctor(
+      makeDeps({
+        which: () => "/usr/bin/python3",
+        execCommand: (_cmd, args) => {
+          if (args[0] === "--version") {
+            return { status: 0, stdout: "", stderr: "Python 3.12.1\n" };
+          }
+          return { status: 0, stdout: "/x/dream_cycle.py", stderr: "" };
+        },
+      }),
+      ["dream-cycle"],
+    );
+    const py = r.checks.find((c) => c.label === "dream-cycle: python3")!;
+    expect(py.ok).toBe(true);
+    if (py.ok) expect(py.note).toMatch(/3\.12/);
+  });
+
+  it("dream-cycle: notes 'importable' when the module import prints no path", () => {
+    const r = runDoctor(
+      makeDeps({
+        which: () => "/usr/bin/python3",
+        execCommand: (_cmd, args) => {
+          if (args[0] === "--version") {
+            return { status: 0, stdout: "Python 3.12.1\n", stderr: "" };
+          }
+          // import succeeds but dream_cycle.__file__ is empty (namespace pkg)
+          return { status: 0, stdout: "\n", stderr: "" };
+        },
+      }),
+      ["dream-cycle"],
+    );
+    const mod = r.checks.find(
+      (c) => c.label === "dream-cycle: dream_cycle module",
+    )!;
+    expect(mod.ok).toBe(true);
+    if (mod.ok) expect(mod.note).toBe("importable");
+  });
+
   it("dream-cycle: fails when python3 is older than 3.11", () => {
     const r = runDoctor(
       makeDeps({
@@ -604,6 +674,85 @@ describe("runDoctor", () => {
     const auth = r.checks.find((c) => c.label === "dream-cycle: LLM auth")!;
     expect(auth.ok).toBe(true);
     if (auth.ok) expect(auth.note).toMatch(/dream_cycle module not importable/);
+  });
+
+  function llmAuthProbeFailingDeps(stderr: string): DoctorDeps {
+    return makeDeps({
+      which: () => "/usr/bin/python3",
+      execCommand: (_cmd, args) => {
+        const src = args[1] ?? "";
+        if (args[0] === "--version") {
+          return { status: 0, stdout: "Python 3.12.1\n", stderr: "" };
+        }
+        if (src.includes("import dream_cycle;")) {
+          return { status: 0, stdout: "/x/dream_cycle.py", stderr: "" };
+        }
+        // the config.yaml probe blows up with a NON-FileNotFoundError
+        return { status: 1, stdout: "", stderr };
+      },
+    });
+  }
+
+  it("dream-cycle: LLM auth — FAIL when config.yaml is unreadable (non-missing error)", () => {
+    const r = runDoctor(
+      llmAuthProbeFailingDeps("yaml.scanner.ScannerError: mapping values are not allowed"),
+      ["dream-cycle"],
+    );
+    const auth = r.checks.find((c) => c.label === "dream-cycle: LLM auth")!;
+    expect(auth.ok).toBe(false);
+    if (!auth.ok)
+      expect(auth.reason).toMatch(/Failed to read config\.yaml: yaml\.scanner/);
+  });
+
+  it("dream-cycle: LLM auth — FAIL with '(no output)' when the probe dies silently", () => {
+    const r = runDoctor(llmAuthProbeFailingDeps(""), ["dream-cycle"]);
+    const auth = r.checks.find((c) => c.label === "dream-cycle: LLM auth")!;
+    expect(auth.ok).toBe(false);
+    if (!auth.ok) expect(auth.reason).toMatch(/Failed to read config\.yaml: \(no output\)/);
+  });
+
+  it("dream-cycle: LLM auth — FAIL when the probe output has no engine/env pair", () => {
+    const r = runDoctor(
+      makeDeps({
+        which: () => "/usr/bin/python3",
+        execCommand: (_cmd, args) => {
+          const src = args[1] ?? "";
+          if (args[0] === "--version") {
+            return { status: 0, stdout: "Python 3.12.1\n", stderr: "" };
+          }
+          if (src.includes("import dream_cycle;")) {
+            return { status: 0, stdout: "/x/dream_cycle.py", stderr: "" };
+          }
+          return { status: 0, stdout: "garbage-without-a-tab\n", stderr: "" };
+        },
+      }),
+      ["dream-cycle"],
+    );
+    const auth = r.checks.find((c) => c.label === "dream-cycle: LLM auth")!;
+    expect(auth.ok).toBe(false);
+    if (!auth.ok) expect(auth.reason).toMatch(/Could not parse engine\/api_key_env/);
+  });
+});
+
+describe("buildModuleNotImportableReason", () => {
+  it("falls back to a plain pip hint when called without execCommand", () => {
+    // runDoctor never reaches this without execCommand (it skips upstream),
+    // but the helper itself must stay safe for any caller.
+    const reason = buildModuleNotImportableReason(
+      makeDeps({}),
+      "/usr/bin/python3",
+    );
+    expect(reason).toMatch(/pip install -e/);
+    expect(reason).toMatch(/Diagnostic probes skipped/);
+    expect(reason).toMatch(/<digital-me-os-repo>/);
+  });
+});
+
+describe("runLlmAuthCheck", () => {
+  it("reports a skip-note when called without execCommand", () => {
+    const c = runLlmAuthCheck(makeDeps({}), "/usr/bin/python3");
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/skipped — caller did not provide execCommand/);
   });
 });
 

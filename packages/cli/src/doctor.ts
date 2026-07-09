@@ -350,9 +350,10 @@ const MIN_PYTHON_MINOR = 11;
 export function parsePythonVersion(output: string): [number, number] | null {
   const m = output.match(/Python\s+(\d+)\.(\d+)/);
   if (!m) return null;
+  // The `\d+` captures guarantee parseInt yields a (finite or not) number,
+  // never NaN — so no NaN guard is needed here.
   const major = Number.parseInt(m[1]!, 10);
   const minor = Number.parseInt(m[2]!, 10);
-  if (Number.isNaN(major) || Number.isNaN(minor)) return null;
   return [major, minor];
 }
 
@@ -501,8 +502,8 @@ function venvRecipe(packagePath: string): string {
  * environment. Differentiates between PEP 668 (Homebrew/Debian/etc.),
  * missing pip, and a working pip that just needs the install command.
  * Inlines the absolute repo path when available so the recipe is
- * copy-paste-and-go. */
-function buildModuleNotImportableReason(
+ * copy-paste-and-go. Exported for direct unit testing. */
+export function buildModuleNotImportableReason(
   deps: DoctorDeps,
   python: string,
 ): string {
@@ -540,7 +541,9 @@ function buildModuleNotImportableReason(
   );
 }
 
-function runLlmAuthCheck(deps: DoctorDeps, python: string): CheckResult {
+/** LLM-auth check for the active dream-cycle engine. Exported for direct
+ * unit testing (runDoctor only reaches it when execCommand is provided). */
+export function runLlmAuthCheck(deps: DoctorDeps, python: string): CheckResult {
   if (!deps.execCommand) {
     return {
       ok: true,

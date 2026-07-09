@@ -96,6 +96,11 @@ function errorMessage(err: unknown): string {
 
 // ── Public factory ─────────────────────────────────────────────────────────
 
+export type MemorySearchOpts = {
+  corpus?: "wiki" | "memory" | "all";
+  limit?: number;
+};
+
 export type BrainClient = {
   connect(): Promise<MinimalMcpClient>;
   init(): Promise<InitResult>;
@@ -106,6 +111,7 @@ export type BrainClient = {
   scheduleList(): Promise<Array<Record<string, unknown>>>;
   tracesQuery(opts: TracesQueryOpts): Promise<TracesQueryResult>;
   wikiStatus(): Promise<BrainWikiStatus>;
+  memorySearch(query: string, opts?: MemorySearchOpts): Promise<unknown>;
 };
 
 export function createBrainClient(deps: {
@@ -270,6 +276,20 @@ export function createBrainClient(deps: {
     return result;
   }
 
+  /** Ranked knowledge search. Returns the tool's raw (parsed) payload —
+   *  shaping lives in search.ts so the router owns one normalizer. Uncached:
+   *  searches are user-initiated, not polled. */
+  async function memorySearch(
+    query: string,
+    opts: MemorySearchOpts = {},
+  ): Promise<unknown> {
+    return callTool("memory_search", {
+      query,
+      corpus: opts.corpus ?? "all",
+      limit: opts.limit ?? 20,
+    });
+  }
+
   return {
     connect,
     init,
@@ -280,5 +300,6 @@ export function createBrainClient(deps: {
     scheduleList,
     tracesQuery,
     wikiStatus,
+    memorySearch,
   };
 }

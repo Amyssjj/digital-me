@@ -1,10 +1,11 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_PNPM_SPEC,
   OVERLAY_DIRNAMES,
+  defaultExec,
   pnpmSpecFromPackageManager,
   resolvePnpmSpec,
   selectMatureStableTag,
@@ -145,6 +146,24 @@ function scriptedExec(cfg: ScriptConfig): ExecFn & { calls: { cmd: string; args:
     return ok("");
   }) as ExecFn & { calls: { cmd: string; args: string[] }[] };
   (exec as { calls: typeof calls }).calls = calls;
+  return exec;
+}
+
+/** Wrap a scripted exec, letting `override` intercept specific commands while
+ *  keeping the underlying call recording intact. */
+function withOverride(
+  inner: ReturnType<typeof scriptedExec>,
+  override: (cmd: string, args: readonly string[]) => ExecResult | undefined,
+): ExecFn & { calls: { cmd: string; args: string[] }[] } {
+  const exec = ((cmd, args, opts) => {
+    const hit = override(cmd, args);
+    if (hit) {
+      inner.calls.push({ cmd, args: [...args] });
+      return hit;
+    }
+    return inner(cmd, args, opts);
+  }) as ExecFn & { calls: { cmd: string; args: string[] }[] };
+  exec.calls = inner.calls;
   return exec;
 }
 
@@ -353,6 +372,10 @@ describe("updateOpenclaw", () => {
   async function runWithOpenclawHome(opts: {
     cfg: ScriptConfig;
     withSentinel: boolean;
+    /** Optional log collector (defaults to a silent logger). */
+    log?: (line: string) => void;
+    /** Optional exec override (defaults to scriptedExec(cfg)). */
+    exec?: ExecFn & { calls: { cmd: string; args: string[] }[] };
   }) {
     const prevHome = process.env.OPENCLAW_HOME;
     const openclawHome = fs.mkdtempSync(path.join(os.tmpdir(), "oc-home-"));
@@ -361,7 +384,7 @@ describe("updateOpenclaw", () => {
     if (opts.withSentinel) {
       fs.writeFileSync(path.join(openclawHome, "disable-launchagent"), "");
     }
-    const exec = scriptedExec(opts.cfg);
+    const exec = opts.exec ?? scriptedExec(opts.cfg);
     const { repoDir, extensionsDir } = makeRepo();
     try {
       const res = await updateOpenclaw({
@@ -369,7 +392,7 @@ describe("updateOpenclaw", () => {
         repoDir,
         extensionsDir,
         exec,
-        log: () => {},
+        log: opts.log ?? (() => {}),
         rematerializeOverlay: writingRematerialize(extensionsDir),
       });
       return { res, exec };
@@ -529,6 +552,575 @@ describe("updateOpenclaw", () => {
         c.cmd === "pnpm" && c.args.some((a) => /^pnpm@\d/.test(a)),
     );
     expect(leakedSpec).toBeUndefined();
+  });
+
+  // ── preflight failures + path resolution ─────────────────────────────
+
+  it("fails when the repo dir is missing, via the default exec and console logger", async () => {
+    // No exec/log injected: exercises the defaultExec + console.log defaults.
+    // Nothing is spawned — the existsSync preflight fails first.
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const prevRepo = process.env.OPENCLAW_REPO;
+    delete process.env.OPENCLAW_REPO;
+    try {
+      const home = fs.mkdtempSync(path.join(os.tmpdir(), "oc-nohome-"));
+      tmpDirs.push(home);
+      const res = await updateOpenclaw({
+        home,
+        rematerializeOverlay: async () => 0,
+      });
+      expect(res.status).toBe("failed");
+      expect(res.exitCode).toBe(1);
+      expect(res.blockers.join(" ")).toMatch(/openclaw repo not found/);
+      // Default repo resolution: <home>/openclaw.
+      expect(res.blockers.join(" ")).toContain(path.join(home, "openclaw"));
+      expect(logSpy).toHaveBeenCalled();
+    } finally {
+      logSpy.mockRestore();
+      if (prevRepo !== undefined) process.env.OPENCLAW_REPO = prevRepo;
+    }
+  });
+
+  it("resolves the repo from $OPENCLAW_REPO when --repo-dir is not given", async () => {
+    const prevRepo = process.env.OPENCLAW_REPO;
+    process.env.OPENCLAW_REPO = "/nonexistent/openclaw-env-repo";
+    try {
+      const res = await updateOpenclaw({
+        home: os.tmpdir(),
+        exec: scriptedExec(base()),
+        log: () => {},
+        rematerializeOverlay: async () => 0,
+      });
+      expect(res.status).toBe("failed");
+      expect(res.blockers.join(" ")).toContain("/nonexistent/openclaw-env-repo");
+    } finally {
+      if (prevRepo === undefined) delete process.env.OPENCLAW_REPO;
+      else process.env.OPENCLAW_REPO = prevRepo;
+    }
+  });
+
+  it("fails when the dir is not a git work tree", async () => {
+    const exec = withOverride(scriptedExec(base()), (cmd, args) =>
+      cmd === "git" && args.includes("--is-inside-work-tree")
+        ? { status: 0, stdout: "false", stderr: "" }
+        : undefined,
+    );
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      exec,
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/not a git work tree/);
+  });
+
+  it("fails on a stale .git/index.lock", async () => {
+    const { repoDir, extensionsDir } = makeRepo();
+    fs.mkdirSync(path.join(repoDir, ".git"), { recursive: true });
+    fs.writeFileSync(path.join(repoDir, ".git", "index.lock"), "");
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      exec: scriptedExec(base()),
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/index\.lock/);
+  });
+
+  it("counts in-tree overlay-like paths as dirt when extensionsDir is outside the repo", async () => {
+    // With the overlay outside repoDir, git-status entries can never belong
+    // to it — an in-tree extensions/ path is real dirt, not overlay.
+    const { repoDir } = makeRepo();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "oc-ext-"));
+    tmpDirs.push(outside);
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir: outside,
+      exec: scriptedExec({
+        ...base(),
+        porcelain: "?? extensions/digital-me-brain/index.mjs",
+      }),
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/uncommitted changes/);
+  });
+
+  it("updates cleanly with an extensionsDir outside the repo", async () => {
+    const cfg = base();
+    const { repoDir } = makeRepo();
+    const outside = fs.mkdtempSync(path.join(os.tmpdir(), "oc-ext-"));
+    tmpDirs.push(outside);
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir: outside,
+      skipRestart: true,
+      exec: scriptedExec(cfg),
+      log: () => {},
+      rematerializeOverlay: writingRematerialize(outside),
+    });
+    expect(res.status).toBe("updated");
+  });
+
+  it("treats overlay dirs at the repo root as overlay when extensionsDir IS the repo dir", async () => {
+    const { repoDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir: repoDir,
+      dryRun: true,
+      exec: scriptedExec({
+        ...base(),
+        porcelain: "?? digital-me-brain/index.mjs",
+      }),
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    // The root-level overlay dir is ignored by the clean check.
+    expect(res.status).toBe("dry-run");
+  });
+
+  it("logs a NOTE when the overlay is git-tracked (legacy fork model)", async () => {
+    const cfg = base();
+    cfg.tracked = "extensions/digital-me-brain/index.mjs";
+    const { repoDir, extensionsDir } = makeRepo();
+    const lines: string[] = [];
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      dryRun: true,
+      exec: scriptedExec(cfg),
+      log: (l) => lines.push(l),
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("dry-run");
+    expect(lines.join("\n")).toMatch(/\[NOTE\] Plugin overlay is git-tracked/);
+  });
+
+  // ── fetch / tag selection / resolution failures ──────────────────────
+
+  it("fails with a blocker when git fetch fails", async () => {
+    const cfg = base();
+    cfg.fetchStatus = 1;
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      exec: scriptedExec(cfg),
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/git fetch failed/);
+  });
+
+  it("falls back to origin/main (with a WARN) when no mature stable tag exists", async () => {
+    const cfg = base();
+    cfg.tagsOutput = "";
+    cfg.targetRef = "origin/main";
+    const { repoDir, extensionsDir } = makeRepo();
+    const lines: string[] = [];
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      dryRun: true,
+      exec: scriptedExec(cfg),
+      log: (l) => lines.push(l),
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("dry-run");
+    expect(res.toRef).toBe("origin/main");
+    expect(lines.join("\n")).toMatch(/no stable tag/);
+  });
+
+  it("fails when the target ref cannot be resolved to a commit", async () => {
+    const exec = withOverride(scriptedExec(base()), (cmd, args) =>
+      cmd === "git" && args.some((a) => a.endsWith("^{commit}"))
+        ? { status: 1, stdout: "", stderr: "" }
+        : undefined,
+    );
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      exec,
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/could not resolve target ref/);
+  });
+
+  it("logs --pnpm-spec as the pnpm source when explicitly overridden", async () => {
+    const { repoDir, extensionsDir } = makeRepo();
+    const lines: string[] = [];
+    await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      dryRun: true,
+      pnpmSpec: "pnpm@9.9.9",
+      exec: scriptedExec(base()),
+      log: (l) => lines.push(l),
+      rematerializeOverlay: async () => 0,
+    });
+    expect(lines.join("\n")).toMatch(/pnpm@9\.9\.9 \(--pnpm-spec\)/);
+  });
+
+  it("noop reports 'unknown' when package.json cannot be parsed at either ref", async () => {
+    const cfg = base();
+    cfg.targetSha = cfg.headSha; // already current
+    const exec = withOverride(scriptedExec(cfg), (cmd, args) =>
+      cmd === "git" && args.includes("show")
+        ? { status: 0, stdout: "not-json{", stderr: "" }
+        : undefined,
+    );
+    const { repoDir, extensionsDir } = makeRepo();
+    const lines: string[] = [];
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      exec,
+      log: (l) => lines.push(l),
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("noop");
+    expect(lines.join("\n")).toMatch(/\(unknown\)/);
+  });
+
+  it("plans with sha/'?' fallbacks when git show fails at both refs (dry-run, skipRestart)", async () => {
+    const cfg = base();
+    const exec = withOverride(scriptedExec(cfg), (cmd, args) =>
+      cmd === "git" && args.includes("show")
+        ? { status: 1, stdout: "", stderr: "fatal: bad object" }
+        : undefined,
+    );
+    const { repoDir, extensionsDir } = makeRepo();
+    const lines: string[] = [];
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      dryRun: true,
+      skipRestart: true,
+      exec,
+      log: (l) => lines.push(l),
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("dry-run");
+    expect(res.fromVersion).toBeUndefined();
+    expect(res.toVersion).toBeUndefined();
+    const all = lines.join("\n");
+    // Plan header falls back to the abbreviated sha and "?".
+    expect(all).toMatch(/aaaaaaaaaa → \?/);
+    // skipRestart drops the re-stamp/restart step from the dry-run plan.
+    expect(all).not.toMatch(/re-stamp service \+ restart gateway/);
+  });
+
+  // ── checkout / build / overlay / smoke failures ──────────────────────
+
+  it("fails with a blocker when git checkout fails", async () => {
+    const cfg = base();
+    cfg.checkoutStatus = 1;
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec: scriptedExec(cfg),
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/git checkout failed/);
+  });
+
+  it("fails when post-checkout HEAD does not land on the target sha", async () => {
+    const cfg = base();
+    // rev-parse HEAD keeps answering the OLD sha even after checkout.
+    const exec = withOverride(scriptedExec(cfg), (cmd, args) =>
+      cmd === "git" && args.includes("rev-parse") && args.includes("HEAD")
+        ? { status: 0, stdout: cfg.headSha, stderr: "" }
+        : undefined,
+    );
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec,
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/post-checkout HEAD/);
+  });
+
+  it("fails with a blocker when pnpm build fails", async () => {
+    const cfg = base();
+    cfg.buildStatus = 1;
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec: scriptedExec(cfg),
+      log: () => {},
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/pnpm build failed/);
+  });
+
+  it("fails when overlay materialization returns a non-zero exit", async () => {
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec: scriptedExec(base()),
+      log: () => {},
+      rematerializeOverlay: async () => 3,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/overlay materialization failed \(exit 3\)/);
+  });
+
+  it("fails when a built overlay entry is missing on disk", async () => {
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec: scriptedExec(base()),
+      log: () => {},
+      // Claims success but writes nothing.
+      rematerializeOverlay: async () => 0,
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/missing built overlay entry/);
+  });
+
+  it("fails when an overlay bundle flunks the node --check syntax smoke", async () => {
+    const cfg = base();
+    cfg.smokeStatus = 1;
+    const { repoDir, extensionsDir } = makeRepo();
+    const res = await updateOpenclaw({
+      home: os.tmpdir(),
+      repoDir,
+      extensionsDir,
+      skipRestart: true,
+      exec: scriptedExec(cfg),
+      log: () => {},
+      rematerializeOverlay: writingRematerialize(extensionsDir),
+    });
+    expect(res.status).toBe("failed");
+    expect(res.blockers.join(" ")).toMatch(/failed syntax smoke/);
+  });
+
+  // ── restart / audit edge cases ───────────────────────────────────────
+
+  it("warns (non-fatal) when gateway restart fails", async () => {
+    const cfg = base();
+    cfg.hasOpenclaw = true;
+    cfg.restartStatus = 1;
+    const lines: string[] = [];
+    const { res } = await runWithOpenclawHome({
+      cfg,
+      withSentinel: true, // restart-only path
+      log: (l) => lines.push(l),
+    });
+    // Non-fatal: the update itself is applied.
+    expect(res.status).toBe("updated");
+    expect(lines.join("\n")).toMatch(/gateway restart returned 1/);
+  });
+
+  it("warns and skips the restart when 'openclaw' is not on PATH", async () => {
+    const cfg = base(); // hasOpenclaw defaults to falsy → `which` fails
+    const lines: string[] = [];
+    const { res, exec } = await runWithOpenclawHome({
+      cfg,
+      withSentinel: false,
+      log: (l) => lines.push(l),
+    });
+    expect(res.status).toBe("updated");
+    expect(lines.join("\n")).toMatch(/'openclaw' not on PATH/);
+    expect(exec.calls.some((c) => c.cmd === "openclaw")).toBe(false);
+  });
+
+  it("audit warns when the live version/probe don't reflect the update yet", async () => {
+    const cfg = base();
+    cfg.hasOpenclaw = true;
+    const exec = withOverride(scriptedExec(cfg), (cmd, args) => {
+      if (cmd === "openclaw" && args.includes("--version")) {
+        return { status: 0, stdout: "OpenClaw 0.0.0", stderr: "" };
+      }
+      if (cmd === "openclaw" && args.includes("status")) {
+        return { status: 0, stdout: "still starting", stderr: "" };
+      }
+      return undefined;
+    });
+    const lines: string[] = [];
+    const { res } = await runWithOpenclawHome({
+      cfg,
+      withSentinel: true, // restart-only path runs the audit directly
+      log: (l) => lines.push(l),
+      exec,
+    });
+    expect(res.status).toBe("updated");
+    const all = lines.join("\n");
+    expect(all).toMatch(/does not include 2026\.5\.27/);
+    expect(all).toMatch(/did not report 'Connectivity probe: ok'/);
+  });
+
+  it("falls back to ref names in logs when versions are unknown (full update + re-stamp)", async () => {
+    const cfg = base();
+    cfg.hasOpenclaw = true;
+    const exec = withOverride(scriptedExec(cfg), (cmd, args) =>
+      cmd === "git" && args.includes("show")
+        ? { status: 0, stdout: "{invalid", stderr: "" }
+        : undefined,
+    );
+    const lines: string[] = [];
+    const { res } = await runWithOpenclawHome({
+      cfg,
+      withSentinel: false, // re-stamp + restart path
+      log: (l) => lines.push(l),
+      exec,
+    });
+    expect(res.status).toBe("updated");
+    const all = lines.join("\n");
+    // toVersion unknown → both stamps fall back to the tag ref…
+    expect(all).toMatch(/service files re-stamped to v2026\.5\.27/);
+    // …and the final OK line falls back to the abbreviated sha + tag ref.
+    expect(all).toMatch(/openclaw updated aaaaaaaaaa → v2026\.5\.27/);
+  });
+
+  // ── env-var extensionsDir resolution ─────────────────────────────────
+
+  it("resolves extensionsDir from $OPENCLAW_EXTENSIONS_DIR when not given", async () => {
+    const prevExt = process.env.OPENCLAW_EXTENSIONS_DIR;
+    const envExt = fs.mkdtempSync(path.join(os.tmpdir(), "oc-envext-"));
+    tmpDirs.push(envExt);
+    process.env.OPENCLAW_EXTENSIONS_DIR = envExt;
+    try {
+      const { repoDir } = makeRepo();
+      let got: string | undefined;
+      const res = await updateOpenclaw({
+        home: os.tmpdir(),
+        repoDir,
+        skipRestart: true,
+        exec: scriptedExec(base()),
+        log: () => {},
+        rematerializeOverlay: async ({ extensionsDir }) => {
+          got = extensionsDir;
+          await writingRematerialize(extensionsDir)();
+          return 0;
+        },
+      });
+      expect(res.status).toBe("updated");
+      expect(got).toBe(envExt);
+    } finally {
+      if (prevExt === undefined) delete process.env.OPENCLAW_EXTENSIONS_DIR;
+      else process.env.OPENCLAW_EXTENSIONS_DIR = prevExt;
+    }
+  });
+
+  it("defaults extensionsDir to <OPENCLAW_HOME>/extensions when nothing else is set", async () => {
+    const prevExt = process.env.OPENCLAW_EXTENSIONS_DIR;
+    const prevHome = process.env.OPENCLAW_HOME;
+    delete process.env.OPENCLAW_EXTENSIONS_DIR;
+    const openclawHome = fs.mkdtempSync(path.join(os.tmpdir(), "oc-statehome-"));
+    tmpDirs.push(openclawHome);
+    process.env.OPENCLAW_HOME = openclawHome;
+    try {
+      const { repoDir } = makeRepo();
+      let got: string | undefined;
+      const res = await updateOpenclaw({
+        home: os.tmpdir(),
+        repoDir,
+        skipRestart: true,
+        exec: scriptedExec(base()),
+        log: () => {},
+        rematerializeOverlay: async ({ extensionsDir }) => {
+          got = extensionsDir;
+          await writingRematerialize(extensionsDir)();
+          return 0;
+        },
+      });
+      expect(res.status).toBe("updated");
+      expect(got).toBe(path.join(openclawHome, "extensions"));
+    } finally {
+      if (prevExt === undefined) delete process.env.OPENCLAW_EXTENSIONS_DIR;
+      else process.env.OPENCLAW_EXTENSIONS_DIR = prevExt;
+      if (prevHome === undefined) delete process.env.OPENCLAW_HOME;
+      else process.env.OPENCLAW_HOME = prevHome;
+    }
+  });
+});
+
+describe("defaultExec", () => {
+  it("runs a real process, forwarding cwd/env/input/timeout", () => {
+    const res = defaultExec(
+      process.execPath,
+      [
+        "-e",
+        "process.stdout.write(require('node:fs').readFileSync(0,'utf8') + process.env.DM_TEST_MARK)",
+      ],
+      {
+        cwd: os.tmpdir(),
+        env: { ...process.env, DM_TEST_MARK: "-mark" },
+        input: "echoed",
+        timeoutMs: 30_000,
+      },
+    );
+    expect(res.status).toBe(0);
+    expect(res.stdout).toBe("echoed-mark");
+  });
+
+  it("uses the built-in defaults (no opts) and captures stderr + exit code", () => {
+    const res = defaultExec(process.execPath, [
+      "-e",
+      "process.stderr.write('warn'); process.exit(3)",
+    ]);
+    expect(res.status).toBe(3);
+    expect(res.stderr).toBe("warn");
+    expect(res.stdout).toBe("");
+  });
+
+  it("maps a spawn error (missing binary) to status 1 with empty output", () => {
+    const res = defaultExec("/definitely/not/a/binary-dm-test", []);
+    expect(res.status).toBe(1);
+    expect(res.stdout).toBe("");
+    expect(res.stderr).toBe("");
+  });
+
+  it("maps a signal-killed process (null status, no spawn error) to status 0", () => {
+    const res = defaultExec(process.execPath, [
+      "-e",
+      "process.kill(process.pid, 'SIGKILL')",
+    ]);
+    expect(res.status).toBe(0);
   });
 });
 

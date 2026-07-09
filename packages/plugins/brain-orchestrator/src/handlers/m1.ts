@@ -223,6 +223,9 @@ export function scoreM1(
       agentId: b.agentId,
       acknowledgedTurns: b.acknowledgedTurns,
       surfacedTurns: b.surfacedTurns,
+      // Unreachable null arm: a bucket only exists after surfacedTurns += 1,
+      // so surfacedTurns >= 1 whenever a rollup is emitted. Defensive only.
+      /* v8 ignore next */
       ackRate: b.surfacedTurns > 0 ? b.acknowledgedTurns / b.surfacedTurns : null,
       surfacedEntries: b.surfacedPaths.size,
       actedEntries: b.actedPaths.size,

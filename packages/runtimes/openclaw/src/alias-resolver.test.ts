@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -329,6 +329,32 @@ describe("createOpenClawAliasResolver", () => {
     expect(resolver("unknown", makeCtx())).toBeUndefined();
   });
 
+  it("proceeds best-effort when chmod is unsupported (network mounts ignoring mode bits)", () => {
+    // Both tighten-up chmods (artifact dir 0700 + spec.json 0600) are
+    // best-effort: a filesystem that rejects chmod must not break dispatch.
+    const chmodSpy = vi.spyOn(fs, "chmodSync").mockImplementation(() => {
+      throw new Error("EPERM: operation not permitted");
+    });
+    try {
+      const resolver = createOpenClawAliasResolver({
+        aliases: { "claude-code-cli": claudeAlias },
+        artifactRoot,
+        workerScript: "/abs/worker.mjs",
+        nodeBinary: "/abs/node",
+      });
+      const result = resolver("claude-code-cli", makeCtx()) as TaskDispatch;
+      expect(result.mode).toBe("exec");
+      // Dir + spec chmod were both attempted (and both swallowed).
+      expect(chmodSpy).toHaveBeenCalledTimes(2);
+      // spec.json was still written despite the chmod failures.
+      expect(
+        fs.existsSync(path.join(artifactRoot, "g-1", "t-1", "spec.json")),
+      ).toBe(true);
+    } finally {
+      chmodSpy.mockRestore();
+    }
+  });
+
   it("works with a non-exec originalDispatch (still resolves the alias)", () => {
     const resolver = createOpenClawAliasResolver({
       aliases: { "claude-code-cli": claudeAlias },
@@ -348,5 +374,33 @@ describe("createOpenClawAliasResolver", () => {
       }),
     ) as TaskDispatch;
     expect(result.mode).toBe("exec");
+  });
+});
+
+describe("PACKAGE_ROOT resolution — published CLI bundle layout", () => {
+  afterEach(() => {
+    vi.doUnmock("node:fs");
+    vi.resetModules();
+  });
+
+  it("resolves DEFAULT_WORKER_SCRIPT under assets/openclaw when scripts/ is absent", async () => {
+    // In the published CLI bundle, esbuild inlines this module into
+    // <npm-pkg>/bin/*.js — MODULE_ROOT then has no scripts/ dir and the
+    // per-package assets are staged under assets/openclaw/ instead.
+    vi.resetModules();
+    vi.doMock("node:fs", async (importOriginal) => {
+      const actual = await importOriginal<typeof import("node:fs")>();
+      return {
+        ...actual,
+        existsSync: () => false,
+        default: { ...actual, existsSync: () => false },
+      };
+    });
+    const bundled = await import("./alias-resolver.js");
+    expect(
+      bundled.DEFAULT_WORKER_SCRIPT.endsWith(
+        "/assets/openclaw/scripts/cli-exec-worker.mjs",
+      ),
+    ).toBe(true);
   });
 });
