@@ -590,18 +590,21 @@ export type RetentionSweepResult = {
 };
 
 /**
- * Delete terminal (completed/failed) goals instantiated BY THE SCHEDULER
- * whose completion is older than the retention window, along with their
- * tasks, attempts, and (when a traces store is provided) traces. There are
- * no FK cascades in the schema — children are removed explicitly, leaf-first.
+ * Delete terminal (completed/failed) goals of SCHEDULED workflows whose
+ * completion is older than the retention window, along with their tasks,
+ * attempts, and (when a traces store is provided) traces. There are no FK
+ * cascades in the schema — children are removed explicitly, leaf-first.
  *
- * Two independent guards keep non-cron work safe: the workflow must appear
- * in the schedules table, AND the goal must be stamped
- * `created_by = 'scheduler'` (set via instantiateWorkflow's
- * `origin: "schedule"`). A manual `run_workflow` of a scheduled template is
- * created_by "orchestrator" and is never touched. The per-workflow id lookup
- * runs against idx_goals_workflow, so the sweep is an indexed no-op when
- * nothing expired.
+ * Ratified policy (2026-07-10): any terminal goal of a workflow currently in
+ * the schedules table, older than the retention window, is operational
+ * exhaust — regardless of who instantiated it. That includes manual
+ * `run_workflow` replays of a scheduled template, and legacy rows from before
+ * `created_by` origin-stamping existed, which the previous
+ * `created_by = 'scheduler'` guard left immortal. The remaining guards:
+ * schedules-table membership, terminal status, and `type = 'project'` —
+ * one-off goals of non-scheduled workflows and evergreen concerns are never
+ * touched. The per-workflow id lookup runs against idx_goals_workflow, so the
+ * sweep is an indexed no-op when nothing expired.
  */
 export function sweepCronGoalRetention(
   deps: SchedulerDeps,
@@ -621,7 +624,6 @@ export function sweepCronGoalRetention(
     const goalIds = deps.goals.findTerminalIdsByWorkflowBefore(
       workflowId,
       cutoff,
-      "scheduler",
     );
     for (const goalId of goalIds) {
       // Collect task ids BEFORE deleting the tasks: traces may carry a

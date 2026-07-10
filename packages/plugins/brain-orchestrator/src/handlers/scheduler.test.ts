@@ -1195,12 +1195,13 @@ describe("sweepCronGoalRetention", () => {
     expect(logs.some((l) => l.message.includes("retention sweep deleted 1"))).toBe(true);
   });
 
-  it("preserves manual run_workflow goals of a scheduled template", () => {
+  it("sweeps manual run_workflow replays and pre-stamping legacy goals of a scheduled template (ratified 2026-07-10)", () => {
     const { deps } = makeDeps({ now: 10_000, cronGoalRetentionMs: 1_000 });
     seedWorkflow(deps, "wf-1");
     seedSchedule(deps, { workflowId: "wf-1" });
-    // Same template, same age — but created by a manual run_workflow call
-    // (created_by != 'scheduler'), so it is not operational cron exhaust.
+    // Any terminal goal of a SCHEDULED workflow past retention is exhaust,
+    // regardless of created_by: manual replays and rows predating
+    // origin-stamping (which the old created_by guard left immortal).
     seedGoal(deps, {
       id: "g-manual-run",
       status: "completed",
@@ -1216,8 +1217,8 @@ describe("sweepCronGoalRetention", () => {
       createdBy: "scheduler",
     });
     const r = sweepCronGoalRetention(deps);
-    expect(r.goalsDeleted).toBe(1);
-    expect(deps.goals.get("g-manual-run")).toBeDefined();
+    expect(r.goalsDeleted).toBe(2);
+    expect(deps.goals.get("g-manual-run")).toBeUndefined();
     expect(deps.goals.get("g-cron-run")).toBeUndefined();
   });
 
