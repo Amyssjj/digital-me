@@ -62,6 +62,7 @@ MEMORY_DIR = _PATHS.memory_dir            # Optional[Path]: None → skip second
 REPO_DIGEST_DIR = _PATHS.digest_dir
 DREAM_CYCLE_LOGS = _PATHS.dream_cycle_logs
 WIKI_ROOT = _PATHS.wiki_dir
+TASTES_ROOT = _PATHS.wiki_root / "tastes"
 SKILLS_PROPOSALS = _PATHS.skills_proposals
 
 SUMMARY_CACHE = Path(os.path.expanduser("~/.cache/daily-digest/topic-summaries.json"))
@@ -262,6 +263,37 @@ def _wiki_entries_created_on(date_iso: str) -> list[Path]:
         return []
     out: list[Path] = []
     for md in sorted(WIKI_ROOT.rglob("*.md")):
+        if md.name.startswith("_"):
+            continue
+        try:
+            head = md.read_text(encoding="utf-8", errors="ignore")[:4096]
+        except OSError:
+            continue
+        fm = re.match(r"^---\n.*?\n---", head, re.DOTALL)
+        if not fm:
+            continue
+        if _extract_yaml_date(fm.group(0), "created") == date_iso:
+            out.append(md)
+    return out
+
+
+def _taste_entries_created_on(date_iso: str) -> list[Path]:
+    """Taste leaves whose frontmatter `created` == date_iso — read from the
+    tastes TREE itself, not from the dream-cycle log.
+
+    Why: tastes follow the publish-immediately model — leaves land in
+    ~/digital-me/tastes/ the moment they're distilled (taste-distill,
+    in-session capture, any agent), not only via the overnight compiler.
+    Counting `taste_total` purely from compile-log skill counters was the
+    2026-07-10 "taste 0 on a 1-leaf day" zero-lie: the data-truth sweep's
+    D1 gate caught the digest reporting 0 while the tree had a fresh leaf.
+    Same class as the 2026-07-03 "Wiki 0" incident `_wiki_entries_created_on`
+    fixed — the tree cannot lie about what it contains.
+    """
+    if not date_iso or not TASTES_ROOT.is_dir():
+        return []
+    out: list[Path] = []
+    for md in sorted(TASTES_ROOT.rglob("*.md")):
         if md.name.startswith("_"):
             continue
         try:
@@ -840,6 +872,10 @@ def render_full(date_str: str) -> tuple[str, dict]:
         skill_files = list(skill_files) + apply_taste_files
     if taste_total == 0:
         taste_total = len(set(skill_files))
+    # Tastes publish immediately (any agent, any time of day) — the tree is
+    # the primary source, the compile log only sees the overnight path. Floor
+    # the total at what actually landed on disk (see _taste_entries_created_on).
+    taste_total = max(taste_total, len(_taste_entries_created_on(date_str)))
 
     # PT calendar-day window
     target = datetime.date.fromisoformat(date_str)
@@ -1526,9 +1562,28 @@ def write_raw_staging(path: Path, target_iso: str, dream_cycle_iso: str) -> None
         skill_files = list(skill_files) + apply_taste_files
     seen_paths = set()
     unique_skill_paths = [p for p in skill_files if not (p in seen_paths or seen_paths.add(p))]
+    # Tastes publish immediately: leaves land in the tree all day (taste-distill,
+    # in-session capture), not only via the overnight compiler — so creations are
+    # read from the TREE (primary source), then log-derived activity that isn't a
+    # same-day creation is appended on top. Log-only counting was the 2026-07-10
+    # "taste 0 on a 1-leaf day" zero-lie the data sweep's D1 gate caught.
     taste_entries = []
+    taste_created_paths = _taste_entries_created_on(target_iso)
+    for p in taste_created_paths:
+        title, domains, _created, _updated = _extract_principle_summary(p)
+        taste_entries.append({
+            "title": title,
+            "domains": domains,
+            "status": "created",
+            "fingerprint": _read_fingerprint(p),
+        })
+    tree_paths = set(str(p) for p in taste_created_paths)
     for raw_path in unique_skill_paths:
+        if str(raw_path) in tree_paths:
+            continue
         title, domains, created, updated = _extract_principle_summary(Path(raw_path))
+        if created in (target_iso, dream_cycle_iso):
+            continue  # creations are counted from the tree, on landing day
         # _extract_principle_summary returns fingerprint as 4th tuple slot
         # historically; we need it. Re-pull via direct file read for robustness.
         fingerprint = _read_fingerprint(Path(raw_path))
@@ -1547,6 +1602,7 @@ def write_raw_staging(path: Path, target_iso: str, dream_cycle_iso: str) -> None
     )
     if taste_total == 0:
         taste_total = len(unique_skill_paths)
+    taste_total = max(taste_total, len(taste_entries))
 
     # PT calendar-day window for session walks
     target = datetime.date.fromisoformat(target_iso)
