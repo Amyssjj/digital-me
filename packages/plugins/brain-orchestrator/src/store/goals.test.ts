@@ -299,9 +299,7 @@ describe("createGoalsStore.findTerminalIdsByWorkflowBefore", () => {
     store.create(
       baseGoal({ id: "other-wf", status: "completed", sourceWorkflowId: "wf-2", completedAt: 100, createdBy: "scheduler" }),
     );
-    const ids = store
-      .findTerminalIdsByWorkflowBefore("wf-1", 1_000, "scheduler")
-      .sort();
+    const ids = store.findTerminalIdsByWorkflowBefore("wf-1", 1_000).sort();
     expect(ids).toEqual(["old-done", "old-failed"]);
   });
 
@@ -316,37 +314,31 @@ describe("createGoalsStore.findTerminalIdsByWorkflowBefore", () => {
         createdBy: "scheduler",
       }),
     );
-    expect(
-      store.findTerminalIdsByWorkflowBefore("wf-1", 1_000, "scheduler"),
-    ).toEqual(["no-stamp"]);
-    expect(
-      store.findTerminalIdsByWorkflowBefore("wf-1", 50, "scheduler"),
-    ).toEqual([]);
+    expect(store.findTerminalIdsByWorkflowBefore("wf-1", 1_000)).toEqual([
+      "no-stamp",
+    ]);
+    expect(store.findTerminalIdsByWorkflowBefore("wf-1", 50)).toEqual([]);
   });
 
-  it("never returns cancelled or manually-created goals", () => {
+  it("never returns cancelled goals or goals with no workflow linkage", () => {
     const store = createGoalsStore({ db });
     store.create(
       baseGoal({ id: "cancelled", status: "cancelled", sourceWorkflowId: "wf-1", completedAt: 100, createdBy: "scheduler" }),
     );
     store.create(baseGoal({ id: "manual", status: "completed", completedAt: 100 }));
-    expect(
-      store.findTerminalIdsByWorkflowBefore("wf-1", 1_000, "scheduler"),
-    ).toEqual([]);
+    expect(store.findTerminalIdsByWorkflowBefore("wf-1", 1_000)).toEqual([]);
   });
 
-  it("excludes manual run_workflow goals of a scheduled template (created_by mismatch)", () => {
+  it("includes goals of the workflow regardless of created_by (ratified 2026-07-10: terminal runs of a scheduled workflow past retention are exhaust — manual replays and pre-stamping legacy rows included)", () => {
     const store = createGoalsStore({ db });
-    // Same workflow, same age — only the scheduler-created one is returned.
     store.create(
       baseGoal({ id: "cron-run", status: "completed", sourceWorkflowId: "wf-1", completedAt: 100, createdBy: "scheduler" }),
     );
     store.create(
       baseGoal({ id: "manual-run", status: "completed", sourceWorkflowId: "wf-1", completedAt: 100, createdBy: "orchestrator" }),
     );
-    expect(
-      store.findTerminalIdsByWorkflowBefore("wf-1", 1_000, "scheduler"),
-    ).toEqual(["cron-run"]);
+    const ids = store.findTerminalIdsByWorkflowBefore("wf-1", 1_000).sort();
+    expect(ids).toEqual(["cron-run", "manual-run"]);
   });
 });
 

@@ -45,7 +45,7 @@
       "scope": "free"
     }
   ],
-  "captureCmd": null,
+  "captureCmd": "node ~/.agents/skills/motusai-visual-sweep/engine/lib/drive-headless.mjs --repo . --profile health-sweep/profiles/web.json --out health-sweep/capture-web.json",
   "requireDeployed": false,
   "brandRules": {
     "noItalic": "block",

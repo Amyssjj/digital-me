@@ -1,7 +1,7 @@
 {
   "id": "dashboard-intake",
   "name": "Dashboard Intake",
-  "description": "Populate the dashboard SQLite DB from primary sources every day. Four independent collectors run in parallel: runtime transcripts (daa), wiki+tastes frontmatter (knowledge_taste_changes + distribution), runtime hook logs (application_rate + breakdowns), brain agent-activity (captured/applied/workflow → delivery feed). Parameterized by {{python_path}} so a fresh `digital-me install --runtime dashboard` lands the same workflow against any user's intake venv.",
+  "description": "Populate the dashboard SQLite DB from primary sources every minute (the companion schedule pins * * * * * for a near-real-time Feed; terminal runs are swept by the scheduler's retention window). Four independent collectors run in parallel: runtime transcripts (daa), wiki+tastes frontmatter (knowledge_taste_changes + distribution), runtime hook logs (application_rate + breakdowns), brain agent-activity (captured/applied/workflow → delivery feed). Parameterized by {{python_path}} so a fresh `digital-me install --runtime dashboard` lands the same workflow against any user's intake venv.",
   "version": 1,
   "display": {
     "mechanism_view": true

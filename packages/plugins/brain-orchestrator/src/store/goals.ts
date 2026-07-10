@@ -219,7 +219,6 @@ export type GoalsStore = {
   findTerminalIdsByWorkflowBefore(
     workflowId: string,
     completedBefore: number,
-    createdBy: string,
   ): string[];
   listChildren(parentGoalId: string): GoalRecord[];
   /** Count existing goals whose branch_name starts with the given prefix.
@@ -275,7 +274,7 @@ export function createGoalsStore(deps: {
     "SELECT * FROM goals WHERE source_workflow_id = ? AND status IN ('pending', 'running') AND type = 'project' ORDER BY created_at ASC",
   );
   const selectTerminalIdsByWorkflowBefore = db.prepare(
-    "SELECT id FROM goals WHERE source_workflow_id = ? AND status IN ('completed', 'failed') AND type = 'project' AND created_by = ? AND COALESCE(completed_at, updated_at) < ?",
+    "SELECT id FROM goals WHERE source_workflow_id = ? AND status IN ('completed', 'failed') AND type = 'project' AND COALESCE(completed_at, updated_at) < ?",
   );
   const selectChildren = db.prepare(
     "SELECT * FROM goals WHERE parent_goal_id = ? ORDER BY created_at ASC",
@@ -350,11 +349,9 @@ export function createGoalsStore(deps: {
   function findTerminalIdsByWorkflowBefore(
     workflowId: string,
     completedBefore: number,
-    createdBy: string,
   ): string[] {
     const rows = selectTerminalIdsByWorkflowBefore.all(
       workflowId,
-      createdBy,
       completedBefore,
     ) as Array<{ id: string }>;
     return rows.map((r) => r.id);
