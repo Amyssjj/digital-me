@@ -130,9 +130,19 @@ def generate_graph(entries: list[dict]) -> str:
 
 
 def generate_overviews(config: Config, entries: list[dict]) -> int:
-    """Generate _OVERVIEW.md for each domain directory."""
+    """Generate _OVERVIEW.md for each wiki domain directory.
+
+    Wiki-only surface: the tastes tree stays flat (leaves + status flips,
+    no machine files), and a taste-only domain (e.g. tastes/storytelling/)
+    has no wiki/<domain>/ directory — writing there raised ENOENT and
+    killed the whole crosslink step from 2026-07-09 on. Splitting on the
+    `_tree` tag also keeps taste leaves out of wiki overviews, where their
+    `path.name` relative links would dangle.
+    """
     by_domain = defaultdict(list)
     for e in entries:
+        if e.get('_tree') != 'wiki':
+            continue
         by_domain[e['_domain']].append(e)
 
     count = 0
@@ -141,6 +151,8 @@ def generate_overviews(config: Config, entries: list[dict]) -> int:
             continue
 
         domain_dir = config.wiki_dir / domain
+        if not domain_dir.is_dir():
+            continue
         overview_path = domain_dir / "_OVERVIEW.md"
 
         lines = [
