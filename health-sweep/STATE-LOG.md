@@ -921,3 +921,55 @@
 - **regression vs baseline:** 🟢 none
 - **critiques:** 🟢 cleared · **stories:** 🟢
 - **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:31:27.674Z · data · 313a201
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:31:27.800Z · docs · 313a201
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:31:27.977Z · ops · 313a201
+- **gates:** 🔴 1 (O1 1 · O2 0 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` 94c103ae-f4b8-44d5-bf5d-fc3fed1ecfcb (scheduler engine-roadmap-session) — schedule "engine-roadmap-session" last run failed [got failed (26h ago, streak 6), want completed]
+
+## 2026-07-12T16:31:28.284Z · runtime · 313a201
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:31:28.450Z · update · 313a201
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:31:30.721Z · web · 313a201
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:33:21.412Z · ops · 313a201
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
