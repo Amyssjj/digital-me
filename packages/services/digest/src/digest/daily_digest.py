@@ -669,19 +669,103 @@ def _decode_claude_project_name(encoded: str) -> str:
     return name
 
 
-def _codex_raw_prompts(start_ms: int, end_ms: int, root: Path) -> list[str]:
-    """Flat list of first-user-prompts across all Codex sessions in window."""
-    if not root.exists():
+def _codex_state_db(sessions_root: Path) -> Optional[Path]:
+    """Current codex state DB (threads table), next to the sessions/ dir.
+
+    Codex names it state_<N>.sqlite and bumps N across schema generations —
+    take the highest N present.
+    """
+    dbs = sorted(sessions_root.parent.glob("state_*.sqlite"))
+    return dbs[-1] if dbs else None
+
+
+def _codex_sqlite_prompts(
+    start_ms: int, end_ms: int, sessions_root: Path, skip_rollout_paths: set[str],
+) -> list[str]:
+    """First-user-messages from codex's threads table, for sessions in window.
+
+    Newer codex builds record threads in ~/.codex/state_*.sqlite and may not
+    write rollout JSONLs at all, so reading only ~/.codex/sessions silently
+    reports "no activity" (the 2026-07 codex gap: rollouts stopped 07-04).
+    Threads whose rollout file was already counted by the JSONL walk are
+    skipped via skip_rollout_paths.
+    """
+    db = _codex_state_db(sessions_root)
+    if db is None:
         return []
-    prompts: list[str] = []
-    for jsonl in root.rglob("*.jsonl"):
+    try:
+        con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+        rows = con.execute(
+            "SELECT COALESCE(rollout_path,''), COALESCE(first_user_message,''),"
+            "       COALESCE(title,'')"
+            "  FROM threads"
+            " WHERE COALESCE(updated_at, created_at) * 1000 >= ?"
+            "   AND COALESCE(updated_at, created_at) * 1000 < ?",
+            (start_ms, end_ms),
+        ).fetchall()
+        con.close()
+    except (sqlite3.Error, OSError):
+        return []
+    return [
+        first_msg or title
+        for rollout_path, first_msg, title in rows
+        if rollout_path not in skip_rollout_paths and (first_msg or title)
+    ]
+
+
+def _codex_last_seen_iso(sessions_root: Path) -> Optional[str]:
+    """Date (PT) of the most recent locally-recorded Codex session, if any.
+
+    Rendered when the window itself is empty so the digest says "last local
+    session was <date>" instead of a bare "no activity" — an empty window can
+    mean the user moved to a surface that leaves no local record (Codex in
+    the ChatGPT desktop app runs threads cloud-side).
+    """
+    last_ms = 0
+    if sessions_root.exists():
+        for jsonl in sessions_root.rglob("*.jsonl"):
+            try:
+                last_ms = max(last_ms, int(jsonl.stat().st_mtime * 1000))
+            except OSError:
+                continue
+    db = _codex_state_db(sessions_root)
+    if db is not None:
         try:
-            mtime_ms = int(jsonl.stat().st_mtime * 1000)
-        except OSError:
-            continue
-        if not (start_ms <= mtime_ms < end_ms):
-            continue
-        prompt = _extract_first_user_prompt(jsonl)
+            con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+            row = con.execute(
+                "SELECT MAX(COALESCE(updated_at, created_at)) FROM threads"
+            ).fetchone()
+            con.close()
+            if row and row[0]:
+                last_ms = max(last_ms, int(row[0]) * 1000)
+        except (sqlite3.Error, OSError):
+            pass
+    if not last_ms:
+        return None
+    return datetime.datetime.fromtimestamp(last_ms / 1000, TZ).date().isoformat()
+
+
+def _codex_raw_prompts(start_ms: int, end_ms: int, root: Path) -> list[str]:
+    """Flat list of first-user-prompts across all Codex sessions in window.
+
+    Union of both local stores: legacy rollout JSONLs under sessions/ and
+    the threads table in state_*.sqlite (see _codex_sqlite_prompts).
+    """
+    raw: list[str] = []
+    seen_rollouts: set[str] = set()
+    if root.exists():
+        for jsonl in root.rglob("*.jsonl"):
+            try:
+                mtime_ms = int(jsonl.stat().st_mtime * 1000)
+            except OSError:
+                continue
+            if not (start_ms <= mtime_ms < end_ms):
+                continue
+            seen_rollouts.add(str(jsonl))
+            raw.append(_extract_first_user_prompt(jsonl))
+    raw.extend(_codex_sqlite_prompts(start_ms, end_ms, root, seen_rollouts))
+    prompts: list[str] = []
+    for prompt in raw:
         topic = _topic_from_prompt(prompt)
         prompts.append(topic if _DETERMINISTIC_TOPIC.match(topic or "") else prompt)
     return prompts
@@ -1004,7 +1088,23 @@ def render_full(date_str: str) -> tuple[str, dict]:
         _render_agent(f"OpenClaw - {agent_name}", topics)
 
     _render_agent("Hermes Agent", hermes_topics)
-    _render_agent("Codex CLI", codex_topics)
+    codex_last_seen: Optional[str] = None
+    if codex_topics:
+        _render_agent("Codex CLI", codex_topics)
+    else:
+        # Silence is signal: distinguish "no local record in window" from a
+        # bare "no activity". Codex sessions run through the ChatGPT desktop
+        # app live cloud-side and never touch ~/.codex/sessions or the state
+        # DB, so an empty window may just mean the surface moved.
+        codex_last_seen = _codex_last_seen_iso(Path(sources["codex-jsonl"]["path"]))
+        if codex_last_seen:
+            lines.append(
+                f"- **Codex CLI:** _no locally-recorded sessions in window "
+                f"(last local session {codex_last_seen}; Codex app/cloud "
+                f"sessions leave no local record)_"
+            )
+        else:
+            _render_agent("Codex CLI", codex_topics)
 
     full_md = "\n".join(lines)
 
@@ -1023,6 +1123,7 @@ def render_full(date_str: str) -> tuple[str, dict]:
         "skill_files": skill_files,
         "cc_topics": cc_topics,
         "codex_topics": codex_topics,
+        "codex_last_seen": codex_last_seen,
         "hermes_topics": hermes_topics,
         "openclaw_topics": openclaw_topics,
         "coo_goals": coo_goals,
@@ -1111,7 +1212,13 @@ def render_components(s: dict) -> dict:
     if not s["openclaw_topics"]:
         agent_blocks.append("**OpenClaw agents** — _no activity_")
     agent_blocks.append(_agent_block("Hermes Agent", s.get("hermes_topics", [])))
-    agent_blocks.append(_agent_block("Codex CLI", s["codex_topics"]))
+    if not s["codex_topics"] and s.get("codex_last_seen"):
+        agent_blocks.append(
+            f"**Codex CLI** — _no locally-recorded sessions "
+            f"(last local session {s['codex_last_seen']})_"
+        )
+    else:
+        agent_blocks.append(_agent_block("Codex CLI", s["codex_topics"]))
 
     # Each agent block as its own text block so the divider visual stays tight
     for block in agent_blocks:
@@ -1662,6 +1769,10 @@ def write_raw_staging(path: Path, target_iso: str, dream_cycle_iso: str) -> None
         "wiki_entries": wiki_entries,
         "taste_entries": taste_entries,
         "agent_raw_prompts": agent_raw_prompts,
+        "codex_last_seen": (
+            None if codex_raw
+            else _codex_last_seen_iso(Path(sources["codex-jsonl"]["path"]))
+        ),
         "presentation": None,
         "markdown": None,
     }
