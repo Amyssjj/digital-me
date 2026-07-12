@@ -1,0 +1,55 @@
+{
+  "_doc": "OPS profile for the GLOBAL motus-ops-sweep engine \u2014 gates the machine that runs the machines on THIS machine: the openclaw orchestrator's schedules, the dream-cycle's step log, and the transcript/artifact sources every digest and dashboard count depends on. Personal-machine ops config (paths are ~-absolute, like fleet.json); the engine is dimension-registered in motus-sweep/dimensions.json.",
+  "dimension": "ops",
+  "artifacts": "scoped",
+  "critiques": "none",
+  "brainDb": "~/.openclaw/data/brain.db",
+  "opsRules": {
+    "zombieStreak": 10
+  },
+  "stepLogs": [
+    {
+      "id": "dream-cycle",
+      "dir": "~/digital-me/dream_cycle/logs",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}\\.md$",
+      "_why": "The logs dir mixes families (lint-/consolidate-/drift- prefixed reports); only the main <date>.md is the step log."
+    }
+  ],
+  "sources": [
+    {
+      "id": "claude-code",
+      "path": "~/.claude/projects",
+      "cadenceHours": 24
+    },
+    {
+      "id": "openclaw-agents",
+      "path": "~/.openclaw/agents",
+      "cadenceHours": 24
+    },
+    {
+      "id": "digests",
+      "path": "~/digital-me/digests",
+      "cadenceHours": 24
+    },
+    {
+      "id": "dream-cycle-logs",
+      "path": "~/digital-me/dream_cycle/logs",
+      "cadenceHours": 24
+    },
+    {
+      "id": "codex-local",
+      "path": "~/.codex/sessions",
+      "cadenceHours": 24,
+      "required": false,
+      "_why": "Codex moved to ChatGPT-app cloud threads 2026-07-04 \u2014 no local artifacts. Advisory keeps the gap visible until the local surface returns or a cloud poller lands (wiki: codex/codex-session-store-migration-breaks-jsonl-readers)."
+    },
+    {
+      "id": "hermes",
+      "path": "~/.hermes/sessions",
+      "cadenceHours": 168,
+      "required": false,
+      "_why": "Hermes is used sporadically; weekly cadence, advisory-only."
+    }
+  ],
+  "captureCmd": "node \"$HOME/.agents/skills/motus-ops-sweep/engine/lib/capture-ops.mjs\" --repo . --profile health-sweep/profiles/ops.json --out health-sweep/capture-ops.json"
+}

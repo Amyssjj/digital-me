@@ -3,36 +3,48 @@
     "gate": "F1",
     "check": "path",
     "sel": "README.md:111",
-    "note": "packages/cli/dist/bin/digital-me.js is a build artifact — the sentence explicitly says 'Build the repo, then… the long way', so the claim is journey-correct at the stage it appears. Mechanical gate can't see the conditional (roadmap: ok:'conditional' state). 2026-07-02."
+    "note": "packages/cli/dist/bin/digital-me.js is a build artifact \u2014 the sentence explicitly says 'Build the repo, then\u2026 the long way', so the claim is journey-correct at the stage it appears. Mechanical gate can't see the conditional (roadmap: ok:'conditional' state). 2026-07-02."
   },
   {
     "gate": "G2",
     "check": "text-contrast",
     "sel": "h1",
-    "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
+    "note": "gradient page background: effBg walk resolves transparent \u2192 reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
   },
   {
     "gate": "G2",
     "check": "text-contrast",
     "sel": "nav button",
-    "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
+    "note": "gradient page background: effBg walk resolves transparent \u2192 reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
   },
   {
     "gate": "G2",
     "check": "text-contrast",
     "sel": "body",
-    "note": "gradient page background: effBg walk resolves transparent → reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
+    "note": "gradient page background: effBg walk resolves transparent \u2192 reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
   },
   {
     "gate": "R2",
     "check": "pin",
     "sel": "openclaw-brain-plugin-entry",
-    "note": "INTENTIONAL for now: installed file is the ratified 2026-07-01 hand-deployed esbuild bundle (M1 agent_end hotfix) — a built artifact will never sha-match the source template. Reconcile at the next `digital-me install --runtime openclaw` (which restores template provenance), then REMOVE this override so the pin guards again. 2026-07-03."
+    "note": "INTENTIONAL for now: installed file is the ratified 2026-07-01 hand-deployed esbuild bundle (M1 agent_end hotfix) \u2014 a built artifact will never sha-match the source template. Reconcile at the next `digital-me install --runtime openclaw` (which restores template provenance), then REMOVE this override so the pin guards again. 2026-07-03."
   },
   {
     "gate": "R2",
     "check": "pin",
     "sel": "openclaw-recall-plugin-entry",
-    "note": "INTENTIONAL for now: installed file is the ratified 2026-07-01 hand-deployed esbuild bundle (M1 agent_end hotfix) — a built artifact will never sha-match the source template. Reconcile at the next `digital-me install --runtime openclaw` (which restores template provenance), then REMOVE this override so the pin guards again. 2026-07-03."
+    "note": "INTENTIONAL for now: installed file is the ratified 2026-07-01 hand-deployed esbuild bundle (M1 agent_end hotfix) \u2014 a built artifact will never sha-match the source template. Reconcile at the next `digital-me install --runtime openclaw` (which restores template provenance), then REMOVE this override so the pin guards again. 2026-07-03."
+  },
+  {
+    "gate": "O1",
+    "check": "schedule-failed",
+    "sel": "708c9948-3461-4093-851a-c0148f1cab33",
+    "reason": "nightly-health-sweep last cron fire (2026-07-11 03:30) predates the capture fixes; fleet re-run green same day (11/11 SHIP) and a manual workflow re-run was dispatched 2026-07-12. RETIRE this override after the 2026-07-13 03:30 fire records completed."
+  },
+  {
+    "gate": "O2",
+    "check": "step-error",
+    "sel": "dream-cycle#crosslink",
+    "reason": "Known + fixed: generate_overviews taste-domain ENOENT (wiki/storytelling missing). Fix in digital-me PR #49; deploys on merge + main-checkout pull. The 07-12 log entry predates deploy. RETIRE once a post-merge nightly log shows crosslink clean."
   }
 ]
