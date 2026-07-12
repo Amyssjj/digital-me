@@ -535,6 +535,99 @@
 - **critiques:** 🟢 cleared · **stories:** 🟢
 - **EXIT:** ✅ SHIP
 
+## 2026-07-10T10:30:06.384Z · data · 8f578d9
+- **gates:** 🔴 1 (D1 1 · D2 0 · D3 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D1/zero` digest-taste-present (digest-staging metric) — "digest-taste-present" shows 0 while the primary source has 1 — a dead/lagging pipeline rendering as calm [got surface 0, want ≈ 1 (truth: cmd python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/tastes --date $(date -v-1d +%F))]
+
+## 2026-07-10T10:30:06.498Z · docs · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T10:30:06.713Z · runtime · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T10:30:06.863Z · update · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T10:30:06.912Z · web · 8b51565
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T16:25:02.844Z · update · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T16:27:41.722Z · data · 8f578d9
+- **gates:** 🔴 1 (D1 1 · D2 0 · D3 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D1/zero` digest-taste-present (digest-staging metric) — "digest-taste-present" shows 0 while the primary source has 1 — a dead/lagging pipeline rendering as calm [got surface 0, want ≈ 1 (truth: cmd python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/tastes --date $(date -v-1d +%F))]
+
+## 2026-07-10T16:27:41.837Z · docs · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T16:27:42.304Z · runtime · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T16:27:42.470Z · update · 8f578d9
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T16:27:42.522Z · web · 8b51565
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T16:32:12.187Z · data · 8f578d9
+- **gates:** 🔴 1 (D1 1 · D2 0 · D3 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D1/zero` digest-taste-present (digest-staging metric) — "digest-taste-present" shows 0 while the primary source has 1 — a dead/lagging pipeline rendering as calm [got surface 0, want ≈ 1 (truth: cmd python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/tastes --date $(date -v-1d +%F))]
+
+
 ## 2026-07-10T16:32:54.638Z · data · 8f578d9
 - **gates:** 🟢 all green · 🟡 1 advisory
 - **delivery:** 🟢 deploy check off
@@ -542,6 +635,12 @@
 - **critiques:** — (no critique lane for this profile)
 - **EXIT:** ✅ SHIP
 
+## 2026-07-10T16:50:12.272Z · data · 1c4ba75
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
 ## 2026-07-10T17:08:14.335Z · web · 1c4ba75
 - **gates:** 🟢 all green
 - **delivery:** 🟢 deploy check off
@@ -568,4 +667,257 @@
 - **delivery:** 🟢 deploy check off
 - **regression vs baseline:** — (no baseline)
 - **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+## 2026-07-10T17:35:58.722Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T17:35:58.840Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T17:35:59.083Z · runtime · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T17:35:59.248Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-10T17:36:01.715Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T10:30:05.643Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T10:30:05.756Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T10:30:05.971Z · runtime · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T10:30:06.122Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T10:30:08.530Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:33:49.550Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:33:49.663Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:33:49.881Z · runtime · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:33:50.031Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:33:52.072Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:59:00.314Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:59:00.449Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:59:00.673Z · runtime · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:59:00.829Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-11T21:59:02.569Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T10:30:04.318Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T10:30:04.435Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T10:30:04.654Z · runtime · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T10:30:04.806Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T10:30:06.813Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:06:26.173Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:06:26.303Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:06:26.595Z · runtime · 03dd2b5
+- **gates:** 🔴 1 (R1 1 · R2 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-application-rate (runtime all) — runtime check "m1-application-rate" [all] — `python3 scripts/verify_m1_application.py --days 7` exit 1 · tail: UNHEALTHY: codex [got exit 1, want exit 0]
+
+## 2026-07-12T16:06:26.746Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:06:29.257Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:09:10.080Z · data · 03dd2b5
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:09:10.192Z · docs · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:09:10.417Z · runtime · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:09:10.568Z · update · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-07-12T16:09:12.672Z · web · 03dd2b5
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
 - **EXIT:** ✅ SHIP
