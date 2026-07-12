@@ -130,29 +130,35 @@ def generate_graph(entries: list[dict]) -> str:
 
 
 def generate_overviews(config: Config, entries: list[dict]) -> int:
-    """Generate _OVERVIEW.md for each wiki domain directory.
+    """Generate _OVERVIEW.md for each domain directory, in BOTH trees.
 
-    Wiki-only surface: the tastes tree stays flat (leaves + status flips,
-    no machine files), and a taste-only domain (e.g. tastes/storytelling/)
-    has no wiki/<domain>/ directory — writing there raised ENOENT and
-    killed the whole crosslink step from 2026-07-09 on. Splitting on the
-    `_tree` tag also keeps taste leaves out of wiki overviews, where their
-    `path.name` relative links would dangle.
+    Tree-consistent (ratified 2026-07-12): wiki/<domain>/ and
+    tastes/<domain>/ each get an overview built from their OWN entries —
+    grouping by tree keeps every `path.name` relative link within its
+    directory, so shared-name domains (wiki/design vs tastes/design) never
+    dangle. `_`-prefixed files are invisible to every consumer (dream-cycle
+    collect/compile, dashboard intake scan_knowledge_trees, the openclaw
+    recall indexer, the digest taste counter), so a machine overview in the
+    tastes tree does not pollute the leaf stream: the flat-tree model
+    constrains leaf LIFECYCLE (publish-immediately, status-flip promotion,
+    no staging dirs), not generated nav files. Domains whose directory is
+    missing are skipped — writing wiki/storytelling/_OVERVIEW.md for a
+    taste-only domain was the ENOENT that killed crosslink 2026-07-09..11.
     """
-    by_domain = defaultdict(list)
+    tastes_dir = config.wiki_dir.parent / "tastes"
+    by_dir = defaultdict(list)
     for e in entries:
-        if e.get('_tree') != 'wiki':
-            continue
-        by_domain[e['_domain']].append(e)
-
-    count = 0
-    for domain, domain_entries in by_domain.items():
+        domain = e['_domain']
         if domain == "root":
             continue
+        base = tastes_dir if e.get('_tree') == 'tastes' else config.wiki_dir
+        by_dir[base / domain].append(e)
 
-        domain_dir = config.wiki_dir / domain
+    count = 0
+    for domain_dir, domain_entries in by_dir.items():
         if not domain_dir.is_dir():
             continue
+        domain = domain_dir.name
         overview_path = domain_dir / "_OVERVIEW.md"
 
         lines = [
