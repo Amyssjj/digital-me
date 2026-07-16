@@ -188,6 +188,34 @@ describe("createCallToolHandler", () => {
     );
   });
 
+  it("forwards memory_get corpus/from/lines to the gateway unchanged", async () => {
+    // The proxy forwards whatever args it's given; the only thing that blocks
+    // corpus today is the advertised inputSchema (widened in tools.ts). This
+    // asserts the handler itself passes the widened params straight through.
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "body" }],
+    });
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "default-agent",
+      log: vi.fn(),
+    });
+    await handler({
+      name: "memory_get",
+      arguments: { path: "wiki/x.md", corpus: "wiki", from: 3, lines: 20 },
+    });
+    expect(invoke.mock.calls[0]![0]).toMatchObject({
+      toolName: "memory_get",
+      args: {
+        path: "wiki/x.md",
+        corpus: "wiki",
+        from: 3,
+        lines: 20,
+        agent_id: "default-agent",
+      },
+    });
+  });
+
   it("accepts undefined arguments and passes empty args to the gateway", async () => {
     const invoke = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "ok" }],

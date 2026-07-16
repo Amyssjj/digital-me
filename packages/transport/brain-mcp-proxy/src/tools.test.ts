@@ -60,6 +60,50 @@ describe("TOOLS schema", () => {
     expect((t.inputSchema as { required?: readonly string[] }).required).toBeUndefined();
   });
 
+  it("memory_get requires `path` and nothing else", () => {
+    const t = TOOLS.find((t) => t.name === "memory_get")!;
+    expect((t.inputSchema as { required?: readonly string[] }).required).toEqual([
+      "path",
+    ]);
+  });
+
+  it("memory_get advertises corpus/from/lines at parity with the gateway tool", () => {
+    // Regression: the proxy previously advertised only `path`, so MCP clients
+    // could never send corpus:"wiki" (clients only send params the schema
+    // exposes). Every memory_get fell through to the agent workspace and a
+    // wiki path missed with disabled:true — surfacing as "disabled on this
+    // server". Bring the schema to parity with memory_search / the gateway.
+    const t = TOOLS.find((t) => t.name === "memory_get")!;
+    const props = t.inputSchema.properties as Record<
+      string,
+      { type?: string; enum?: readonly string[] }
+    >;
+    expect(props.corpus?.enum).toEqual(["memory", "wiki", "all"]);
+    expect(props.from?.type).toBe("number");
+    expect(props.lines?.type).toBe("number");
+  });
+
+  it("memory_get's corpus enum matches memory_search's corpus enum", () => {
+    const get = TOOLS.find((t) => t.name === "memory_get")!;
+    const search = TOOLS.find((t) => t.name === "memory_search")!;
+    const getEnum = (
+      get.inputSchema.properties as { corpus: { enum: readonly string[] } }
+    ).corpus.enum;
+    const searchEnum = (
+      search.inputSchema.properties as { corpus: { enum: readonly string[] } }
+    ).corpus.enum;
+    expect(getEnum).toEqual(searchEnum);
+  });
+
+  it("memory_get's description de-escalates the disabled=true path-miss so clients don't read it as a server-wide disable", () => {
+    const t = TOOLS.find((t) => t.name === "memory_get")!;
+    // Points clients at memory_search for wiki bodies …
+    expect(t.description).toMatch(/memory_search/);
+    // … and explicitly says a per-path miss is NOT a server-wide disable.
+    expect(t.description.toLowerCase()).toContain("per-path miss");
+    expect(t.description.toLowerCase()).toContain("not a server-wide disable");
+  });
+
   it("traces_query's kind enum includes the proxy's own trace kind", () => {
     // Regression: the proxy writes kind='mcp_tool_call' (trace-writer.ts) but
     // it was missing from the queryable enum, so a client couldn't filter for

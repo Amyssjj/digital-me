@@ -322,11 +322,32 @@ export const TOOLS = [
   },
   {
     name: "memory_get",
-    description: "Retrieve a specific memory file by path",
+    description:
+      "Read an exact excerpt from the CALLING AGENT'S OWN memory files (MEMORY.md or memory/*.md) by path. Returns a bounded excerpt (with truncation/continuation info) when `lines` is omitted. This reads agent memory, NOT the shared knowledge wiki: to fetch a wiki/knowledge entry's body, use memory_search — it inlines the top hit's full body, so a follow-up memory_get is unnecessary. `corpus:\"wiki\"` reads registered compiled-wiki supplements, which may be empty on a given host. A `disabled:true` response with error \"path required\" (or \"…result not found\") means the requested path simply isn't a file in the resolved corpus — it is a per-path miss, NOT a server-wide disable of memory retrieval; do not report memory_get as disabled on this server.",
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Memory file path to retrieve" },
+        path: {
+          type: "string",
+          description:
+            "Memory file path to retrieve (e.g. 'MEMORY.md' or 'memory/some-note.md'), relative to the corpus root.",
+        },
+        corpus: {
+          type: "string",
+          enum: ["memory", "wiki", "all"],
+          description:
+            "Which corpus to read from: memory (default — the agent's own MEMORY.md + memory/*.md), wiki (registered compiled-wiki supplements — may be empty on this host), all (both). Mirror of memory_search's corpus.",
+        },
+        from: {
+          type: "number",
+          description:
+            "1-based line number to start the excerpt from (positive integer). Defaults to the start of the file.",
+        },
+        lines: {
+          type: "number",
+          description:
+            "Maximum number of lines to return starting at `from` (positive integer). Defaults to a bounded excerpt.",
+        },
         ...AGENT_ID_PROP,
       },
       required: ["path"],
