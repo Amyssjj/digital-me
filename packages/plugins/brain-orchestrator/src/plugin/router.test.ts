@@ -707,6 +707,108 @@ describe("dispatchAction(board)", () => {
     const r = await dispatchAction(deps, "board", { format: "json" });
     expect((r.json as { goals: unknown[] }).goals).toHaveLength(1);
   });
+
+  it("windows failed goals by updatedAt like other terminal statuses", async () => {
+    const deps = makeDeps();
+    deps.goals.create({
+      id: "f-old",
+      name: "Fold",
+      description: "",
+      status: "failed",
+      type: "project",
+      taskIds: [],
+      createdAt: 0,
+      updatedAt: 5000,
+      createdBy: "t",
+    });
+    deps.goals.create({
+      id: "f-new",
+      name: "Fnew",
+      description: "",
+      status: "failed",
+      type: "project",
+      taskIds: [],
+      createdAt: 0,
+      updatedAt: 20_000,
+      createdBy: "t",
+    });
+    const r = await dispatchAction(deps, "board", {
+      format: "json",
+      since: 9999,
+    });
+    const goals = (r.json as { goals: Array<{ id: string }> }).goals;
+    expect(goals.map((g) => g.id)).toEqual(["f-new"]);
+  });
+
+  it("caps the payload to the most recently updated `limit` goals", async () => {
+    const deps = makeDeps();
+    for (let i = 1; i <= 4; i++) {
+      deps.goals.create({
+        id: `g-${i}`,
+        name: `G${i}`,
+        description: "",
+        status: "running",
+        type: "project",
+        taskIds: [],
+        createdAt: 0,
+        updatedAt: i * 1000,
+        createdBy: "t",
+      });
+    }
+    const r = await dispatchAction(deps, "board", {
+      format: "json",
+      since: 0,
+      limit: 2,
+    });
+    const goals = (r.json as { goals: Array<{ id: string }> }).goals;
+    expect(goals.map((g) => g.id)).toEqual(["g-4", "g-3"]);
+  });
+
+  it("ignores non-positive or non-integer limit values", async () => {
+    const deps = makeDeps();
+    for (let i = 1; i <= 3; i++) {
+      deps.goals.create({
+        id: `g-${i}`,
+        name: `G${i}`,
+        description: "",
+        status: "running",
+        type: "project",
+        taskIds: [],
+        createdAt: 0,
+        updatedAt: i * 1000,
+        createdBy: "t",
+      });
+    }
+    for (const limit of [0, -1, 1.5, "2" as unknown as number]) {
+      const r = await dispatchAction(deps, "board", {
+        format: "json",
+        since: 0,
+        limit,
+      });
+      expect((r.json as { goals: unknown[] }).goals).toHaveLength(3);
+    }
+  });
+
+  it("leaves the payload untouched when limit exceeds the goal count", async () => {
+    const deps = makeDeps();
+    deps.goals.create({
+      id: "g",
+      name: "G",
+      description: "",
+      status: "running",
+      type: "project",
+      taskIds: [],
+      createdAt: 0,
+      updatedAt: 0,
+      createdBy: "t",
+    });
+    const r = await dispatchAction(deps, "board", {
+      format: "json",
+      since: 0,
+      limit: 10,
+    });
+    expect((r.json as { goals: unknown[] }).goals).toHaveLength(1);
+  });
 });
 
 describe("dispatchAction(status)", () => {

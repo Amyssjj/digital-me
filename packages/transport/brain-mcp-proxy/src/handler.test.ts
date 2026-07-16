@@ -3,8 +3,11 @@ import {
   attributionLabel,
   buildToolArgs,
   createCallToolHandler,
+  DEFAULT_MAX_RESULT_BYTES,
   extractHitCount,
   inlineTopHitBody,
+  resolveMaxResultBytes,
+  resultContentBytes,
   type ToolCallTrace,
   type WikiBodyInliner,
 } from "./handler.js";
@@ -693,5 +696,191 @@ describe("createCallToolHandler — wikiBodyInliner wiring", () => {
       results: Array<Record<string, unknown>>;
     };
     expect(parsed.results[0]!.full_body).toBeUndefined();
+  });
+});
+
+describe("resolveMaxResultBytes", () => {
+  it("returns the default when the env var is unset or empty", () => {
+    expect(resolveMaxResultBytes({})).toBe(DEFAULT_MAX_RESULT_BYTES);
+    expect(resolveMaxResultBytes({ BRAIN_MCP_MAX_RESULT_BYTES: "" })).toBe(
+      DEFAULT_MAX_RESULT_BYTES,
+    );
+  });
+
+  it("parses a non-negative integer byte count", () => {
+    expect(resolveMaxResultBytes({ BRAIN_MCP_MAX_RESULT_BYTES: "1024" })).toBe(
+      1024,
+    );
+  });
+
+  it("returns 0 (guard disabled) for '0'", () => {
+    expect(resolveMaxResultBytes({ BRAIN_MCP_MAX_RESULT_BYTES: "0" })).toBe(0);
+  });
+
+  it("falls back to the default on invalid values so a typo can't disable the guard", () => {
+    expect(
+      resolveMaxResultBytes({ BRAIN_MCP_MAX_RESULT_BYTES: "unlimited" }),
+    ).toBe(DEFAULT_MAX_RESULT_BYTES);
+    expect(resolveMaxResultBytes({ BRAIN_MCP_MAX_RESULT_BYTES: "-1" })).toBe(
+      DEFAULT_MAX_RESULT_BYTES,
+    );
+    expect(resolveMaxResultBytes({ BRAIN_MCP_MAX_RESULT_BYTES: "1.5" })).toBe(
+      DEFAULT_MAX_RESULT_BYTES,
+    );
+  });
+});
+
+describe("resultContentBytes", () => {
+  it("sums UTF-8 byte lengths of text content items", () => {
+    expect(
+      resultContentBytes({
+        content: [
+          { type: "text", text: "abc" },
+          { type: "text", text: "héllo" }, // é is 2 bytes in UTF-8
+        ],
+      }),
+    ).toBe(3 + 6);
+  });
+
+  it("measures non-text items by their JSON serialization", () => {
+    const item = { type: "image", data: "ZZZZ" };
+    expect(resultContentBytes({ content: [item] })).toBe(
+      Buffer.byteLength(JSON.stringify(item), "utf8"),
+    );
+  });
+
+  it("returns 0 for missing or empty content", () => {
+    expect(resultContentBytes({ content: [] })).toBe(0);
+    expect(
+      resultContentBytes({ content: undefined as unknown as [] }),
+    ).toBe(0);
+  });
+});
+
+describe("createCallToolHandler — oversize-result guard", () => {
+  const bigResult = (chars: number): CallToolResult => ({
+    content: [{ type: "text", text: "x".repeat(chars) }],
+  });
+
+  it("replaces an oversized result with an isError explanation", async () => {
+    const invoke = vi.fn().mockResolvedValue(bigResult(100));
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log: vi.fn(),
+      maxResultBytes: 50,
+    });
+    const out = await handler({
+      name: "tasks",
+      arguments: { action: "board", format: "json" },
+    });
+    expect(out.isError).toBe(true);
+    const text = (out.content[0] as { text: string }).text;
+    expect(text).toContain("'tasks' returned 100 bytes");
+    expect(text).toContain("50-byte forwarding cap");
+    expect(text).toContain("since");
+    expect(text).toContain("BRAIN_MCP_MAX_RESULT_BYTES");
+  });
+
+  it("passes results at or under the cap through unchanged", async () => {
+    const invoke = vi.fn().mockResolvedValue(bigResult(50));
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log: vi.fn(),
+      maxResultBytes: 50,
+    });
+    const out = await handler({ name: "tasks", arguments: { action: "board" } });
+    expect(out.isError).toBeUndefined();
+    expect((out.content[0] as { text: string }).text).toHaveLength(50);
+  });
+
+  it("maxResultBytes: 0 disables the guard entirely", async () => {
+    const invoke = vi.fn().mockResolvedValue(bigResult(10_000));
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "dashboard",
+      log: vi.fn(),
+      maxResultBytes: 0,
+    });
+    const out = await handler({
+      name: "tasks",
+      arguments: { action: "board", format: "json" },
+    });
+    expect(out.isError).toBeUndefined();
+    expect((out.content[0] as { text: string }).text).toHaveLength(10_000);
+  });
+
+  it("applies the default cap when maxResultBytes is omitted", async () => {
+    const invoke = vi
+      .fn()
+      .mockResolvedValue(bigResult(DEFAULT_MAX_RESULT_BYTES + 1));
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log: vi.fn(),
+    });
+    const out = await handler({
+      name: "tasks",
+      arguments: { action: "board", format: "json" },
+    });
+    expect(out.isError).toBe(true);
+  });
+
+  it("logs the replacement so operators can see what tripped the cap", async () => {
+    const log = vi.fn();
+    const invoke = vi.fn().mockResolvedValue(bigResult(100));
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log,
+      maxResultBytes: 50,
+    });
+    await handler({ name: "tasks", arguments: { action: "board" } });
+    expect(
+      log.mock.calls.some(
+        (c) =>
+          typeof c[0] === "string" &&
+          c[0].includes("oversized") &&
+          c[0].includes("tasks"),
+      ),
+    ).toBe(true);
+  });
+
+  it("records the trace against the replacement error result", async () => {
+    const traces: ToolCallTrace[] = [];
+    const invoke = vi.fn().mockResolvedValue(bigResult(100));
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log: vi.fn(),
+      traceWriter: (t) => traces.push(t),
+      maxResultBytes: 50,
+    });
+    await handler({ name: "tasks", arguments: { action: "board" } });
+    expect(traces).toHaveLength(1);
+    expect(traces[0]!.isError).toBe(true);
+  });
+
+  it("measures after wiki-body inlining so the guarded size matches the wire size", async () => {
+    // Search result is under the cap, but the inlined body pushes it over.
+    const searchPayload = JSON.stringify({
+      results: [{ path: "wiki/x.md", score: 0.9 }],
+    });
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: searchPayload }],
+    });
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "codex",
+      log: vi.fn(),
+      wikiBodyInliner: makeInliner(() => "B".repeat(500)),
+      maxResultBytes: searchPayload.length + 100,
+    });
+    const out = await handler({
+      name: "memory_search",
+      arguments: { query: "x" },
+    });
+    expect(out.isError).toBe(true);
   });
 });

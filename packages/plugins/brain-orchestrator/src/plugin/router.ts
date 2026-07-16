@@ -323,10 +323,25 @@ function handleBoardJson(
     if (g.status === "completed") {
       return (g.completedAt ?? g.updatedAt) >= sinceMs;
     }
-    if (g.status === "cancelled") return g.updatedAt >= sinceMs;
+    // failed and cancelled are terminal too — without the window, every
+    // failed goal ever accumulates into the payload forever (1k+ goals in
+    // the 2026-07 oversize incident that crashed MCP clients).
+    if (g.status === "cancelled" || g.status === "failed") {
+      return g.updatedAt >= sinceMs;
+    }
     return true;
   });
-  const payload = filtered.map((g) => ({
+  // Optional bound for MCP-agent callers: most recently updated N goals.
+  // The dashboard omits it and keeps the full window.
+  const limit =
+    typeof params.limit === "number" && Number.isInteger(params.limit) && params.limit > 0
+      ? params.limit
+      : undefined;
+  const bounded =
+    limit !== undefined && filtered.length > limit
+      ? [...filtered].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, limit)
+      : filtered;
+  const payload = bounded.map((g) => ({
     ...g,
     tasks: deps.tasks.listForGoal(g.id),
   }));

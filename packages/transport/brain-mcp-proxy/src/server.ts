@@ -16,7 +16,7 @@ import {
 import { loadConfig } from "@digital-me/contracts";
 import { loadGatewayConfig, resolveDefaultAgentId } from "./config.js";
 import { invokeGatewayTool } from "./gateway.js";
-import { createCallToolHandler } from "./handler.js";
+import { createCallToolHandler, resolveMaxResultBytes } from "./handler.js";
 import { startParentPidWatcher } from "./lifecycle.js";
 import { TOOLS } from "./tools.js";
 import {
@@ -123,6 +123,7 @@ export async function main(): Promise<void> {
     log: emitStderr,
     traceWriter,
     appRateWriter,
+    maxResultBytes: resolveMaxResultBytes(process.env),
   });
 
   server.setRequestHandler(CallToolRequestSchema, async (req) =>

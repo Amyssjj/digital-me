@@ -122,6 +122,22 @@ export const TOOLS = [
           enum: [...TASK_ACTIONS],
         },
         ...AGENT_ID_PROP,
+        format: {
+          type: "string",
+          enum: ["json", "markdown"],
+          description:
+            'Output format for board/status/schedule_list/workflow_list. Default markdown (compact, active goals only). "json" returns structured records — board JSON spans a 7-day history window and can be very large; bound it with since and/or limit.',
+        },
+        since: {
+          type: "number",
+          description:
+            "Board JSON only: include completed/cancelled/failed goals updated at/after this epoch-ms timestamp (default: 7 days ago).",
+        },
+        limit: {
+          type: "number",
+          description:
+            "Board JSON only: cap the number of goals returned (most recently updated first).",
+        },
         description: { type: "string", description: "Goal description (for run_goal)" },
         workflowJson: {
           type: "string",

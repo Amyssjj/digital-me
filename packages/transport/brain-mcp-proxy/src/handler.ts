@@ -104,6 +104,76 @@ export function inlineTopHitBody(input: {
   };
 }
 
+// ─── Oversize-result guard (2026-07-16) ─────────────────────────────────────
+//
+// A single oversized tool result can kill the MCP client outright: the live
+// incident was `tasks {action:"board", format:"json"}` returning a ~59 MB
+// board (every-minute scheduled-workflow goals × full task records), which
+// Claude Code's stdio client answered with "Connection closed". The proxy
+// process itself survives — it's the client that dies — so the guard's job
+// is to never forward a result that large in the first place. Applies to
+// both transports (stdio + Streamable HTTP) since both share this handler.
+
+/** Default cap on the bytes of content forwarded per tool result. Legitimate
+ * agent-facing results are orders of magnitude smaller (a max-limit
+ * traces_query is ~100 KB); agent clients truncate far below this anyway. */
+export const DEFAULT_MAX_RESULT_BYTES = 4 * 1024 * 1024;
+
+/** Env override for the cap. `0` disables the guard entirely — the
+ * dashboard's brain client sets that: it spawns its own proxy and
+ * legitimately consumes the full board JSON. */
+export const MAX_RESULT_BYTES_ENV = "BRAIN_MCP_MAX_RESULT_BYTES";
+
+/** Resolve the result-size cap from the environment: a non-negative integer
+ * number of bytes, 0 meaning "disabled". Unset/invalid values fall back to
+ * the default so a typo can't silently disable the guard. */
+export function resolveMaxResultBytes(env: NodeJS.ProcessEnv): number {
+  const raw = env[MAX_RESULT_BYTES_ENV];
+  if (raw === undefined || raw === "") return DEFAULT_MAX_RESULT_BYTES;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
+    return DEFAULT_MAX_RESULT_BYTES;
+  }
+  return n;
+}
+
+/** Total UTF-8 bytes a result's content would occupy on the wire. Non-text
+ * content items (none exist today — the gateway only returns text) are
+ * measured by their JSON serialization. */
+export function resultContentBytes(result: CallToolResult): number {
+  let total = 0;
+  for (const item of result.content ?? []) {
+    const text = (item as { text?: unknown }).text;
+    total +=
+      typeof text === "string"
+        ? Buffer.byteLength(text, "utf8")
+        : Buffer.byteLength(JSON.stringify(item), "utf8");
+  }
+  return total;
+}
+
+/** The isError result returned in place of an oversized one. */
+export function oversizeResult(input: {
+  toolName: string;
+  bytes: number;
+  maxBytes: number;
+}): CallToolResult {
+  return {
+    content: [
+      {
+        type: "text",
+        text:
+          `MCP proxy: '${input.toolName}' returned ${input.bytes} bytes, over the ` +
+          `${input.maxBytes}-byte forwarding cap (oversized results crash MCP clients). ` +
+          `Narrow the call — e.g. tasks board with format:"json" accepts since (epoch ms) ` +
+          `and limit, or omit format:"json" for the compact markdown board. ` +
+          `Operators can tune the cap via ${MAX_RESULT_BYTES_ENV} (0 disables).`,
+      },
+    ],
+    isError: true,
+  };
+}
+
 export type GatewayInvoker = (input: {
   toolName: string;
   args: Record<string, unknown>;
@@ -213,6 +283,13 @@ export function createCallToolHandler(deps: {
    * See wiki: infrastructure/m1-application-rate-openclaw-hermes-hook-lifecycle.md
    */
   appRateWriter?: AppRateWriter;
+  /**
+   * Cap (bytes) on the content forwarded per tool result; oversized results
+   * are replaced with an isError explanation instead of being shipped to the
+   * client (see the oversize-result guard above). 0 disables the guard.
+   * Defaults to DEFAULT_MAX_RESULT_BYTES when omitted.
+   */
+  maxResultBytes?: number;
 }): (req: CallToolRequest) => Promise<CallToolResult> {
   const {
     invokeFn,
@@ -222,6 +299,7 @@ export function createCallToolHandler(deps: {
     wikiBodyInliner,
     appRateWriter,
   } = deps;
+  const maxResultBytes = deps.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES;
 
   return async (req) => {
     const args = buildToolArgs(req.arguments, defaultAgentId);
@@ -266,6 +344,21 @@ export function createCallToolHandler(deps: {
         } catch {
           // Inlining must never affect the tool response. Fall through.
           finalResult = result;
+        }
+      }
+      // Oversize guard — measured after inlining (which adds bytes) so the
+      // check reflects what would actually go over the wire.
+      if (maxResultBytes > 0) {
+        const bytes = resultContentBytes(finalResult);
+        if (bytes > maxResultBytes) {
+          log(
+            `[brain] ${req.name} result oversized (${bytes} > ${maxResultBytes} bytes), replaced with error`,
+          );
+          finalResult = oversizeResult({
+            toolName: req.name,
+            bytes,
+            maxBytes: maxResultBytes,
+          });
         }
       }
       recordTrace(finalResult, !!finalResult.isError);

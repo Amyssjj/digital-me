@@ -33,6 +33,11 @@ export {
   attributionLabel,
   createCallToolHandler,
   extractHitCount,
+  DEFAULT_MAX_RESULT_BYTES,
+  MAX_RESULT_BYTES_ENV,
+  oversizeResult,
+  resolveMaxResultBytes,
+  resultContentBytes,
 } from "./handler.js";
 export type {
   CallToolRequest,
