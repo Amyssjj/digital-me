@@ -11,6 +11,7 @@ export default defineConfig({
         "src/**/*.test.ts",
         "src/index.ts",
         "src/server.ts",
+        "src/http-server.ts",
       ],
       thresholds: {
         lines: 100,

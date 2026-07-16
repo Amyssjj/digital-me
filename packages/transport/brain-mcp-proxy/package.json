@@ -7,14 +7,16 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "bin": {
-    "digital-me-brain-mcp-proxy": "./bin/brain-mcp-proxy.mjs"
+    "digital-me-brain-mcp-proxy": "./bin/brain-mcp-proxy.mjs",
+    "digital-me-brain-mcp-http": "./bin/brain-mcp-http.mjs"
   },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./bin/brain-mcp-proxy.mjs": "./bin/brain-mcp-proxy.mjs"
+    "./bin/brain-mcp-proxy.mjs": "./bin/brain-mcp-proxy.mjs",
+    "./bin/brain-mcp-http.mjs": "./bin/brain-mcp-http.mjs"
   },
   "files": [
     "dist",
