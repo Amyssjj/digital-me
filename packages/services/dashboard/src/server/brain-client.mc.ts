@@ -10,6 +10,7 @@
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { MAX_RESULT_BYTES_ENV } from "@digital-me/brain-mcp-proxy";
 
 // ── In-process TTL Cache ──────��───────────────────────────────────
 
@@ -77,7 +78,14 @@ async function getClient(): Promise<Client> {
     const transport = new StdioClientTransport({
       command: nodeBin,
       args: [proxyPath],
-      env: { ...process.env } as Record<string, string>,
+      // Disable the proxy's oversize-result guard for this spawn: the
+      // dashboard is the one consumer that legitimately reads the full
+      // board JSON (tens of MB — Kanban stats, workflow run counts), and
+      // the SDK client handles it fine. Agent-facing spawns keep the cap.
+      env: {
+        ...process.env,
+        [MAX_RESULT_BYTES_ENV]: "0",
+      } as Record<string, string>,
     });
 
     const c = new Client(

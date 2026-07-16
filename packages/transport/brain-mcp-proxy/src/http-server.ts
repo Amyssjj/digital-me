@@ -22,7 +22,7 @@ import {
 } from "./app-rate-writer.js";
 import { loadGatewayConfig } from "./config.js";
 import { invokeGatewayTool } from "./gateway.js";
-import { createCallToolHandler } from "./handler.js";
+import { createCallToolHandler, resolveMaxResultBytes } from "./handler.js";
 import { createRequestListener, MCP_PATH } from "./http-app.js";
 import { isLoopbackHost, loadHttpConfig } from "./http-config.js";
 import {
@@ -93,6 +93,7 @@ export async function mainHttp(): Promise<void> {
         log: emitStderr,
         traceWriter,
         appRateWriter,
+        maxResultBytes: resolveMaxResultBytes(process.env),
       }),
   });
 
