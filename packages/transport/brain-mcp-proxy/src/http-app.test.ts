@@ -450,6 +450,37 @@ describe("streamable HTTP end-to-end", () => {
     await client.close();
   });
 
+  it("advertises memory_get's widened corpus/from/lines schema and forwards corpus:\"wiki\" end-to-end", async () => {
+    const { deps, calls } = makeDeps();
+    const port = await startServer(deps);
+    const client = await connectClient(port, {
+      headers: { "x-agent-id": "windows-claude" },
+    });
+
+    // The listed schema must expose corpus so a remote client is allowed to
+    // send it (clients only send params the advertised schema exposes).
+    const tools = await client.listTools();
+    const memoryGet = tools.tools.find((t) => t.name === "memory_get")!;
+    const props = memoryGet.inputSchema.properties as Record<
+      string,
+      { enum?: string[] }
+    >;
+    expect(props.corpus?.enum).toEqual(["memory", "wiki", "all"]);
+    expect(props.from).toBeDefined();
+    expect(props.lines).toBeDefined();
+
+    await client.callTool({
+      name: "memory_get",
+      arguments: { path: "wiki/x.md", corpus: "wiki" },
+    });
+    expect(calls[0]?.args).toMatchObject({
+      path: "wiki/x.md",
+      corpus: "wiki",
+      agent_id: "windows-claude",
+    });
+    await client.close();
+  });
+
   it("overrides a payload-declared agent_id with the authenticated transport identity", async () => {
     const { deps, calls, logs } = makeDeps();
     const port = await startServer(deps);
