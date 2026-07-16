@@ -114,6 +114,36 @@ function sendJsonRpcError(
 }
 
 /**
+ * Enforce the authenticated transport identity over any `agent_id` a client
+ * put inside tool arguments. Without this, a payload-declared id would win in
+ * the shared handler (its stdio-protocol semantics keep caller-set ids) and
+ * traces / M1 app-rate records would attribute to an unauthenticated name.
+ */
+export function withEnforcedAgentId(
+  handler: ToolHandler,
+  agentId: string,
+  log: (line: string) => void,
+): ToolHandler {
+  return async (req) => {
+    const payloadId = req.arguments?.agent_id;
+    if (
+      typeof payloadId === "string" &&
+      payloadId !== "" &&
+      payloadId !== agentId
+    ) {
+      log(
+        `brain-mcp-http: overriding tool-argument agent_id '${payloadId}' ` +
+          `with transport identity '${agentId}'`,
+      );
+    }
+    return handler({
+      ...req,
+      arguments: { ...(req.arguments ?? {}), agent_id: agentId },
+    });
+  };
+}
+
+/**
  * Handle one HTTP request end-to-end. Exported for direct testing; the
  * production entry wraps it via createRequestListener.
  */
@@ -182,7 +212,11 @@ export async function handleMcpRequest(
       return;
     }
 
-    const toolHandler = deps.createToolHandler(resolution.agentId);
+    const baseHandler = deps.createToolHandler(resolution.agentId);
+    const toolHandler =
+      resolution.source === "explicit"
+        ? withEnforcedAgentId(baseHandler, resolution.agentId, deps.log)
+        : baseHandler;
     const server = new Server(
       { name: "openclaw-brain", version: "1.0.0" },
       { capabilities: { tools: {} } },

@@ -73,6 +73,7 @@ export {
   createRequestListener,
   handleMcpRequest,
   readJsonBody,
+  withEnforcedAgentId,
 } from "./http-app.js";
 export type { RequestListenerDeps, ToolHandler } from "./http-app.js";
 export { mainHttp } from "./http-server.js";

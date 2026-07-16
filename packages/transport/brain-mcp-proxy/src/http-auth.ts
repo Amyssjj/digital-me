@@ -32,25 +32,38 @@ export function timingSafeTokenEqual(
 const AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export type AgentIdResolution =
-  | { readonly ok: true; readonly agentId: string | undefined }
+  | { readonly ok: true; readonly source: "explicit"; readonly agentId: string }
+  | {
+      readonly ok: true;
+      readonly source: "fallback";
+      readonly agentId: string | undefined;
+    }
   | { readonly ok: false; readonly reason: string };
 
 /**
  * Resolve the effective agent id for one request. Precedence: explicit
  * value (header or query) > fallback from config > undefined (the handler
  * then attributes the call as `unknown:mcp`).
+ *
+ * `source` distinguishes an authenticated transport identity ("explicit")
+ * from a config fallback — the transport enforces explicit identities over
+ * any `agent_id` a client puts inside tool arguments.
  */
 export function resolveAgentId(input: {
   headerValue: string | string[] | undefined;
   fallback: string | undefined;
 }): AgentIdResolution {
   const { headerValue, fallback } = input;
-  if (headerValue === undefined) return { ok: true, agentId: fallback };
+  if (headerValue === undefined) {
+    return { ok: true, source: "fallback", agentId: fallback };
+  }
   if (Array.isArray(headerValue)) {
     return { ok: false, reason: "duplicate X-Agent-Id header" };
   }
   const trimmed = headerValue.trim();
-  if (trimmed === "") return { ok: true, agentId: fallback };
+  if (trimmed === "") {
+    return { ok: true, source: "fallback", agentId: fallback };
+  }
   if (!AGENT_ID_PATTERN.test(trimmed)) {
     return {
       ok: false,
@@ -59,5 +72,5 @@ export function resolveAgentId(input: {
         "[A-Za-z0-9._-], max 64 chars",
     };
   }
-  return { ok: true, agentId: trimmed };
+  return { ok: true, source: "explicit", agentId: trimmed };
 }

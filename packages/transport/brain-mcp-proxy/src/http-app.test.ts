@@ -10,7 +10,9 @@ import {
   createRequestListener,
   handleMcpRequest,
   readJsonBody,
+  withEnforcedAgentId,
   type RequestListenerDeps,
+  type ToolHandler,
 } from "./http-app.js";
 
 const TOKEN = "0123456789abcdef0123456789abcdef";
@@ -98,6 +100,55 @@ describe("readJsonBody", () => {
     if (!result.ok) {
       expect(result.message).toContain("raw-string-failure");
     }
+  });
+});
+
+// ─── withEnforcedAgentId branch coverage ────────────────────────────────────
+
+describe("withEnforcedAgentId", () => {
+  function capture(): { handler: ToolHandler; seen: Array<Record<string, unknown> | undefined> } {
+    const seen: Array<Record<string, unknown> | undefined> = [];
+    const handler: ToolHandler = async (req) => {
+      seen.push(req.arguments);
+      return { content: [{ type: "text", text: "ok" }] };
+    };
+    return { handler, seen };
+  }
+
+  it("stamps the transport identity when the payload has no agent_id (even without arguments)", async () => {
+    const { handler, seen } = capture();
+    const logs: string[] = [];
+    const wrapped = withEnforcedAgentId(handler, "transport-id", (l) => logs.push(l));
+    await wrapped({ name: "memory_get" });
+    expect(seen[0]).toEqual({ agent_id: "transport-id" });
+    expect(logs).toEqual([]);
+  });
+
+  it("silently replaces an empty payload agent_id", async () => {
+    const { handler, seen } = capture();
+    const logs: string[] = [];
+    const wrapped = withEnforcedAgentId(handler, "transport-id", (l) => logs.push(l));
+    await wrapped({ name: "memory_get", arguments: { agent_id: "" } });
+    expect(seen[0]).toEqual({ agent_id: "transport-id" });
+    expect(logs).toEqual([]);
+  });
+
+  it("does not log when the payload identity already matches", async () => {
+    const { handler, seen } = capture();
+    const logs: string[] = [];
+    const wrapped = withEnforcedAgentId(handler, "transport-id", (l) => logs.push(l));
+    await wrapped({ name: "memory_get", arguments: { agent_id: "transport-id" } });
+    expect(seen[0]).toEqual({ agent_id: "transport-id" });
+    expect(logs).toEqual([]);
+  });
+
+  it("logs and overrides a differing payload identity", async () => {
+    const { handler, seen } = capture();
+    const logs: string[] = [];
+    const wrapped = withEnforcedAgentId(handler, "transport-id", (l) => logs.push(l));
+    await wrapped({ name: "memory_get", arguments: { agent_id: "other", q: 1 } });
+    expect(seen[0]).toEqual({ agent_id: "transport-id", q: 1 });
+    expect(logs.join("\n")).toContain("overriding tool-argument agent_id 'other'");
   });
 });
 
@@ -392,9 +443,39 @@ describe("streamable HTTP end-to-end", () => {
       {
         agentId: "windows-codex",
         name: "memory_search",
-        args: { query: "remote access" },
+        // explicit transport identity is also stamped into the tool args
+        args: { query: "remote access", agent_id: "windows-codex" },
       },
     ]);
+    await client.close();
+  });
+
+  it("overrides a payload-declared agent_id with the authenticated transport identity", async () => {
+    const { deps, calls, logs } = makeDeps();
+    const port = await startServer(deps);
+    const client = await connectClient(port, {
+      headers: { "x-agent-id": "win-codex" },
+    });
+    await client.callTool({
+      name: "memory_get",
+      arguments: { id: "a", agent_id: "spoofed-id" },
+    });
+    expect(calls[0]?.args?.agent_id).toBe("win-codex");
+    expect(logs.join("\n")).toContain(
+      "overriding tool-argument agent_id 'spoofed-id'",
+    );
+    await client.close();
+  });
+
+  it("keeps a payload-declared agent_id when the transport has no explicit identity", async () => {
+    const { deps, calls } = makeDeps();
+    const port = await startServer(deps);
+    const client = await connectClient(port);
+    await client.callTool({
+      name: "memory_get",
+      arguments: { id: "a", agent_id: "self-declared" },
+    });
+    expect(calls[0]?.args?.agent_id).toBe("self-declared");
     await client.close();
   });
 

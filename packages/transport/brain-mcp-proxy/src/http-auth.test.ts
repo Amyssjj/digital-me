@@ -45,12 +45,13 @@ describe("resolveAgentId", () => {
   it("falls back when no value is provided", () => {
     expect(
       resolveAgentId({ headerValue: undefined, fallback: "default-agent" }),
-    ).toEqual({ ok: true, agentId: "default-agent" });
+    ).toEqual({ ok: true, source: "fallback", agentId: "default-agent" });
   });
 
   it("resolves to undefined when neither value nor fallback exist", () => {
     expect(resolveAgentId({ headerValue: undefined, fallback: undefined })).toEqual({
       ok: true,
+      source: "fallback",
       agentId: undefined,
     });
   });
@@ -66,6 +67,7 @@ describe("resolveAgentId", () => {
   it("falls back on a whitespace-only value", () => {
     expect(resolveAgentId({ headerValue: "   ", fallback: "fb" })).toEqual({
       ok: true,
+      source: "fallback",
       agentId: "fb",
     });
   });
@@ -73,13 +75,14 @@ describe("resolveAgentId", () => {
   it("accepts and trims a well-formed agent id", () => {
     expect(
       resolveAgentId({ headerValue: " windows-codex.2 ", fallback: "fb" }),
-    ).toEqual({ ok: true, agentId: "windows-codex.2" });
+    ).toEqual({ ok: true, source: "explicit", agentId: "windows-codex.2" });
   });
 
   it("accepts an id at the 64-char limit and rejects 65", () => {
     const max = "a".repeat(64);
     expect(resolveAgentId({ headerValue: max, fallback: undefined })).toEqual({
       ok: true,
+      source: "explicit",
       agentId: max,
     });
     expect(

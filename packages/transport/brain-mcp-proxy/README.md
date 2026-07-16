@@ -127,7 +127,11 @@ bearer_token_env_var = "BRAIN_MCP_HTTP_TOKEN"
 **Per-client attribution:** each remote client should identify itself so traces and
 M1 metrics attribute calls correctly. Precedence: `X-Agent-Id` header →
 `agent_id` URL query parameter (for clients that can't set custom headers) →
-`BRAIN_MCP_HTTP_DEFAULT_AGENT_ID` → unattributed (`unknown:mcp`).
+`BRAIN_MCP_HTTP_DEFAULT_AGENT_ID` → unattributed (`unknown:mcp`). When the
+transport carries an explicit identity (header or query), it also overrides any
+`agent_id` set inside tool arguments — the authenticated transport identity
+wins, and the override is logged. A payload-declared `agent_id` is honored only
+when the transport has no explicit identity of its own.
 
 ### Security model
 
