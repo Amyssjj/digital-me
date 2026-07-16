@@ -21,6 +21,9 @@ import { buildMetricsRouter } from "./metrics-routes.js";
 import { buildKanbanRouter, buildMechanismRouter } from "./mechanism-routes.js";
 // Delivery view: unified agent-activity feed, read live from the brain DB.
 import { buildActivityFeedRouter } from "./activity-feed.js";
+// Remote MCP clients: external CLIs (other machines) that reach the brain over
+// the HTTP transport and thus never appear in the openclaw agent roster.
+import { buildRemoteClientsRouter } from "./remote-clients-routes.js";
 
 const app = express();
 // No CORS middleware on purpose: the SPA is served same-origin from this app,
@@ -77,6 +80,15 @@ const LEGACY_DB_PATH = path.join(
 );
 const DASHBOARD_DB_PATH = process.env["DASHBOARD_DB"] ?? DEFAULT_DB_PATH;
 
+// Brain traces store. This is a DIFFERENT DB from dashboard.db: traces +
+// brain_agents live in brain.db, written by the brain-mcp proxy's trace-writer.
+// Path source-of-truth matches trace-writer.ts (~/.openclaw/data/brain.db);
+// honor $BRAIN_DB, then $OPENCLAW_DATA_DIR, else the canonical home path.
+const OPENCLAW_DATA_DIR =
+  process.env["OPENCLAW_DATA_DIR"] ?? path.join(HOME, ".openclaw", "data");
+const BRAIN_DB_PATH =
+  process.env["BRAIN_DB"] ?? path.join(OPENCLAW_DATA_DIR, "brain.db");
+
 (function migrateLegacyDbIfNeeded() {
   if (process.env["DASHBOARD_DB"]) return; // explicit override — don't touch.
   if (!fs.existsSync(LEGACY_DB_PATH) || fs.existsSync(DEFAULT_DB_PATH)) return;
@@ -115,6 +127,13 @@ app.use("/api/mechanism", buildMechanismRouter());
 // split as the metrics endpoints); the stream_activity intake step owns the
 // brain → row mapping. See activity-feed.ts + intake/.../stream_activity.py.
 app.use("/api/activity-feed", buildActivityFeedRouter(DASHBOARD_DB_PATH));
+
+// ── Remote MCP clients ──
+// External MCP clients (a second machine's Claude Code / Codex CLI) reach the
+// brain over the Streamable-HTTP transport, attributed by X-Agent-Id. They
+// leave a footprint only in brain.db `traces`, never in the openclaw roster, so
+// no agent-card surfaces them. This endpoint aggregates the non-roster clients.
+app.use("/api/remote-clients", buildRemoteClientsRouter(BRAIN_DB_PATH));
 
 // ── Feed search: ranked knowledge search over the brain's memory_search ──
 // Preview markdown is read from disk, restricted to the user-owned knowledge

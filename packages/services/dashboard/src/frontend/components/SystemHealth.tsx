@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { ApplicationRateLeftCard } from "./ApplicationRateLeftCard";
 import { KnowledgeTasteLeftCard } from "./KnowledgeTasteLeftCard";
 import { MetricChartPanel, type MetricId } from "./MetricChartPanel";
+import { RemoteClientsCard } from "./RemoteClientsCard";
 import { SessionsLeftCard } from "./SessionsLeftCard";
 
 /**
@@ -63,6 +64,8 @@ export function SystemHealth() {
           </div>
         ))}
       </div>
+
+      <RemoteClientsCard index={ROWS.length} />
 
       <motion.div
         className="text-center py-2"
