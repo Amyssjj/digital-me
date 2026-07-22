@@ -24,8 +24,25 @@ import { buildActivityFeedRouter } from "./activity-feed.js";
 // Remote MCP clients: external CLIs (other machines) that reach the brain over
 // the HTTP transport and thus never appear in the openclaw agent roster.
 import { buildRemoteClientsRouter } from "./remote-clients-routes.js";
+// DNS-rebinding guard: reject any request whose Host isn't a loopback name.
+import { isLoopbackHost } from "./host-guard.js";
 
 const app = express();
+// DNS-rebinding guard — MUST be the first middleware, before body parsing and
+// every route. This API is unauthenticated and its only perimeter is loopback
+// binding + no CORS (see below). That perimeter is defeated by DNS rebinding
+// unless we also validate the Host header: a site the browser visits can
+// re-resolve its hostname to 127.0.0.1 and read this personal-data API under
+// its own origin. Legit local clients (browser → localhost, Vite proxy →
+// 127.0.0.1) always send a loopback Host; rebound requests carry the attacker's
+// hostname and are rejected here. See host-guard.ts for the full rationale.
+app.use((req, res, next) => {
+  if (!isLoopbackHost(req.headers.host)) {
+    res.status(403).json({ error: "forbidden host" });
+    return;
+  }
+  next();
+});
 // No CORS middleware on purpose: the SPA is served same-origin from this app,
 // and the Vite dev server proxies /api here (see vite.config.ts), so no
 // cross-origin requests exist. A `cors()` wildcard would let any website the

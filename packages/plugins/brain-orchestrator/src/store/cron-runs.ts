@@ -135,7 +135,12 @@ export function createCronTools(deps: { db: DatabaseSync }): CronTools {
       params.until = dateFromEpochMs(args.until);
     }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limitClause = args.limit !== undefined ? `LIMIT ${args.limit}` : "";
+    // Bind LIMIT as a parameter, never string-interpolate it (SQLi guard).
+    let limitClause = "";
+    if (args.limit !== undefined) {
+      limitClause = "LIMIT @limit";
+      params.limit = args.limit;
+    }
     const rows = db
       .prepare(
         `SELECT date, cron_name, scheduled_time, run_time, status, duration_ms, error
