@@ -105,7 +105,12 @@ export function createFeedbackTools(deps: {
       params.since = dateFromEpochMs(args.since);
     }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limitClause = args.limit !== undefined ? `LIMIT ${args.limit}` : "";
+    // Bind LIMIT as a parameter, never string-interpolate it (SQLi guard).
+    let limitClause = "";
+    if (args.limit !== undefined) {
+      limitClause = "LIMIT @limit";
+      params.limit = args.limit;
+    }
     const rows = db
       .prepare(
         `SELECT id, date, type, agent, description, severity, source, related_goal, resolved

@@ -160,7 +160,14 @@ export function createIssueTools(deps: {
       params.until = dateFromEpochMs(args.until);
     }
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
-    const limitClause = args.limit !== undefined ? `LIMIT ${args.limit}` : "";
+    // Bind LIMIT as a parameter, never string-interpolate it — a non-integer
+    // `limit` reaching here (e.g. from an unvalidated caller) would otherwise be
+    // SQL injection. Bound params make injection structurally impossible.
+    let limitClause = "";
+    if (args.limit !== undefined) {
+      limitClause = "LIMIT @limit";
+      params.limit = args.limit;
+    }
     const rows = db
       .prepare(
         `SELECT id, date, type, goal, title, description, category, severity, status, reported_by

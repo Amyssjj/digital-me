@@ -8,3 +8,9 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+# Security floors for transitive (lint-time) dev deps flagged by Dependabot.
+# brace-expansion GHSA-3jxr-9vmj-r5cp (<5.0.7) and js-yaml GHSA-h67p-54hq-rp68 (<=4.1.1).
+# Caret floors so Dependabot can still bump within the major.
+overrides:
+  brace-expansion@5: ^5.0.7
+  js-yaml@4: ^4.2.0
