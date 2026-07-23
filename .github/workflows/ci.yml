@@ -22,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -47,7 +47,7 @@ jobs:
         working-directory: packages/services/dream-cycle
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
@@ -80,7 +80,7 @@ jobs:
         working-directory: packages/services/digest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.11"
           cache: pip
