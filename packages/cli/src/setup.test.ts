@@ -222,11 +222,15 @@ describe("renderStarterConfig", () => {
 });
 
 describe("planWikiInit", () => {
-  it("lists wiki/, inbox/, .cache/ + root dir", () => {
+  it("lists wiki/, tastes/, inbox/, .cache/ + root dir", () => {
     const plan = planWikiInit({ wikiRoot: "/wiki-root", aliases: {} });
+    // tastes/ must exist from day one: it's wired into openclaw's
+    // memorySearch.extraPaths, and the gateway only indexes extraPaths dirs
+    // that exist at startup.
     expect(plan.dirsToCreate).toEqual([
       "/wiki-root",
       "/wiki-root/wiki",
+      "/wiki-root/tastes",
       "/wiki-root/inbox",
       "/wiki-root/.cache",
     ]);
@@ -239,6 +243,7 @@ describe("planWikiInit", () => {
       "/r/config.example.yaml",
       "/r/config.yaml",
       "/r/inbox/.gitkeep",
+      "/r/tastes/.gitkeep",
       "/r/wiki/.gitkeep",
     ]);
   });

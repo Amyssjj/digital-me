@@ -272,6 +272,11 @@ export function planWikiInit(opts: {
     dirsToCreate: [
       root,
       path.join(root, "wiki"),
+      // The tastes tree ships empty but MUST exist from day one: the
+      // installer wires it into openclaw's memorySearch.extraPaths, and the
+      // gateway only indexes + watches extraPaths dirs that exist when it
+      // starts — a dir born later stays invisible until the next restart.
+      path.join(root, "tastes"),
       path.join(root, "inbox"),
       path.join(root, ".cache"),
     ],
@@ -300,6 +305,10 @@ export function planWikiInit(opts: {
       },
       {
         path: path.join(root, "wiki", ".gitkeep"),
+        contents: "",
+      },
+      {
+        path: path.join(root, "tastes", ".gitkeep"),
         contents: "",
       },
       {

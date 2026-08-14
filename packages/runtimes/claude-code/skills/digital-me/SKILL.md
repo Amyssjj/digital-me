@@ -25,7 +25,7 @@ Key paths:
 | Agent type | Access method |
 |---|---|
 | Claude Code | `Read`/`Write` tools on `~/digital-me/` + `memory_search`/`memory_get` via `openclaw-brain` MCP |
-| OpenClaw subagents | `memory_search`/`memory_get` tools (wiki is in `memorySearch.extraPaths`) |
+| OpenClaw subagents | `memory_search`/`memory_get` tools (wiki + tastes are in `memorySearch.extraPaths`) |
 | Hermes Agent | `memory_search`/`memory_get` via `openclaw-brain` MCP |
 | Antigravity | Direct filesystem access to `~/digital-me/` |
 

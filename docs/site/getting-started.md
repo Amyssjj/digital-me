@@ -95,7 +95,7 @@ With the npm install, the only directory that's yours to own is `~/digital-me`
 
 | Path | What it is |
 |---|---|
-| `~/digital-me/` | **your** data: wiki, inbox, config (own it in a private git repo) |
+| `~/digital-me/` | **your** data: wiki, tastes, inbox, config (own it in a private git repo) |
 | `~/.openclaw/` | openclaw gateway home (brain database, plugins) |
 
 *(Installed [from source](#from-source)? The repo checkout lives at

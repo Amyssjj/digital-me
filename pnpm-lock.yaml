@@ -60,6 +60,9 @@ importers:
       esbuild:
         specifier: ^0.28.0
         version: 0.28.0
+      json5:
+        specifier: ^2.2.3
+        version: 2.2.3
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
