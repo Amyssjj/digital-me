@@ -6,7 +6,9 @@ import {
   formatReport,
   parsePythonVersion,
   runDoctor,
+  runEmbeddingsCheck,
   runLlmAuthCheck,
+  runMemoryIndexChecks,
   runOpenclawShadowCheck,
   type DoctorDeps,
 } from "./doctor.js";
@@ -863,5 +865,223 @@ describe("runOpenclawShadowCheck", () => {
     expect(paths).toContain(
       "$HOME/openclaw/extensions/digital-me-recall/index.mjs",
     );
+  });
+});
+
+// ── Memory-index wiring checks ────────────────────────────────────────────
+
+describe("runMemoryIndexChecks", () => {
+  const wiki = "/home/u/digital-me/wiki";
+  const tastes = "/home/u/digital-me/tastes";
+  const cfgPath = "/home/u/.openclaw/openclaw.json";
+  const DIRS = "openclaw: knowledge dirs";
+  const PATHS = "openclaw: memory_search extraPaths";
+  const EMB = "openclaw: memory embeddings";
+  const goodCfg = JSON.stringify({
+    agents: {
+      defaults: {
+        memorySearch: { fallback: "local", extraPaths: [wiki, tastes] },
+      },
+    },
+  });
+  const find = (checks: ReturnType<typeof runMemoryIndexChecks>, label: string) =>
+    checks.find((c) => c.label === label)!;
+
+  it("is all green when dirs exist, paths are wired, and fallback is keyless", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({ fileExists: () => true, readFile: () => goodCfg }),
+    );
+    expect(checks).toHaveLength(3);
+    expect(checks.every((c) => c.ok)).toBe(true);
+    const paths = find(checks, PATHS);
+    if (paths.ok) expect(paths.note).toContain(cfgPath);
+  });
+
+  it("flags missing knowledge dirs with the startup-watch explanation", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({
+        fileExists: (p) => p === cfgPath || p === wiki,
+        readFile: () => goodCfg,
+      }),
+    );
+    const dirs = find(checks, DIRS);
+    expect(dirs.ok).toBe(false);
+    if (!dirs.ok) {
+      expect(dirs.reason).toContain(tastes);
+      expect(dirs.reason).not.toContain(`${wiki},`);
+      expect(dirs.reason).toMatch(/exist at startup/);
+    }
+  });
+
+  it("FAILs the extraPaths check when the config file is absent (embeddings skip)", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({ fileExists: (p) => p === wiki || p === tastes }),
+    );
+    expect(find(checks, DIRS).ok).toBe(true);
+    const paths = find(checks, PATHS);
+    expect(paths.ok).toBe(false);
+    if (!paths.ok) expect(paths.reason).toMatch(/not found/);
+    const emb = find(checks, EMB);
+    expect(emb.ok).toBe(true);
+    if (emb.ok) expect(emb.note).toMatch(/skipped — openclaw config not found/);
+  });
+
+  it("skips the content checks when the caller provides no readFile", () => {
+    const checks = runMemoryIndexChecks(makeDeps({ fileExists: () => true }));
+    const paths = find(checks, PATHS);
+    expect(paths.ok).toBe(true);
+    if (paths.ok) expect(paths.note).toMatch(/did not provide readFile/);
+    const emb = find(checks, EMB);
+    expect(emb.ok).toBe(true);
+    if (emb.ok) expect(emb.note).toMatch(/did not provide readFile/);
+  });
+
+  it("FAILs when the config is not even JSON5", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({ fileExists: () => true, readFile: () => "{ totally: broken" }),
+    );
+    const paths = find(checks, PATHS);
+    expect(paths.ok).toBe(false);
+    if (!paths.ok) expect(paths.reason).toMatch(/could not be read as JSON5/);
+    const emb = find(checks, EMB);
+    expect(emb.ok).toBe(true);
+    if (emb.ok) expect(emb.note).toMatch(/unreadable/);
+  });
+
+  it("stringifies a non-Error readFile throw", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({
+        fileExists: () => true,
+        readFile: () => {
+          throw "boom";
+        },
+      }),
+    );
+    const paths = find(checks, PATHS);
+    expect(paths.ok).toBe(false);
+    if (!paths.ok) expect(paths.reason).toContain("boom");
+  });
+
+  it("accepts the JSON5 dialect (comments, single quotes) like the gateway", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({
+        fileExists: () => true,
+        readFile: () =>
+          `{
+            // hand-annotated — legal for openclaw's JSON5 parser
+            agents: { defaults: { memorySearch: {
+              fallback: 'local',
+              extraPaths: ['${wiki}', '${tastes}',],
+            } } },
+          }`,
+      }),
+    );
+    expect(checks.every((c) => c.ok)).toBe(true);
+  });
+
+  it("FAILs when extraPaths misses the tastes tree (non-strings ignored)", () => {
+    const cfg = JSON.stringify({
+      agents: { defaults: { memorySearch: { fallback: "local", extraPaths: [wiki, 42] } } },
+    });
+    const checks = runMemoryIndexChecks(
+      makeDeps({ fileExists: () => true, readFile: () => cfg }),
+    );
+    const paths = find(checks, PATHS);
+    expect(paths.ok).toBe(false);
+    if (!paths.ok) {
+      expect(paths.reason).toContain(tastes);
+      expect(paths.reason).toMatch(/restart the openclaw gateway/);
+    }
+  });
+
+  it("treats a null config and a non-object agents node as unwired", () => {
+    for (const raw of ["null", JSON.stringify({ agents: "nope" })]) {
+      const checks = runMemoryIndexChecks(
+        makeDeps({ fileExists: () => true, readFile: () => raw }),
+      );
+      expect(find(checks, PATHS).ok).toBe(false);
+    }
+  });
+
+  it("falls back to USERPROFILE then empty home for path resolution", () => {
+    const win = runMemoryIndexChecks(
+      makeDeps({ env: { USERPROFILE: "/win/u" }, fileExists: () => false }),
+    );
+    const winPaths = find(win, PATHS);
+    if (!winPaths.ok) expect(winPaths.reason).toContain("/win/u/.openclaw/openclaw.json");
+    // With no HOME at all, path.join("", ".openclaw", …) is relative.
+    const bare = runMemoryIndexChecks(makeDeps({ env: {}, fileExists: () => false }));
+    const barePaths = find(bare, PATHS);
+    if (!barePaths.ok) expect(barePaths.reason).toContain(".openclaw/openclaw.json");
+  });
+
+  it("runs from runDoctor only for the openclaw runtime", () => {
+    const without = runDoctor(makeDeps(), ["hermes"]);
+    expect(without.checks.some((c) => c.label === DIRS)).toBe(false);
+    const withOc = runDoctor(makeDeps(), ["openclaw"]);
+    expect(withOc.checks.some((c) => c.label === DIRS)).toBe(true);
+  });
+});
+
+describe("runEmbeddingsCheck", () => {
+  const EMB = "openclaw: memory embeddings";
+
+  it("passes a key-optional primary provider", () => {
+    const c = runEmbeddingsCheck({}, { provider: "local" });
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/provider=local .*without an API key/);
+  });
+
+  it("passes a key-optional fallback under the implicit default provider", () => {
+    const c = runEmbeddingsCheck({}, { fallback: "local" });
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/provider=openai \(default\), fallback=local/);
+  });
+
+  it("passes a key-optional fallback under an explicit remote provider", () => {
+    const c = runEmbeddingsCheck({}, { provider: "gemini", fallback: "local" });
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/provider=gemini, fallback=local/);
+  });
+
+  it("trusts an explicit provider without verifying its key", () => {
+    const c = runEmbeddingsCheck({}, { provider: "voyage" });
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/key not verified here/);
+  });
+
+  it("passes the implicit default when remote.apiKey is set", () => {
+    const c = runEmbeddingsCheck({}, { remote: { apiKey: "sk-x" } });
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/API key detected/);
+  });
+
+  it("passes the implicit default when $OPENAI_API_KEY is set", () => {
+    const c = runEmbeddingsCheck({ OPENAI_API_KEY: "sk-env" }, {});
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/API key detected/);
+  });
+
+  it("FAILs the keyless implicit default — the fresh-install trap", () => {
+    const c = runEmbeddingsCheck({}, {});
+    expect(c.label).toBe(EMB);
+    expect(c.ok).toBe(false);
+    if (!c.ok) {
+      expect(c.reason).toMatch(/will NOT build/);
+      expect(c.reason).toMatch(/fallback: 'local'/);
+    }
+  });
+
+  it("FAILs an explicit keyless fallback: 'none'", () => {
+    const c = runEmbeddingsCheck({}, { fallback: "none" });
+    expect(c.ok).toBe(false);
+  });
+
+  it("ignores blank strings and non-string values when resolving the config", () => {
+    const c = runEmbeddingsCheck(
+      { OPENAI_API_KEY: "  " },
+      { provider: "  ", fallback: 42, remote: { apiKey: "" } },
+    );
+    expect(c.ok).toBe(false);
   });
 });

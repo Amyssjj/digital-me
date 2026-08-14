@@ -400,6 +400,7 @@ function doctor(runtimes: RuntimeId[]): number {
       env: process.env,
       which,
       execCommand,
+      readFile: (p) => readFileSync(p, "utf-8"),
       brainMcpProxyBinPath: BRAIN_MCP_PROXY_BIN,
       repoRoot: resolveRepoRoot(),
     },
@@ -1363,9 +1364,26 @@ async function installOpenclaw(
   } else {
     console.log(`     memory_search already indexes the wiki + tastes trees.`);
   }
+  if (mem.ok && mem.seededLocalFallback) {
+    console.log(
+      `[OK] memory_search embeddings: no provider configured — seeded ` +
+        `fallback: "local" (openclaw's keyless bundled embedder) so the index ` +
+        `builds without an API key. Override under agents.defaults.memorySearch ` +
+        `in ${mem.configPath}.`,
+    );
+  }
+  if (mem.ok && mem.json5Rewritten) {
+    console.log(
+      `     note: ${mem.configPath} contained JSON5 syntax (comments, trailing ` +
+        `commas, …); it was rewritten as plain JSON — the same normalization ` +
+        `openclaw's own config writer applies.`,
+    );
+  }
 
   console.log(
-    `     Restart openclaw (gateway daemon) for the plugins to load.\n` +
+    `     Restart openclaw (gateway daemon) for the plugins to load and the\n` +
+      `     memory index to pick up the wiki + tastes trees (indexing resumes\n` +
+      `     asynchronously after restart).\n` +
       `     Then: 'digital-me doctor' should show all checks green.`,
   );
   return 0;

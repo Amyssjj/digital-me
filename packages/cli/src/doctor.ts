@@ -9,7 +9,19 @@
  *   2. The openclaw config file is readable.
  *   3. Each enabled runtime has its hook scripts / templates installed.
  *   4. The brain MCP proxy is on PATH.
+ *   5. The memory index is actually wired: the wiki + tastes dirs exist, both
+ *      sit in openclaw's `agents.defaults.memorySearch.extraPaths`, and the
+ *      embedding config can build an index on this machine (openclaw's
+ *      default provider is `openai`, which silently indexes nothing without
+ *      an API key — the #1 "memory_search finds nothing" fresh-install trap).
  */
+
+import JSON5 from "json5";
+import {
+  KEY_OPTIONAL_EMBEDDING_PROVIDERS,
+  digitalMeKnowledgePaths,
+  resolveOpenclawConfigPath,
+} from "./openclaw-memory.js";
 
 export type CheckResult =
   | { readonly ok: true; readonly label: string; readonly note?: string }
@@ -28,6 +40,12 @@ export type DoctorDeps = {
   readonly fileExists: (path: string) => boolean;
   readonly env: Readonly<Record<string, string | undefined>>;
   readonly which: (cmd: string) => string | undefined;
+  /**
+   * Read a file as UTF-8. Optional — when undefined, checks that need file
+   * CONTENT (the memory-index wiring group) report themselves as skipped
+   * rather than failing, mirroring the execCommand convention below.
+   */
+  readonly readFile?: (path: string) => string;
   /**
    * Absolute path to the brain-mcp-proxy bin file (resolved by the caller
    * from @digital-me/brain-mcp-proxy's BIN_PATH export). The doctor checks
@@ -245,6 +263,7 @@ export function runDoctor(
   // takes over if the state-dir copy is ever removed, and the dist/extensions
   // one is a stale build artifact. Deploy ONLY to the state dir.
   if (enabledRuntimes.includes("openclaw")) {
+    checks.push(...runMemoryIndexChecks(deps));
     checks.push(...runOpenclawShadowCheck(deps));
   }
 
@@ -312,6 +331,200 @@ export function runOpenclawShadowCheck(deps: DoctorDeps): CheckResult[] {
       `~/.openclaw/extensions install. Remove it, then re-run ` +
       `'digital-me install --runtime openclaw'.`,
   }));
+}
+
+// ── Memory-index wiring checks ────────────────────────────────────────────
+//
+// "memory_search finds nothing" on a fresh install has three distinct causes,
+// each individually green under the file-existence checks above: the wiki +
+// tastes dirs don't exist yet (the gateway only indexes extraPaths dirs that
+// exist at startup), the dirs aren't in extraPaths at all, or the embedding
+// config can't build an index (openclaw defaults to the `openai` provider,
+// which needs an API key). One check per cause, so a red doctor names the
+// exact repair.
+
+const KNOWLEDGE_DIRS_LABEL = "openclaw: knowledge dirs";
+const MEMORY_PATHS_LABEL = "openclaw: memory_search extraPaths";
+const EMBEDDINGS_LABEL = "openclaw: memory embeddings";
+
+/** Coerce an unknown JSON node to an object, or {} when it isn't one. */
+function asObject(v: unknown): Record<string, unknown> {
+  return v !== null && typeof v === "object" ? (v as Record<string, unknown>) : {};
+}
+
+function asTrimmedString(v: unknown): string | undefined {
+  if (typeof v !== "string") return undefined;
+  const t = v.trim();
+  return t === "" ? undefined : t;
+}
+
+/**
+ * Verify the memory index is actually wired end-to-end: knowledge dirs on
+ * disk, both dirs listed in `agents.defaults.memorySearch.extraPaths`, and
+ * an embedding config that can index without manual surgery. Pure/data-layer.
+ */
+export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
+  const checks: CheckResult[] = [];
+  const home = deps.env.HOME ?? deps.env.USERPROFILE ?? "";
+  const configPath = resolveOpenclawConfigPath(home, deps.env);
+  const knowledgePaths = digitalMeKnowledgePaths(home, undefined, deps.env);
+
+  const missingDirs = knowledgePaths.filter((d) => !deps.fileExists(d));
+  if (missingDirs.length === 0) {
+    checks.push({
+      ok: true,
+      label: KNOWLEDGE_DIRS_LABEL,
+      note: knowledgePaths.join(", "),
+    });
+  } else {
+    checks.push({
+      ok: false,
+      label: KNOWLEDGE_DIRS_LABEL,
+      reason:
+        `Missing ${missingDirs.join(", ")} — run 'digital-me setup' (or ` +
+        `'digital-me install --runtime openclaw') to create them. The openclaw ` +
+        `gateway only indexes extraPaths dirs that exist at startup, so a dir ` +
+        `created later stays unindexed until the next gateway restart.`,
+    });
+  }
+
+  if (!deps.fileExists(configPath)) {
+    checks.push({
+      ok: false,
+      label: MEMORY_PATHS_LABEL,
+      reason:
+        `${configPath} not found — run 'digital-me install --runtime openclaw' ` +
+        `to wire the wiki + tastes index.`,
+    });
+    checks.push({
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note: "(skipped — openclaw config not found)",
+    });
+    return checks;
+  }
+  if (!deps.readFile) {
+    checks.push({
+      ok: true,
+      label: MEMORY_PATHS_LABEL,
+      note: "(skipped — caller did not provide readFile)",
+    });
+    checks.push({
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note: "(skipped — caller did not provide readFile)",
+    });
+    return checks;
+  }
+
+  let cfg: Record<string, unknown>;
+  try {
+    // openclaw parses this file as JSON5 (comments + trailing commas are
+    // legal there) — mirror its dialect so a hand-annotated config the
+    // gateway reads fine isn't reported broken here.
+    cfg = asObject(JSON5.parse(deps.readFile(configPath)));
+  } catch (err) {
+    checks.push({
+      ok: false,
+      label: MEMORY_PATHS_LABEL,
+      reason:
+        `${configPath} could not be read as JSON5 ` +
+        `(${err instanceof Error ? err.message : String(err)}). Fix it, then ` +
+        `re-run 'digital-me install --runtime openclaw'.`,
+    });
+    checks.push({
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note: "(skipped — openclaw config unreadable)",
+    });
+    return checks;
+  }
+
+  const ms = asObject(asObject(asObject(cfg.agents).defaults).memorySearch);
+  const extraPaths = Array.isArray(ms.extraPaths)
+    ? ms.extraPaths.filter((x): x is string => typeof x === "string")
+    : [];
+  const missingPaths = knowledgePaths.filter((p) => !extraPaths.includes(p));
+  if (missingPaths.length === 0) {
+    checks.push({
+      ok: true,
+      label: MEMORY_PATHS_LABEL,
+      note: `wiki + tastes wired in ${configPath}`,
+    });
+  } else {
+    checks.push({
+      ok: false,
+      label: MEMORY_PATHS_LABEL,
+      reason:
+        `agents.defaults.memorySearch.extraPaths is missing ` +
+        `${missingPaths.join(", ")} — run 'digital-me install --runtime openclaw' ` +
+        `(idempotent), then restart the openclaw gateway.`,
+    });
+  }
+
+  checks.push(runEmbeddingsCheck(deps.env, ms));
+  return checks;
+}
+
+/**
+ * Effective-embeddings viability. openclaw defaults the memory embedding
+ * provider to `openai` (remote, key required): with that IMPLICIT default and
+ * no detectable key, the index silently never builds — that exact case FAILs.
+ * An explicit provider choice is trusted (openclaw's own `openclaw doctor`
+ * validates keys/endpoints end-to-end); key-optional providers (`local`,
+ * `ollama`, `lmstudio`) — as primary or fallback — always pass. Exported for
+ * direct unit testing.
+ */
+export function runEmbeddingsCheck(
+  env: Readonly<Record<string, string | undefined>>,
+  memorySearch: Readonly<Record<string, unknown>>,
+): CheckResult {
+  const provider = asTrimmedString(memorySearch.provider);
+  const fallback = asTrimmedString(memorySearch.fallback);
+  if (provider && KEY_OPTIONAL_EMBEDDING_PROVIDERS.has(provider)) {
+    return {
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note: `provider=${provider} (runs without an API key)`,
+    };
+  }
+  if (fallback && KEY_OPTIONAL_EMBEDDING_PROVIDERS.has(fallback)) {
+    return {
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note:
+        `provider=${provider ?? "openai (default)"}, fallback=${fallback} — ` +
+        `index builds even without an API key`,
+    };
+  }
+  if (provider) {
+    return {
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note:
+        `provider=${provider} — key not verified here; ` +
+        `'openclaw doctor' validates embeddings end-to-end`,
+    };
+  }
+  const remoteApiKey = asTrimmedString(asObject(memorySearch.remote).apiKey);
+  if (remoteApiKey ?? asTrimmedString(env.OPENAI_API_KEY)) {
+    return {
+      ok: true,
+      label: EMBEDDINGS_LABEL,
+      note: "provider=openai (default), API key detected",
+    };
+  }
+  return {
+    ok: false,
+    label: EMBEDDINGS_LABEL,
+    reason:
+      "memory_search embeddings default to the 'openai' provider but no API key " +
+      "was found ($OPENAI_API_KEY / agents.defaults.memorySearch.remote.apiKey) — " +
+      "the wiki + tastes index will NOT build. Re-run 'digital-me install " +
+      "--runtime openclaw' (seeds the keyless fallback: 'local'), or set " +
+      "agents.defaults.memorySearch.provider + key. 'openclaw doctor' validates " +
+      "embeddings end-to-end.",
+  };
 }
 
 /**
