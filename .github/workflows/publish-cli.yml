@@ -24,6 +24,17 @@ jobs:
   publish:
     name: Build bundle + publish to npm
     runs-on: ubuntu-latest
+    # Gate the npm credential behind an environment. Unlike the dream-cycle
+    # publish, which uses PyPI trusted publishing and holds no long-lived
+    # secret, this job carries `DM_NPM_TOKEN` — a standing token that can push a
+    # release under our name. `workflow_dispatch` means anyone with write access
+    # can start a publish, so the environment's required reviewer is what makes
+    # a release a deliberate act rather than a side effect of a pushed tag.
+    #
+    # NOTE: the `npm` environment must exist with a required reviewer before this
+    # merges. GitHub auto-creates a referenced environment with NO protection
+    # rules, which would silently make this line decorative.
+    environment: npm
     permissions:
       contents: read
       id-token: write # npm provenance
