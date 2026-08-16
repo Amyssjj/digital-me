@@ -8,6 +8,20 @@ packages:
 allowBuilds:
   better-sqlite3: true
   esbuild: true
+# Supply-chain cooling-off. Refuse any version published less than 7 days ago.
+#
+# Dependabot patch/minor PRs merge unattended once CI is green, and a green test
+# suite is not a defense against a compromised release — an attacker publishing a
+# malicious patch to a legitimate package makes sure the tests still pass. What
+# actually protects us is not being among the first to install it: these
+# compromises are typically caught and yanked within hours to a couple of days.
+# This trades a week of latency on new versions for not being patient zero.
+#
+# Security advisories are unaffected in practice — by the time a CVE fix is
+# advertised the version is normally already older than this window. If a genuine
+# same-day emergency fix is ever needed, bump it manually rather than lowering
+# this floor.
+minimumReleaseAge: 10080 # minutes = 7 days
 # Security floors for transitive (lint-time) dev deps flagged by Dependabot.
 # brace-expansion GHSA-3jxr-9vmj-r5cp (<5.0.7) and js-yaml GHSA-h67p-54hq-rp68 (<=4.1.1).
 # Caret floors so Dependabot can still bump within the major.

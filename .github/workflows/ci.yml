@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # Required for GitHub's merge queue: the queue builds a candidate branch and
+  # waits for the required checks to report against it. Without this trigger the
+  # checks never run there and every queued PR hangs until it times out.
+  merge_group:
 
 jobs:
   sanitize:

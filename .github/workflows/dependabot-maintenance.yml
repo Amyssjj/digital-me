@@ -1,0 +1,82 @@
+name: Dependabot maintenance
+
+# Daily janitor for the Dependabot PR queue.
+#
+# This job deliberately does NOT decide whether anything is safe to merge. That
+# decision stays where it belongs:
+#   - dependabot-auto-merge.yml arms auto-merge using authoritative update-type
+#     metadata, which is only available on a `pull_request` event;
+#   - branch protection evaluates the gate at merge time, not on a timer.
+#
+# All this does is remove the friction that stops those two from reaching a
+# decision: nudge out-of-date branches so Dependabot rebases them, close PRs
+# that are permanently red on a required check, and report what needs a human.
+# It never merges, never force-pushes, and never touches a PR that Dependabot
+# did not open.
+
+on:
+  schedule:
+    # Daily. Branch protection requires up-to-date branches, so the queue drains
+    # roughly one PR per CI cycle — a weekly sweep would never catch up.
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report what would happen without changing anything"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write # delete the branch of a closed PR
+  pull-requests: write # comment and close
+  issues: write # report a failing sweep
+
+concurrency:
+  group: dependabot-maintenance
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Sweep the Dependabot queue
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Sweep
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          # Scheduled runs act; manual runs report unless explicitly told not to.
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+          # Only one PR can land per CI cycle anyway, so a low cap keeps a bad
+          # day from burning Actions minutes on rebases that immediately go
+          # stale again.
+          MAX_REBASES: "3"
+          STALE_DAYS: "30"
+          # Keep in sync with the required status checks on `main`. Drift here
+          # is fail-safe in the right direction: a check missing from this list
+          # means a PR is left open for a human, never wrongly closed.
+          REQUIRED_CHECKS: >-
+            ["Sanitize gate (forbidden-pattern scan)",
+             "Build, typecheck, lint, knip, test",
+             "dream-cycle (pytest + sdist + wheel)"]
+        run: bash scripts/dependabot-sweep.sh
+
+      - name: Report failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          title="Dependabot maintenance sweep is failing"
+          body="The scheduled Dependabot maintenance sweep failed. The Dependabot queue is not being maintained until this is fixed.
+
+          Run: ${GITHUB_SERVER_URL}/${REPO}/actions/runs/${GITHUB_RUN_ID}"
+          existing=$(gh issue list --repo "$REPO" --state open --search "$title in:title" \
+            --json number --jq '.[0].number // ""')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --repo "$REPO" --body "$body"
+          else
+            gh issue create --repo "$REPO" --title "$title" --body "$body"
+          fi
