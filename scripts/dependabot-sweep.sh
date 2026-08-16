@@ -28,6 +28,13 @@ RUN_URL="${GITHUB_SERVER_URL:-https://github.com}/${REPO}/actions/runs/${GITHUB_
 summary() { printf '%s\n' "$*" >>"${GITHUB_STEP_SUMMARY:-/dev/stdout}"; }
 changing() { [ "$DRY_RUN" != "true" ]; }
 
+# Skip ledger. Every PR this run declines to act on gets a line here with the
+# reason. Without it a run that silently skipped everything is indistinguishable
+# from a run that had nothing to do — which is exactly how the auto-merge
+# workflow this replaces managed to fail on every PR for months unnoticed.
+ledger=""
+note() { ledger+="- ${1}"$'\n'; }
+
 if ! changing; then
   echo "DRY RUN — no pull request will be commented on or closed."
 fi
@@ -122,14 +129,16 @@ summary ""
 summary "### Rebase nudges"
 nudged=0
 while read -r pr; do
-  if [ "$nudged" -ge "$MAX_REBASES" ]; then
-    echo "Reached MAX_REBASES=${MAX_REBASES}; stopping."
-    break
-  fi
   number=$(jq -r '.number' <<<"$pr")
   sha=$(jq -r '.sha' <<<"$pr")
   state=$(jq -r '.state' <<<"$pr")
   marker="<!-- maintenance-sweep: ${sha} -->"
+
+  if [ "$nudged" -ge "$MAX_REBASES" ]; then
+    echo "#${number}: rebase cap reached; deferring."
+    note "#${number} — not nudged: hit \`MAX_REBASES=${MAX_REBASES}\` this run, deferred to the next"
+    continue
+  fi
 
   # Skip if this exact head has already been nudged. When Dependabot acts the
   # head SHA changes and the PR becomes eligible again, so this dedupes without
@@ -137,6 +146,7 @@ while read -r pr; do
   if gh pr view "$number" --repo "$REPO" --json comments \
     --jq '[.comments[].body] | join("\n")' | grep -qF "$marker"; then
     echo "#${number} already nudged at ${sha}; skipping."
+    note "#${number} — not nudged: already asked at head \`${sha:0:8}\`, waiting on Dependabot to act"
     continue
   fi
 
@@ -174,4 +184,56 @@ if [ -z "$unarmed" ]; then
   summary "_none_"
 else
   summary "$unarmed"
+fi
+
+# --- 4. The skip ledger ------------------------------------------------------
+# Reads from a process substitution, never a pipe: a pipe would run the loop in
+# a subshell and silently discard everything appended to $ledger.
+collect() {
+  while read -r line; do
+    if [ -n "$line" ]; then note "$line"; fi
+  done
+}
+
+# Out of date, but nothing is waiting to consume a rebase.
+collect < <(jq -r '
+  .[]
+  | select(.mergeStateStatus == "BEHIND" or .mergeStateStatus == "DIRTY")
+  | select(.autoMergeRequest == null)
+  | "#\(.number) — not nudged: `\(.mergeStateStatus)` but no auto-merge armed, so a rebase would buy nothing"
+  ' <<<"$prs")
+
+# Red on a required check, but not yet old enough to close.
+collect < <(jq -r --argjson req "$REQUIRED_CHECKS" --arg cutoff "$cutoff" '
+  .[]
+  | select(.createdAt >= $cutoff)
+  | . as $pr
+  | [ .statusCheckRollup[]?
+      | select(.conclusion == "FAILURE")
+      | select(.name as $n | $req | index($n))
+      | .name ] as $failing
+  | select($failing | length > 0)
+  | "#\($pr.number) — not closed: red on `\($failing | join("`, `"))`, but opened \($pr.createdAt[0:10]) and the close threshold is \($cutoff[0:10])"
+  ' <<<"$prs")
+
+# Drift signal. A failing check absent from REQUIRED_CHECKS can never count
+# toward a close, which is the fail-safe direction — but if branch protection
+# gained a check and this list did not, that silence is the bug. Say so.
+collect < <(jq -r --argjson req "$REQUIRED_CHECKS" '
+  .[]
+  | . as $pr
+  | [ .statusCheckRollup[]?
+      | select(.conclusion == "FAILURE")
+      | select(.name as $n | $req | index($n) | not)
+      | .name ] as $other
+  | select($other | length > 0)
+  | "#\($pr.number) — failing `\($other | join("`, `"))`, ignored: not in `REQUIRED_CHECKS`. If branch protection now requires it, update the list"
+  ' <<<"$prs")
+
+summary ""
+summary "### Skipped — and why"
+if [ -z "$ledger" ]; then
+  summary "_nothing was skipped_"
+else
+  summary "$ledger"
 fi
