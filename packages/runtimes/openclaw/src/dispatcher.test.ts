@@ -293,6 +293,36 @@ describe("dispatchExecTask", () => {
     expect(stored.completedAt).toBe(1000);
   });
 
+  it("falls back to the task's timeoutMs when the dispatch has none", async () => {
+    // A workflow step that declares `timeoutMs` lands it on the task row, not
+    // inside the dispatch object — only alias resolution injects the latter.
+    // Without this fallback the runtime silently applied its own 300s default,
+    // so a step's declared budget never took effect.
+    const rt = makeRuntime();
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, {
+      dispatch: { mode: "exec", command: ["echo", "hi"] },
+      timeoutMs: 900_000,
+    });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls[0]!.timeoutMs).toBe(900_000);
+  });
+
+  it("prefers the dispatch timeoutMs over the task's when both are set", async () => {
+    const rt = makeRuntime();
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, {
+      dispatch: { mode: "exec", command: ["echo", "hi"], timeoutMs: 1000 },
+      timeoutMs: 900_000,
+    });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls[0]!.timeoutMs).toBe(1000);
+  });
+
   it("unblocks pending dependents after an exec task succeeds", async () => {
     const rt = makeRuntime();
     const deps = makeDeps(rt);

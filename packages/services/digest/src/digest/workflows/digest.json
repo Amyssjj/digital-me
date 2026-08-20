@@ -85,7 +85,7 @@
       },
       "priority": "normal",
       "onUpstreamFailure": "continue",
-      "timeoutMs": 120000,
+      "timeoutMs": 600000,
       "sortOrder": 2
     }
   ]
