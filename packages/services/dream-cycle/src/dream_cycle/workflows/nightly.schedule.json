@@ -1,7 +1,8 @@
 {
   "scheduleId": "dream-cycle-nightly",
   "cronExpr": "0 3 * * *",
+  "timezone": "America/Los_Angeles",
   "enabled": true,
   "variables": {},
-  "_comment": "Companion schedule for nightly.json. install_workflows.py registers this with the openclaw orchestrator right after import, so `digital-me install --runtime dream-cycle` (and `setup`) land a ticking nightly distillation with no manual cron step. wiki_root + python_path are auto-supplied by the installer at materialize time; compile_limit/taste_limit/recent_days use the workflow's own defaults. 0 3 * * * matches config.yaml's dream_cycle.schedule default."
+  "_comment": "Companion schedule for nightly.json. install_workflows.py registers this with the openclaw orchestrator right after import, so `digital-me install --runtime dream-cycle` (and `setup`) land a ticking nightly distillation with no manual cron step. wiki_root + python_path are auto-supplied by the installer at materialize time; compile_limit/taste_limit/recent_days use the workflow's own defaults. 0 3 * * * matches config.yaml's dream_cycle.schedule default (3am LOCAL). timezone MUST be declared: install_workflows only forwards a timezone when the sibling declares one, and the brain defaults to UTC otherwise \u2014 which would silently register this as 3am UTC (8pm PT the previous evening)."
 }
