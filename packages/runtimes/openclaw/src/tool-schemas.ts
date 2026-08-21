@@ -101,6 +101,12 @@ export const TasksToolSchema = Type.Object(
     workflowJson: Type.Optional(
       Type.String({ description: "Full workflow JSON for workflow_import." }),
     ),
+    importMode: Type.Optional(
+      Type.String({
+        description:
+          'workflow_import only: "create" (default) fails if the id exists; "upsert" replaces the template and its steps in place, preserving schedules and the original createdAt.',
+      }),
+    ),
     force: Type.Optional(
       Type.Boolean({
         description: "Bypass workflow-level mutex (run_workflow only).",

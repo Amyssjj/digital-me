@@ -1592,6 +1592,38 @@ describe("dispatchAction — workflow_* actions", () => {
     expect(deps.workflows.get("imp")).toBeDefined();
   });
 
+  it('workflow_import with importMode:"upsert" replaces an existing template', async () => {
+    const deps = makeDeps();
+    const tpl = (stepKey: string) =>
+      JSON.stringify({
+        id: "imp",
+        name: "Imp",
+        steps: [{ stepKey, dispatch: { mode: "manual" } }],
+      });
+    await dispatchAction(deps, "workflow_import", { workflowJson: tpl("a") });
+
+    const r = await dispatchAction(deps, "workflow_import", {
+      workflowJson: tpl("b"),
+      importMode: "upsert",
+    });
+
+    expect(r.ok).toBe(true);
+    expect(deps.workflows.listSteps("imp").map((s) => s.stepKey)).toEqual(["b"]);
+  });
+
+  it("workflow_import without importMode still refuses an existing id", async () => {
+    const deps = makeDeps();
+    const tpl = JSON.stringify({
+      id: "imp",
+      name: "Imp",
+      steps: [{ stepKey: "a", dispatch: { mode: "manual" } }],
+    });
+    await dispatchAction(deps, "workflow_import", { workflowJson: tpl });
+    const r = await dispatchAction(deps, "workflow_import", { workflowJson: tpl });
+    expect(r.ok).toBe(false);
+    expect(r.text).toMatch(/already exists/);
+  });
+
   it("workflow_import returns ok=false on bad JSON", async () => {
     const r = await dispatchAction(makeDeps(), "workflow_import", {
       workflowJson: "{not json",

@@ -6,6 +6,7 @@ const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
 import { createGoalsStore, GOALS_MIGRATIONS, type Migration } from "../store/goals.js";
 import { createTasksStore, TASKS_MIGRATIONS } from "../store/tasks.js";
 import { createWorkflowsStore, WORKFLOWS_MIGRATIONS } from "../store/workflows.js";
+import { createSchedulesStore, SCHEDULES_MIGRATIONS } from "../store/schedules.js";
 import {
   registerMigration,
   resetMigrationRegistryForTests,
@@ -27,6 +28,7 @@ beforeEach(() => {
     ...GOALS_MIGRATIONS,
     ...TASKS_MIGRATIONS,
     ...WORKFLOWS_MIGRATIONS,
+    ...SCHEDULES_MIGRATIONS,
   ] as Migration[])
     registerMigration(m);
   runMigrations(db);
@@ -431,7 +433,78 @@ describe("createWorkflowFromSteps", () => {
     const r = createWorkflowFromSteps(deps, "wf-1", "n", "d", [], [
       { stepKey: "s", name: "s", promptTemplate: "p", blockedByKeys: [], dispatch: { mode: "manual" } },
     ]);
-    expect(r).toEqual({ ok: false, error: 'Workflow "wf-1" already exists.' });
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toMatch(/already exists/);
+    expect((r as { error: string }).error).toMatch(/mode:"upsert"/);
+  });
+
+  it('upsert replaces steps in place, preserving createdAt and bumping version', () => {
+    const deps = makeDeps();
+    const step = (key: string, prompt: string) => ({
+      stepKey: key, name: key, promptTemplate: prompt,
+      blockedByKeys: [] as string[], dispatch: { mode: "manual" as const },
+    });
+    createWorkflowFromSteps(deps, "wf-1", "n", "d", [], [step("a", "old")]);
+    const before = deps.workflows.get("wf-1")!;
+
+    const later = makeDeps({ workflows: deps.workflows, now: () => 9999 });
+    const r = createWorkflowFromSteps(
+      later, "wf-1", "n2", "d2", [], [step("b", "new")],
+      undefined, undefined, "upsert",
+    );
+
+    expect(r.ok).toBe(true);
+    const after = deps.workflows.get("wf-1")!;
+    expect(after.name).toBe("n2");
+    expect(after.createdAt).toBe(before.createdAt); // preserved
+    expect(after.updatedAt).toBe(9999);             // advanced
+    expect(after.version).toBe(before.version + 1); // bumped
+    const keys = deps.workflows.listSteps("wf-1").map((s) => s.stepKey);
+    expect(keys).toEqual(["b"]);                    // old step replaced, not merged
+  });
+
+  it("upsert leaves schedules referencing the workflow untouched", () => {
+    // The whole reason upsert exists: workflow_delete is gated on first
+    // disabling every schedule that references the template. Upsert must
+    // never delete the template row, so schedules survive.
+    const deps = makeDeps();
+    const schedules = createSchedulesStore({ db });
+    const step = {
+      stepKey: "a", name: "a", promptTemplate: "p",
+      blockedByKeys: [] as string[], dispatch: { mode: "manual" as const },
+    };
+    createWorkflowFromSteps(deps, "wf-1", "n", "d", [], [step]);
+    schedules.create({
+      id: "sched-1", workflowId: "wf-1", name: "nightly",
+      cronExpr: "0 3 * * *", timezone: "America/Los_Angeles",
+      variables: {}, enabled: true, nextRunAt: 5000,
+      maxOverlap: 0, createdAt: 1, updatedAt: 1,
+    });
+
+    const r = createWorkflowFromSteps(
+      deps, "wf-1", "n2", "d2", [], [step],
+      undefined, undefined, "upsert",
+    );
+
+    expect(r.ok).toBe(true);
+    const sched = schedules.get("sched-1");
+    expect(sched).toBeDefined();
+    expect(sched!.enabled).toBe(true);
+    expect(sched!.cronExpr).toBe("0 3 * * *");
+    expect(sched!.timezone).toBe("America/Los_Angeles");
+  });
+
+  it("upsert on an unknown id behaves as a create", () => {
+    const deps = makeDeps();
+    const r = createWorkflowFromSteps(
+      deps, "wf-new", "n", "d", [],
+      [{ stepKey: "a", name: "a", promptTemplate: "p", blockedByKeys: [], dispatch: { mode: "manual" } }],
+      undefined, undefined, "upsert",
+    );
+    expect(r.ok).toBe(true);
+    const rec = deps.workflows.get("wf-new")!;
+    expect(rec.version).toBe(1);
+    expect(rec.createdAt).toBe(rec.updatedAt);
   });
 
   it("defaults clock + newId for createWorkflowFromSteps when omitted", () => {
@@ -522,6 +595,26 @@ describe("createWorkflowFromSteps", () => {
     );
     expect(r.ok).toBe(false);
     expect((r as { error: string }).error).toMatch(/Failed to create workflow.*synthetic step failure/);
+  });
+
+  it("reports an upsert transaction failure as an update, not a create", () => {
+    const deps = makeDeps();
+    const step = {
+      stepKey: "s", name: "s", promptTemplate: "p",
+      blockedByKeys: [] as string[], dispatch: { mode: "manual" as const },
+    };
+    createWorkflowFromSteps(deps, "wf-txn-up", "n", "d", [], [step]);
+    deps.workflows.createStep = () => {
+      throw new Error("synthetic step failure");
+    };
+    const r = createWorkflowFromSteps(
+      deps, "wf-txn-up", "n", "d", [], [step],
+      undefined, undefined, "upsert",
+    );
+    expect(r.ok).toBe(false);
+    expect((r as { error: string }).error).toMatch(
+      /Failed to update workflow.*synthetic step failure/,
+    );
   });
 
   it("wraps non-Error throws inside the transaction with String()", () => {

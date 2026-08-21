@@ -163,6 +163,23 @@ export type StepInput = {
   readonly timeoutMs?: number;
 };
 
+/**
+ * How to handle an id that already exists.
+ *
+ * `"create"` (default) preserves the historical refuse-on-conflict behavior.
+ * `"upsert"` replaces the template and its steps in place — deliberately
+ * WITHOUT deleting the template row, so schedules (which reference
+ * `workflowId`) survive untouched. That is the whole point: deleting a
+ * template is gated on first disabling every schedule that references it,
+ * which makes routine re-installs a four-step privileged operation with a
+ * window where the workflow does not exist.
+ *
+ * In-flight goals are unaffected either way: instantiateWorkflow materializes
+ * each task's dispatch at task-creation time, so a running goal already holds
+ * its own copy of the steps.
+ */
+export type ImportMode = "create" | "upsert";
+
 export function createWorkflowFromSteps(
   deps: WorkflowBuilderDeps,
   workflowId: string,
@@ -172,10 +189,14 @@ export function createWorkflowFromSteps(
   steps: readonly StepInput[],
   branching?: WorkflowBranchingPolicy,
   notifyTarget?: Originator,
+  mode: ImportMode = "create",
 ): BuilderResult {
   const existing = deps.workflows.get(workflowId);
-  if (existing) {
-    return { ok: false, error: `Workflow "${workflowId}" already exists.` };
+  if (existing && mode !== "upsert") {
+    return {
+      ok: false,
+      error: `Workflow "${workflowId}" already exists. Pass mode:"upsert" to replace it in place, or delete it first.`,
+    };
   }
   if (steps.length === 0) {
     return { ok: false, error: "Workflow must have at least one step." };
@@ -216,30 +237,43 @@ export function createWorkflowFromSteps(
     name,
     description,
     variables,
-    createdAt: now,
+    // An upsert keeps the original creation stamp and advances the version,
+    // so `created_at != updated_at` remains a reliable "this was re-imported"
+    // signal. A create starts both at now with version 1.
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    version: 1,
-    tags: [],
+    version: existing ? existing.version + 1 : 1,
+    tags: existing?.tags ?? [],
     branching,
     notifyTarget,
   };
 
+  const replacing = Boolean(existing);
   try {
     runInTransaction(deps.db, () => {
-      deps.workflows.create(template);
+      if (replacing) {
+        // update + replace steps, never delete the template row (schedules
+        // reference it by workflowId and must survive).
+        deps.workflows.update(template);
+        deps.workflows.deleteSteps(workflowId);
+      } else {
+        deps.workflows.create(template);
+      }
       for (const step of normalized) deps.workflows.createStep(step);
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return {
       ok: false,
-      error: `Failed to create workflow "${workflowId}": ${msg}`,
+      error: `Failed to ${replacing ? "update" : "create"} workflow "${workflowId}": ${msg}`,
     };
   }
 
   return {
     ok: true,
-    message: `Workflow "${workflowId}" created with ${steps.length} steps.`,
+    message: replacing
+      ? `Workflow "${workflowId}" updated to v${template.version} with ${steps.length} steps (schedules preserved).`
+      : `Workflow "${workflowId}" created with ${steps.length} steps.`,
   };
 }
 
@@ -272,6 +306,7 @@ type RawJson = {
 export function importWorkflowFromJson(
   deps: WorkflowBuilderDeps,
   json: string,
+  mode: ImportMode = "create",
 ): BuilderResult {
   let data: RawJson;
   try {
@@ -328,6 +363,7 @@ export function importWorkflowFromJson(
     normalized,
     data.branching,
     notifyTarget,
+    mode,
   );
 }
 
