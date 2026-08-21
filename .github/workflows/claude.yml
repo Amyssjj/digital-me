@@ -10,10 +10,28 @@ on:
 
 jobs:
   claude:
+    # Two gates, both required.
+    #
+    # 1. The `@claude` mention.
+    # 2. The author must be trusted. This repository is public, so *anyone* can
+    #    open an issue and comment — and these events run from the default branch
+    #    with access to secrets, so an ungated trigger would hand a stranger a
+    #    job holding `contents: write` and the Claude OAuth token.
+    #
+    # claude-code-action performs its own write-permission check, so this is
+    # defence in depth rather than the only thing standing in the way. It is
+    # here because the effective gate should be readable in this file: a control
+    # that lives only inside a third-party action is invisible at review time,
+    # and silently inherits whatever that action's default becomes.
     if: |
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
-      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+      (
+        (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+        (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude'))
+      ) && contains(
+        fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'),
+        github.event.comment.author_association || github.event.review.author_association
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write

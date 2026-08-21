@@ -1,3 +1,19 @@
+# Cooling-off periods (`cooldown:` below) delay Dependabot from opening a PR for
+# a freshly published version. This is the load-bearing supply-chain guard, and
+# it has to live here rather than only in pnpm-workspace.yaml's
+# `minimumReleaseAge`, because that setting cannot see this path at all:
+#
+#   - CI installs with `--frozen-lockfile`, which does no resolution, so the
+#     maturity constraint is never evaluated (verified: a frozen install passed
+#     with a 6-day-old package in the lockfile under a 7-day floor);
+#   - Dependabot resolves and writes the lockfile itself, and does not read
+#     pnpm's settings.
+#
+# So without `cooldown`, a malicious release published an hour ago could be
+# proposed, pass CI, and auto-merge. `minimumReleaseAge` still earns its place
+# for local and manual resolution; the two are complementary, not redundant.
+#
+# Security updates are not delayed by cooldown — only version updates are.
 version: 2
 updates:
   # JS/TS workspace — root manifest plus every package in the pnpm monorepo.
@@ -8,6 +24,14 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
+    cooldown:
+      # Patch and minor are the ones that auto-merge without a human reading the
+      # diff, so they carry the full window. Majors always stop for review, and
+      # delaying them only delays the migration work becoming visible.
+      default-days: 7
+      semver-patch-days: 7
+      semver-minor-days: 7
+      semver-major-days: 3
     groups:
       dev-dependencies:
         dependency-type: development
@@ -29,6 +53,9 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    cooldown:
+      # pip is not a SemVer ecosystem to Dependabot, so only default-days applies.
+      default-days: 7
     commit-message:
       prefix: "chore(deps)"
 
@@ -37,6 +64,8 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     # One grouped PR for all action bumps instead of one PR per action.
     groups:
       github-actions:

@@ -22,9 +22,30 @@ allowBuilds:
 # same-day emergency fix is ever needed, bump it manually rather than lowering
 # this floor.
 minimumReleaseAge: 10080 # minutes = 7 days
-# Security floors for transitive (lint-time) dev deps flagged by Dependabot.
-# brace-expansion GHSA-3jxr-9vmj-r5cp (<5.0.7) and js-yaml GHSA-h67p-54hq-rp68 (<=4.1.1).
+# Security floors for transitive deps flagged by Dependabot alerts.
 # Caret floors so Dependabot can still bump within the major.
+#
+# These floors ROT. A floor fixes the advisories known when it was written; a
+# later advisory against the same major leaves the floor looking authoritative
+# while the tree stays vulnerable. `^5.0.7` below was correct in June and was
+# still sitting there in August, two advisories out of date. `pnpm update -r`
+# will not surface that either — it no-ops for a transitive whose range is
+# already satisfied. Dependabot *security* updates are the thing that catches
+# it, which is why they are now enabled on the repo.
+#
+# When adding a floor, floor EVERY major present in the tree, not just the one
+# named in the alert you happened to read. brace-expansion is here three times
+# for exactly that reason.
 overrides:
-  brace-expansion@5: ^5.0.7
-  js-yaml@4: ^4.2.0
+  # ReDoS: GHSA-3jxr-9vmj-r5cp, GHSA-mh99-v99m-4gvg, GHSA-rgw5-rvv9-x895
+  brace-expansion@1: ^1.1.16
+  brace-expansion@2: ^2.1.4
+  brace-expansion@5: ^5.0.9
+  # GHSA-h67p-54hq-rp68, GHSA-5p4m-2wfm-xmqj
+  js-yaml@4: ^4.3.1
+  # Command injection: GHSA-395f-4hp3-45gv
+  shell-quote@1: ^1.9.0
+  # GHSA-v422-hmwv-36x6. Scoped to @1 deliberately: the advisory covers only
+  # `< 1.20.6`, and an unscoped `body-parser: ^1.20.6` drags the tree's
+  # non-vulnerable 2.3.0 backwards across a major to "fix" a hole it never had.
+  body-parser@1: ^1.20.6
