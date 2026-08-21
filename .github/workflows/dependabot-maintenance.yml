@@ -29,7 +29,8 @@ on:
 permissions:
   contents: write # delete the branch of a closed PR
   pull-requests: write # comment and close
-  issues: write # report a failing sweep
+  issues: write # report a failing sweep, and standing override drift
+  security-events: read # read Dependabot alerts to audit the override floors
 
 concurrency:
   group: dependabot-maintenance
@@ -40,7 +41,7 @@ jobs:
     name: Sweep the Dependabot queue
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Sweep
         env:
@@ -61,6 +62,18 @@ jobs:
              "Build, typecheck, lint, knip, test",
              "dream-cycle (pytest + sdist + wheel)"]
         run: bash scripts/dependabot-sweep.sh
+
+      - name: Audit dependency override floors
+        # Deliberately not gated on the sweep succeeding. An override floor
+        # sitting below a live advisory is a standing security gap that no bot
+        # can close, and it should not go unreported because the PR janitor
+        # happened to have a bad day.
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          DRY_RUN: ${{ github.event_name == 'schedule' && 'false' || inputs.dry_run }}
+        run: bash scripts/check-override-floors.sh
 
       - name: Report failure
         if: failure()

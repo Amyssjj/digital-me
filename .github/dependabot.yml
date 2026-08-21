@@ -33,6 +33,31 @@ updates:
       semver-minor-days: 7
       semver-major-days: 3
     groups:
+      # Must be declared first: a dependency joins the FIRST group whose rules it
+      # matches, so the broad dev/production groups below would otherwise absorb
+      # react's minor and patch bumps and split the family apart.
+      #
+      # react and react-dom are version-locked to each other, and their @types
+      # follow. As separate PRs (the old #37 / #41) they could never both be up
+      # to date at once under the up-to-date-branch rule: landing either one
+      # instantly made the other stale, and the pair deadlocked for weeks. One PR
+      # moves them together or not at all.
+      #
+      # `major` is included here, unlike in every other group. That is safe
+      # because grouping does not bypass review: fetch-metadata reports a mixed
+      # group at its highest update-type, so any group containing a major is
+      # reported as a major and dependabot-auto-merge declines it. A react-only
+      # patch still arrives as a patch and still lands unattended.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
+        update-types:
+          - major
+          - minor
+          - patch
       dev-dependencies:
         dependency-type: development
         update-types:

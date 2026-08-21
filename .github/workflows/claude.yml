@@ -8,6 +8,11 @@ on:
   pull_request_review:
     types: [submitted]
 
+# Deny by default: the job below grants itself exactly the scopes it needs. A job
+# added later inherits nothing and fails loudly, rather than silently picking up
+# the write scopes this workflow's existing job happens to require.
+permissions: {}
+
 jobs:
   claude:
     # Two gates, both required.
@@ -44,11 +49,11 @@ jobs:
       # installation" and Claude answers blind to whether tests passed.
       actions: read
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@dcb57747bfceeaa1fa72638cae52295d1d853d4a # v1.0.199
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           # If you'd rather use a pay-per-token API key instead of your

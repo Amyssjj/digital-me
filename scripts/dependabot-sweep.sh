@@ -172,11 +172,21 @@ fi
 # either did not run or deliberately declined (a major, which is meant to get a
 # human's attention). Either way this script must not guess: arming it here
 # would bypass the update-type metadata that makes that call safe.
+#
+# Sorted oldest first, with the wait in days. Majors are the one class nothing
+# in this pipeline can ever retire on its own, so without an age this list reads
+# as steady-state noise and gets skimmed — which is how #34 and #37 reached a
+# month old unnoticed. The number at the top of this list is the queue's real
+# backlog, and working it down is a standing monthly job.
 unarmed=$(jq -r '
   [ .[]
     | select(.autoMergeRequest == null)
     | select(any(.statusCheckRollup[]?; .conclusion == "FAILURE") | not)
-    | "- #\(.number) — \(.title)" ] | join("\n")' <<<"$prs")
+    | { number, title,
+        age: (((now - (.createdAt | fromdateiso8601)) / 86400) | floor) } ]
+  | sort_by(-.age)
+  | map("- #\(.number) — \(.title) — **\(.age)d** waiting")
+  | join("\n")' <<<"$prs")
 
 summary ""
 summary "### Green, no auto-merge armed — needs a human decision"
