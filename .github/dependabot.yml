@@ -33,13 +33,57 @@ updates:
       semver-minor-days: 7
       semver-major-days: 3
     groups:
-      dev-dependencies:
-        dependency-type: development
+      # Must be declared first: a dependency joins the FIRST group whose rules it
+      # matches, so the broad dev/production groups below would otherwise absorb
+      # react's minor and patch bumps and split the family apart.
+      #
+      # react and react-dom are version-locked to each other, and their @types
+      # follow. As separate PRs (the old #37 / #41) they could never both be up
+      # to date at once under the up-to-date-branch rule: landing either one
+      # instantly made the other stale, and the pair deadlocked for weeks. One PR
+      # moves them together or not at all.
+      #
+      # `major` is included here, unlike in every other group. That is safe
+      # because grouping does not bypass review: fetch-metadata reports a mixed
+      # group at its highest update-type, so any group containing a major is
+      # reported as a major and dependabot-auto-merge declines it. A react-only
+      # patch still arrives as a patch and still lands unattended.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
         update-types:
+          - major
           - minor
           - patch
-      production-minor-patch:
-        dependency-type: production
+      # Same version-lock argument as react, and the same deadlock in practice:
+      # @vitest/coverage-v8 peer-depends on an exactly matching vitest, so the
+      # two arrived as #73 / #74 and could never both be current at once.
+      vitest:
+        patterns:
+          - "vitest"
+          - "@vitest/*"
+        update-types:
+          - major
+          - minor
+          - patch
+      # One group for everything that auto-merges, rather than the previous
+      # dev / production split.
+      #
+      # The split cost a PR without buying a decision: both halves were
+      # minor+patch, both auto-merged on green, so nothing was ever reviewed
+      # differently because of which one it landed in. What it did buy was a
+      # second CI cycle every week — and in a pnpm monorepo the second PR does
+      # not merely go stale, it goes DIRTY, because the first one rewrote
+      # pnpm-lock.yaml. Halving the count halves that conflict cascade.
+      #
+      # Declared last: react and vitest above claim their members first, so this
+      # catch-all never splits either family apart.
+      minor-and-patch:
+        patterns:
+          - "*"
         update-types:
           - minor
           - patch
@@ -47,12 +91,26 @@ updates:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
 
-  # Python dream-cycle service.
+  # Python services. All three are listed explicitly rather than by glob: the
+  # dashboard intake package sits deeper than the others, and a glob that missed
+  # it would fail silently — which is exactly how digest and intake went
+  # unmonitored while both were building and testing in CI.
   - package-ecosystem: pip
-    directory: "/packages/services/dream-cycle"
+    directories:
+      - "/packages/services/dream-cycle"
+      - "/packages/services/digest"
+      - "/packages/services/dashboard/src/intake"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # Grouped including majors, matching the github-actions treatment rather
+    # than the npm one. The whole Python surface is pyyaml plus pytest, so
+    # per-package PRs would be three-way noise for a two-package tree, and a
+    # major here is a test-runner bump rather than a migration.
+    groups:
+      python:
+        patterns:
+          - "*"
     cooldown:
       # pip is not a SemVer ecosystem to Dependabot, so only default-days applies.
       default-days: 7
@@ -76,7 +134,11 @@ updates:
 
 # Note on major version updates: they are intentionally left ungrouped so each
 # arrives as its own PR for deliberate review — majors often need migration work
-# (e.g. vitest 4, typescript 6). The dependabot-auto-merge workflow only
-# auto-merges patch/minor, so a major never lands unattended. Majors are NOT
+# (e.g. vitest 4, typescript 6). The exception is a version-locked family
+# (react, vitest): those must move together or not at all, so grouping them is
+# what makes review possible rather than what skips it.
+#
+# The dependabot-auto-merge workflow only auto-merges patch/minor, so a major
+# never lands unattended. Majors are NOT
 # ignored here on purpose: that would also suppress security fixes that are only
 # available in a new major (e.g. the vitest 2 → 3 CVE patch, GHSA-5xrq-8626-4rwp).
