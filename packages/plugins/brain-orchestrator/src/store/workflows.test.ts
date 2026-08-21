@@ -397,10 +397,32 @@ describe("createWorkflowsStore — defensive JSON parsing", () => {
 });
 
 describe("WORKFLOWS_MIGRATIONS", () => {
-  it("registers both tables at a stable version", () => {
-    expect(WORKFLOWS_MIGRATIONS).toHaveLength(1);
-    expect(WORKFLOWS_MIGRATIONS[0]!.version).toBeGreaterThan(0);
-    expect(WORKFLOWS_MIGRATIONS[0]!.description).toMatch(/workflow/i);
+  it("registers its migrations at stable, strictly increasing versions", () => {
+    expect(WORKFLOWS_MIGRATIONS.length).toBeGreaterThan(0);
+    for (const m of WORKFLOWS_MIGRATIONS) {
+      expect(m.version).toBeGreaterThan(0);
+      expect(m.description).toMatch(/workflow/i);
+    }
+    const versions = WORKFLOWS_MIGRATIONS.map((m) => m.version);
+    expect([...versions].sort((a, b) => a - b)).toEqual(versions);
+    expect(new Set(versions).size).toBe(versions.length);
+  });
+
+  it("adds the provenance columns and is safe to re-run", () => {
+    const fresh = new DatabaseSync(":memory:");
+    for (const m of WORKFLOWS_MIGRATIONS) m.up(fresh);
+    // Re-running must not throw on the already-present columns: a partially
+    // migrated DB is a normal state, not an error.
+    for (const m of WORKFLOWS_MIGRATIONS) m.up(fresh);
+    const cols = (
+      fresh.prepare("PRAGMA table_info(workflow_templates)").all() as Array<{
+        name: string;
+      }>
+    ).map((c) => c.name);
+    expect(cols).toContain("source_path");
+    expect(cols).toContain("source_hash");
+    expect(cols).toContain("source_version");
+    fresh.close();
   });
 
   it("produces usable tables when applied to a fresh DB", () => {
@@ -419,5 +441,65 @@ describe("WORKFLOWS_MIGRATIONS", () => {
     expect(stepCols.map((c) => c.name)).toContain("dispatch");
     expect(stepCols.map((c) => c.name)).toContain("sort_order");
     fresh.close();
+  });
+});
+
+describe("workflow provenance round-trip", () => {
+  const base: WorkflowTemplateRecord = {
+    id: "wf-p",
+    name: "P",
+    description: "",
+    variables: [],
+    createdAt: 1,
+    updatedAt: 1,
+    version: 1,
+  };
+
+  it("persists and reads back a full source stamp", () => {
+    const store = createWorkflowsStore({ db });
+    store.create({
+      ...base,
+      source: { path: "/w/n.json", hash: "abc123", version: "1.2.3" },
+    });
+    expect(store.get("wf-p")!.source).toEqual({
+      path: "/w/n.json",
+      hash: "abc123",
+      version: "1.2.3",
+    });
+  });
+
+  it("omits source entirely when the template has no provenance", () => {
+    const store = createWorkflowsStore({ db });
+    store.create(base);
+    expect(store.get("wf-p")!.source).toBeUndefined();
+  });
+
+  it("tolerates a stamp with a path but no hash or version", () => {
+    // Not reachable through the validated import path, but a hand-written
+    // row must not crash the reader.
+    const store = createWorkflowsStore({ db });
+    store.create(base);
+    db.prepare(
+      "UPDATE workflow_templates SET source_path = ? WHERE id = ?",
+    ).run("/w/only-path.json", "wf-p");
+    expect(store.get("wf-p")!.source).toEqual({
+      path: "/w/only-path.json",
+      hash: "",
+      version: undefined,
+    });
+  });
+
+  it("carries the stamp through an update", () => {
+    const store = createWorkflowsStore({ db });
+    store.create({ ...base, source: { path: "/a.json", hash: "h1" } });
+    store.update({
+      ...base,
+      name: "P2",
+      version: 2,
+      source: { path: "/a.json", hash: "h2" },
+    });
+    const after = store.get("wf-p")!;
+    expect(after.name).toBe("P2");
+    expect(after.source).toEqual({ path: "/a.json", hash: "h2", version: undefined });
   });
 });

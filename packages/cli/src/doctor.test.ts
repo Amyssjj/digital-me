@@ -10,6 +10,7 @@ import {
   runLlmAuthCheck,
   runMemoryIndexChecks,
   runOpenclawShadowCheck,
+  runWorkflowDriftChecks,
   type DoctorDeps,
 } from "./doctor.js";
 
@@ -1083,5 +1084,116 @@ describe("runEmbeddingsCheck", () => {
       { provider: "  ", fallback: 42, remote: { apiKey: "" } },
     );
     expect(c.ok).toBe(false);
+  });
+});
+
+describe("runWorkflowDriftChecks", () => {
+  const base = {
+    fileExists: () => true,
+    env: {},
+    which: () => undefined,
+  };
+
+  it("skips when no brain reader is wired", () => {
+    const r = runWorkflowDriftChecks({ ...base });
+    expect(r).toHaveLength(1);
+    expect(r[0].ok).toBe(true);
+    expect((r[0] as { note: string }).note).toMatch(/skipped/);
+  });
+
+  it("passes when every stamped template matches its source", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => [
+        { id: "wf-a", sourcePath: "/w/a.json", sourceHash: "h1" },
+      ],
+      hashFile: () => "h1",
+    });
+    expect(r[0].ok).toBe(true);
+    expect((r[0] as { note: string }).note).toMatch(/1 template/);
+  });
+
+  it("fails and names the template when the source changed since import", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => [
+        { id: "dream-cycle-nightly", sourcePath: "/w/n.json", sourceHash: "old" },
+      ],
+      hashFile: () => "new",
+    });
+    expect(r[0].ok).toBe(false);
+    const reason = (r[0] as { reason: string }).reason;
+    expect(reason).toMatch(/dream-cycle-nightly/);
+    expect(reason).toMatch(/upsert/);
+  });
+
+  it("reports unstamped rows as unverifiable, not as drift", () => {
+    // Rows imported before the provenance migration are not known to be
+    // wrong — only unverifiable. Calling them drifted would cry wolf.
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => [{ id: "legacy" }],
+      hashFile: () => "h",
+    });
+    expect(r[0].ok).toBe(true);
+    expect((r[0] as { note: string }).note).toMatch(/no provenance/);
+  });
+
+  it("flags a stamped template whose source file has gone missing", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      fileExists: () => false,
+      workflowProvenance: () => [
+        { id: "wf-a", sourcePath: "/gone.json", sourceHash: "h1" },
+      ],
+      hashFile: () => "h1",
+    });
+    expect(r.some((c) => !c.ok)).toBe(true);
+    expect(JSON.stringify(r)).toMatch(/source gone/);
+  });
+
+  it("flags a stamped template whose source cannot be hashed", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => [
+        { id: "wf-a", sourcePath: "/locked.json", sourceHash: "h1" },
+      ],
+      hashFile: () => undefined,
+    });
+    expect(JSON.stringify(r)).toMatch(/unreadable/);
+  });
+
+  it("reports a reader failure instead of throwing", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => {
+        throw new Error("db locked");
+      },
+      hashFile: () => "h",
+    });
+    expect(r[0].ok).toBe(false);
+    expect((r[0] as { reason: string }).reason).toMatch(/db locked/);
+  });
+
+  it("stringifies a non-Error throw from the reader", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => {
+        throw "sqlite exploded";
+      },
+      hashFile: () => "h",
+    });
+    expect(r[0].ok).toBe(false);
+    expect((r[0] as { reason: string }).reason).toMatch(/sqlite exploded/);
+  });
+
+  it("passes when the brain holds no templates at all", () => {
+    const r = runWorkflowDriftChecks({
+      ...base,
+      workflowProvenance: () => [],
+      hashFile: () => "h",
+    });
+    expect(r[0].ok).toBe(true);
+    expect((r[0] as { note: string }).note).toMatch(/no workflow templates/);
   });
 });

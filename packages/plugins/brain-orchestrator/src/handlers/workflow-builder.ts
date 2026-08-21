@@ -24,6 +24,7 @@ import type { TasksStore, TaskDispatch, TaskPriority, UpstreamFailurePolicy } fr
 import type {
   WorkflowBranchingPolicy,
   WorkflowStepTemplateRecord,
+  WorkflowSource,
   WorkflowTemplateRecord,
   WorkflowVariable,
   WorkflowsStore,
@@ -190,6 +191,7 @@ export function createWorkflowFromSteps(
   branching?: WorkflowBranchingPolicy,
   notifyTarget?: Originator,
   mode: ImportMode = "create",
+  source?: WorkflowSource,
 ): BuilderResult {
   const existing = deps.workflows.get(workflowId);
   if (existing && mode !== "upsert") {
@@ -246,6 +248,9 @@ export function createWorkflowFromSteps(
     tags: existing?.tags ?? [],
     branching,
     notifyTarget,
+    // A re-import that carries no provenance must not erase the stamp a
+    // previous import left behind.
+    source: source ?? existing?.source,
   };
 
   const replacing = Boolean(existing);
@@ -280,6 +285,7 @@ export function createWorkflowFromSteps(
 // ── importWorkflowFromJson ────────────────────────────────────────────────
 
 type RawJson = {
+  source?: unknown;
   id?: string;
   name?: string;
   description?: string;
@@ -364,7 +370,21 @@ export function importWorkflowFromJson(
     data.branching,
     notifyTarget,
     mode,
+    validateSource(data.source),
   );
+}
+
+/** Accept a provenance block only when it carries a non-empty path + hash. */
+function validateSource(raw: unknown): WorkflowSource | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as { path?: unknown; hash?: unknown; version?: unknown };
+  if (typeof r.path !== "string" || !r.path) return undefined;
+  if (typeof r.hash !== "string" || !r.hash) return undefined;
+  return {
+    path: r.path,
+    hash: r.hash,
+    version: typeof r.version === "string" ? r.version : undefined,
+  };
 }
 
 // ── Internals ─────────────────────────────────────────────────────────────
