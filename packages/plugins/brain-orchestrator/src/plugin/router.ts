@@ -171,6 +171,7 @@ export async function dispatchAction(
         importWorkflowFromJson(
           { ...deps, defaultDispatchAgentId: undefined },
           asString(params.workflowJson),
+          asOptString(params.importMode) === "upsert" ? "upsert" : "create",
         ),
       );
     case "workflow_list":
