@@ -20,6 +20,11 @@ jobs:
       pull-requests: write
       issues: write
       id-token: write
+      # Lets the github_ci MCP server start so Claude can read CI status on
+      # the PR it is answering about. Without it the run logs "The github_ci
+      # MCP server requires 'actions: read' permission. Skipping CI server
+      # installation" and Claude answers blind to whether tests passed.
+      actions: read
     steps:
       - uses: actions/checkout@v7
         with:
