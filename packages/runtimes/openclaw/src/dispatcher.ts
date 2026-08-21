@@ -189,7 +189,15 @@ async function dispatchExec(
     command: dispatch.command,
     cwd: dispatch.cwd,
     env: dispatch.env,
-    timeoutMs: dispatch.timeoutMs,
+    // Fall back to the task's own timeoutMs (carried from the workflow step
+    // template) when the dispatch object doesn't have one. Alias resolution
+    // injects dispatch.timeoutMs, but a plain exec step that declares
+    // `timeoutMs` in its workflow JSON only lands it on the task row — so
+    // without this the runtime silently applied its 300s default and the
+    // step's declared budget was a fiction. That killed dream-cycle's `apply`
+    // (declared 900s) at exactly 300s on 3 of 4 nights in Aug 2026, discarding
+    // the taste it had just distilled.
+    timeoutMs: dispatch.timeoutMs ?? task.timeoutMs,
   };
   const execRun = deps.runtime.execRun;
 

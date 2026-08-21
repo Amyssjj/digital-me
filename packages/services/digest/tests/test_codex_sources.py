@@ -18,7 +18,7 @@ from pathlib import Path
 from digest.daily_digest import (
     _codex_last_seen_iso,
     _codex_raw_prompts,
-    _codex_sqlite_prompts,
+    _codex_sqlite_rows,
 )
 
 WINDOW_START = 1_783_000_000_000  # arbitrary epoch-ms window
@@ -54,26 +54,76 @@ def test_sqlite_threads_counted_without_rollout_files(tmp_path):
     assert prompts == ["fix the video pipeline"]
 
 
+def _write_rollout(sessions: Path, name: str, body: str) -> Path:
+    import os
+    rollout = sessions / name
+    rollout.write_text(body)
+    mtime_s = (WINDOW_START + 1000) / 1000
+    os.utime(rollout, (mtime_s, mtime_s))
+    return rollout
+
+
 def test_rollout_already_counted_is_not_double_counted(tmp_path):
     sessions = tmp_path / "sessions"
     sessions.mkdir()
-    rollout = sessions / "rollout-c.jsonl"
-    rollout.write_text("")  # empty file: JSONL walk yields one (empty) prompt
-    mtime_s = (WINDOW_START + 1000) / 1000
-    import os
-    os.utime(rollout, (mtime_s, mtime_s))
+    rollout = _write_rollout(sessions, "rollout-c.jsonl", "")
+    mtime_s = int((WINDOW_START + 1000) / 1000)
 
     _make_state_db(tmp_path, [
-        ("t3", str(rollout), int(mtime_s), int(mtime_s),
-         "duplicate thread", "Dup"),
+        ("t3", str(rollout), mtime_s, mtime_s, "duplicate thread", "Dup"),
     ])
 
-    sqlite_only = _codex_sqlite_prompts(
-        WINDOW_START, WINDOW_END, sessions, {str(rollout)}
-    )
-    assert sqlite_only == []
-    # The union path counts the session exactly once (via the JSONL walk).
-    assert len(_codex_raw_prompts(WINDOW_START, WINDOW_END, sessions)) == 1
+    # The union path counts the session exactly once...
+    prompts = _codex_raw_prompts(WINDOW_START, WINDOW_END, sessions)
+    assert len(prompts) == 1
+    # ...and takes the threads-table text, because the JSONL had nothing usable.
+    assert prompts == ["duplicate thread"]
+
+
+def test_wrapper_only_rollout_falls_back_to_threads_table(tmp_path):
+    """Regression (2026-08-19): newer codex builds open a session with an
+    injected `<recommended_plugins>` turn. The JSONL walk returned that
+    boilerplate and the threads row holding the real prompt was discarded as a
+    duplicate, so every Codex session was reported as "reviewed a list of
+    plugins" instead of the work the user actually asked for."""
+    import json
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    wrapper = json.dumps({
+        "type": "response_item",
+        "payload": {
+            "role": "user",
+            "content": [{"type": "input_text",
+                         "text": "<recommended_plugins>\nAirtable, Apollo.io"}],
+        },
+    })
+    rollout = _write_rollout(sessions, "rollout-d.jsonl", wrapper + "\n")
+    mtime_s = int((WINDOW_START + 1000) / 1000)
+
+    _make_state_db(tmp_path, [
+        ("t4", str(rollout), mtime_s, mtime_s,
+         "analyze the Jeff Su channel", "Analyze Jeff Su"),
+    ])
+
+    assert _codex_raw_prompts(WINDOW_START, WINDOW_END, sessions) == [
+        "analyze the Jeff Su channel"
+    ]
+
+
+def test_threads_rows_that_are_only_wrappers_are_dropped(tmp_path):
+    """The threads table carries harness boilerplate too; it used to be
+    filtered on the JSONL path only, so it surfaced verbatim as a topic."""
+    sessions = tmp_path / "sessions"
+    sessions.mkdir()
+    in_window_s = (WINDOW_START + 3_600_000) // 1000
+    _make_state_db(tmp_path, [
+        ("t5", "", in_window_s, in_window_s,
+         "The following is the Codex agent history whose request action...", ""),
+        ("t6", "", in_window_s, in_window_s, "ship the release notes", "Ship"),
+    ])
+
+    rows = _codex_sqlite_rows(WINDOW_START, WINDOW_END, sessions)
+    assert [text for _, text in rows] == ["ship the release notes"]
 
 
 def test_last_seen_uses_max_across_stores(tmp_path):
