@@ -39,6 +39,7 @@ import re
 import sqlite3
 import subprocess
 import sys
+import time
 from collections import Counter
 from pathlib import Path
 from typing import Optional
@@ -224,8 +225,7 @@ def _confined_read(path: Path) -> Optional[str]:
     except (OSError, RuntimeError):
         return None
     if not resolved.is_relative_to(_PATHS.wiki_root):
-        print(f"[daily-digest] refusing to read outside wiki root: {path}",
-              file=sys.stderr)
+        print(f"[daily-digest] refusing to read outside wiki root: {path}")
         return None
     try:
         return resolved.read_text(encoding="utf-8")
@@ -338,6 +338,14 @@ _SKIP_PREFIXES = (
     "The following is the Codex agent history",
     "sourceSession=",
     "Conversation info (untrusted metadata)",
+    # Newer Codex builds inject a plugin catalogue as the first user turn, so
+    # every Codex session was reported as "reviewed a list of plugins" instead
+    # of the work the user actually asked for (2026-08 digest).
+    "<recommended_plugins>",
+    "<user_instructions>",
+    # OpenClaw prepends routing metadata to a dispatched turn; it describes how
+    # the reply is delivered, never what the agent was asked to do.
+    "OpenClaw delivery metadata:",
 )
 # Special-case tags that ARE meaningful (don't skip, but render cleanly)
 _TAG_TOPICS = {
@@ -490,10 +498,17 @@ def _get_engine():
         except Exception as e:
             _LLM_DISABLED = True
             print(f"[daily-digest] inline LLM engine unavailable ({e}); "
-                  "rendering deterministically", file=sys.stderr)
+                  "rendering deterministically")
             return None
     return _summarize_engine
 
+
+# NOTE ON DIAGNOSTICS: everything below reports degradation on STDOUT, not
+# stderr. The orchestrator captures a task's stdout into attempts.output_summary
+# in brain.db — bounded, queryable, retained — whereas the gateway service runs
+# with StandardErrorPath=/dev/null, so anything written to stderr is gone. That
+# is why the digest rendered raw truncated prompts for a week in Aug 2026
+# without a single trace of why.
 
 # --- LLM hang/circuit-breaker guards -----------------------------------------
 # OpenClawEngine.llm_call has NO network timeout: if the Gemini endpoint is
@@ -501,12 +516,22 @@ def _get_engine():
 # fires, and the whole digest render hangs (this is what silently killed the
 # digest — same failure class as the COO-spawn stall, different surface).
 # We bound every call with a hard wall-clock timeout and trip a circuit breaker
-# after a couple of consecutive failures so the run degrades to the regex
-# fallback instead of stalling.
-_LLM_TIMEOUT_S = int(os.environ.get("DIGEST_LLM_TIMEOUT_S", "8"))
-_LLM_MAX_CONSEC_FAILS = int(os.environ.get("DIGEST_LLM_MAX_FAILS", "2"))
+# so the run degrades to the regex fallback instead of stalling.
+#
+# The per-call budget must clear real p99 latency PLUS one backoff sleep, or the
+# breaker fires on healthy infrastructure. Measured gemini-3-flash latency is
+# 2.3-5.4s, and OpenClawEngine._urlopen_json sleeps 2-60s on a 429 — under the
+# old 8s alarm a single throttle guaranteed a timeout, and two in a row
+# permanently disabled summarization for the whole run. That is what rendered
+# the 2026-08-19 digest as raw truncated prompts on a night when the engine was
+# perfectly healthy. Worst-case wall clock is now bounded by an explicit
+# whole-run budget instead of by a hair-trigger per-call alarm.
+_LLM_TIMEOUT_S = int(os.environ.get("DIGEST_LLM_TIMEOUT_S", "30"))
+_LLM_MAX_CONSEC_FAILS = int(os.environ.get("DIGEST_LLM_MAX_FAILS", "4"))
+_LLM_BUDGET_S = float(os.environ.get("DIGEST_LLM_BUDGET_S", "240"))
 _LLM_DISABLED = os.environ.get("DIGEST_NO_LLM") == "1"
 _LLM_CONSEC_FAILS = 0
+_LLM_SPENT_S = 0.0
 
 
 class _LLMTimeout(Exception):
@@ -591,13 +616,20 @@ def _summarize_prompt(raw_prompt: str, cache: dict) -> str:
     key = hashlib.sha256(raw_prompt.encode("utf-8")).hexdigest()[:16]
     if key in cache:
         return cache[key]
-    # Circuit breaker: once the LLM has stalled/errored repeatedly, stop calling
-    # it for the rest of the run and summarize deterministically. Bounds the
-    # worst case to ~(_LLM_MAX_CONSEC_FAILS * _LLM_TIMEOUT_S) seconds instead of
-    # hanging forever or paying the timeout on every single prompt.
-    global _LLM_CONSEC_FAILS, _LLM_DISABLED
+    # Circuit breaker: once the LLM has stalled/errored repeatedly, or the run
+    # has spent its whole LLM budget, stop calling it and summarize
+    # deterministically. The budget is what bounds worst-case wall clock — the
+    # consecutive-fail counter only catches a hard outage, so it can afford to
+    # be forgiving of a transient throttle without risking an unbounded run.
+    global _LLM_CONSEC_FAILS, _LLM_DISABLED, _LLM_SPENT_S
     if _LLM_DISABLED:
         return _clean_prompt_fallback(raw_prompt)
+    if _LLM_SPENT_S >= _LLM_BUDGET_S:
+        _LLM_DISABLED = True
+        print(f"[daily-digest] LLM budget of {_LLM_BUDGET_S:.0f}s exhausted — "
+              "rendering remaining prompts deterministically")
+        return _clean_prompt_fallback(raw_prompt)
+    started = time.monotonic()
     try:
         eng = _get_engine()
         if eng is None:
@@ -615,12 +647,14 @@ def _summarize_prompt(raw_prompt: str, cache: dict) -> str:
         _LLM_CONSEC_FAILS += 1
         reason = "timed out" if isinstance(e, _LLMTimeout) else repr(e)
         print(f"[daily-digest] summarize {reason} "
-              f"({_LLM_CONSEC_FAILS}/{_LLM_MAX_CONSEC_FAILS})", file=sys.stderr)
+              f"({_LLM_CONSEC_FAILS}/{_LLM_MAX_CONSEC_FAILS})")
         if _LLM_CONSEC_FAILS >= _LLM_MAX_CONSEC_FAILS:
             _LLM_DISABLED = True
             print("[daily-digest] LLM summarizer disabled for this run — "
-                  "rendering remaining prompts deterministically", file=sys.stderr)
+                  "rendering remaining prompts deterministically")
         return _clean_prompt_fallback(raw_prompt)
+    finally:
+        _LLM_SPENT_S += time.monotonic() - started
 
 
 def _summarize_and_group(raw_prompts: list[str], cache: dict) -> list[tuple[str, int]]:
@@ -679,16 +713,19 @@ def _codex_state_db(sessions_root: Path) -> Optional[Path]:
     return dbs[-1] if dbs else None
 
 
-def _codex_sqlite_prompts(
-    start_ms: int, end_ms: int, sessions_root: Path, skip_rollout_paths: set[str],
-) -> list[str]:
-    """First-user-messages from codex's threads table, for sessions in window.
+def _codex_sqlite_rows(
+    start_ms: int, end_ms: int, sessions_root: Path,
+) -> list[tuple[str, str]]:
+    """`(rollout_path, first meaningful user message)` from codex's threads
+    table, for sessions in window. rollout_path is "" when the thread has none.
 
     Newer codex builds record threads in ~/.codex/state_*.sqlite and may not
     write rollout JSONLs at all, so reading only ~/.codex/sessions silently
     reports "no activity" (the 2026-07 codex gap: rollouts stopped 07-04).
-    Threads whose rollout file was already counted by the JSONL walk are
-    skipped via skip_rollout_paths.
+
+    Wrapper boilerplate is filtered here too. It used to be stripped only on
+    the JSONL path, so a review-harness thread ("The following is the Codex
+    agent history...") surfaced verbatim as a topic.
     """
     db = _codex_state_db(sessions_root)
     if db is None:
@@ -706,11 +743,13 @@ def _codex_sqlite_prompts(
         con.close()
     except (sqlite3.Error, OSError):
         return []
-    return [
-        first_msg or title
-        for rollout_path, first_msg, title in rows
-        if rollout_path not in skip_rollout_paths and (first_msg or title)
-    ]
+    out: list[tuple[str, str]] = []
+    for rollout_path, first_msg, title in rows:
+        text = (first_msg or title or "").strip()
+        if not text or text.startswith(_SKIP_PREFIXES):
+            continue
+        out.append((rollout_path, text))
+    return out
 
 
 def _codex_last_seen_iso(sessions_root: Path) -> Optional[str]:
@@ -749,8 +788,17 @@ def _codex_raw_prompts(start_ms: int, end_ms: int, root: Path) -> list[str]:
     """Flat list of first-user-prompts across all Codex sessions in window.
 
     Union of both local stores: legacy rollout JSONLs under sessions/ and
-    the threads table in state_*.sqlite (see _codex_sqlite_prompts).
+    the threads table in state_*.sqlite (see _codex_sqlite_rows).
+
+    The two stores describe the same sessions, so a thread is counted once —
+    but the JSONL is not authoritative. Its opening turns are often only
+    injected system wrappers, while the threads table records the real
+    `first_user_message`. Dropping the SQLite row purely because its rollout
+    file was walked is what reported Codex's 2026-08-19 work as "reviewed a
+    list of plugins". Prefer whichever store yields a meaningful prompt.
     """
+    sql_rows = _codex_sqlite_rows(start_ms, end_ms, root)
+    by_rollout = {path: text for path, text in sql_rows if path}
     raw: list[str] = []
     seen_rollouts: set[str] = set()
     if root.exists():
@@ -762,8 +810,10 @@ def _codex_raw_prompts(start_ms: int, end_ms: int, root: Path) -> list[str]:
             if not (start_ms <= mtime_ms < end_ms):
                 continue
             seen_rollouts.add(str(jsonl))
-            raw.append(_extract_first_user_prompt(jsonl))
-    raw.extend(_codex_sqlite_prompts(start_ms, end_ms, root, seen_rollouts))
+            raw.append(
+                _extract_first_user_prompt(jsonl) or by_rollout.get(str(jsonl), "")
+            )
+    raw.extend(text for path, text in sql_rows if path not in seen_rollouts)
     prompts: list[str] = []
     for prompt in raw:
         topic = _topic_from_prompt(prompt)
@@ -1866,7 +1916,7 @@ def load_coo_handoff() -> tuple[dict | None, str | None]:
         finally:
             con.close()
     except sqlite3.Error as e:
-        print(f"[daily-digest] brain.db read failed: {e}", file=sys.stderr)
+        print(f"[daily-digest] brain.db read failed: {e}")
         return None, None
     if not row or not row[0]:
         return None, None
@@ -1931,7 +1981,6 @@ def main(argv: list[str]) -> int:
                     print(
                         f"[daily-digest] {source}: contract violation "
                         f"({len(errs)}): {'; '.join(errs[:5])}",
-                        file=sys.stderr,
                     )
                 return None
             print(f"[daily-digest] using {source}")
@@ -1954,7 +2003,6 @@ def main(argv: list[str]) -> int:
             print(
                 "[daily-digest] no valid agent handoff — rendering "
                 "deterministically from staged data (regex, no LLM)",
-                file=sys.stderr,
             )
             full_md, structured = render_full(date_iso)
             presentation = _accept(render_components(structured), "deterministic regex render")
@@ -1966,7 +2014,6 @@ def main(argv: list[str]) -> int:
             print(
                 "[daily-digest] all sources empty — publishing minimal "
                 "'nothing to report' card (fail-open floor)",
-                file=sys.stderr,
             )
             presentation = _minimal_presentation(date_iso)
 
