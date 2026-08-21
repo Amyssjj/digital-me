@@ -146,6 +146,29 @@ def test_discover_finds_real_bundled_nightly() -> None:
     assert template["id"] == "dream-cycle-nightly"
 
 
+def test_real_bundled_schedule_declares_timezone() -> None:
+    """The real bundled nightly.schedule.json must declare an IANA timezone.
+
+    _register_sibling_schedule only forwards a timezone when the sibling
+    declares one; otherwise the brain falls back to UTC. The bundled cron is
+    `0 3 * * *`, meant as 3am LOCAL to match config.yaml's dream_cycle
+    schedule — shipped without a timezone it silently registers as 3am UTC
+    (8pm PT the previous evening). test_sibling_schedule_forwards_declared_
+    timezone covers the plumbing with a synthetic file; this covers the real
+    artifact users actually install.
+    """
+    nightly = next(p for p in discover_bundled_workflows() if p.name == "nightly.json")
+    sched_path = nightly.with_suffix(".schedule.json")
+    assert sched_path.exists(), f"missing sibling schedule at {sched_path}"
+    sched = json.loads(sched_path.read_text())
+    tz = sched.get("timezone")
+    assert isinstance(tz, str) and tz.strip(), (
+        "bundled nightly.schedule.json must declare a timezone; "
+        "without one the brain registers this cron in UTC"
+    )
+    assert "/" in tz, f"expected an IANA zone like 'America/Los_Angeles', got {tz!r}"
+
+
 # ── _build_install_vars ───────────────────────────────────────────────────
 
 
