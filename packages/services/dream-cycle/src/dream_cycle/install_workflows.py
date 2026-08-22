@@ -30,6 +30,7 @@ from typing import Any, Iterable, Optional
 
 from dream_cycle.brain_client import BrainClient, BrainClientError
 from dream_cycle.config import resolve_wiki_root
+from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
 from dream_cycle.via_agents import materialize_workflow
 
 
@@ -295,7 +296,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--classifier-agent-id",
         type=str,
         default=None,
-        help="Override the spawn agentId for the taste-distill step (workflow's default applies otherwise).",
+        help="Override the agentId for the taste-distill step (detected worker applies otherwise).",
+    )
+    parser.add_argument(
+        "--compiler-agent-id",
+        type=str,
+        default=None,
+        help="Override the agentId for the compile-extract step (detected worker applies otherwise).",
     )
     parser.add_argument(
         "--dashboard-db",
@@ -318,8 +325,39 @@ def main(argv: Optional[list[str]] = None) -> int:
     overrides: dict[str, str] = {}
     if args.classifier_agent_id:
         overrides["classifier_agent_id"] = args.classifier_agent_id
+    if args.compiler_agent_id:
+        overrides["compiler_agent_id"] = args.compiler_agent_id
     if args.dashboard_db:
         overrides["dashboard_db"] = str(args.dashboard_db)
+
+    # Bind the agent steps to a worker that actually exists on this machine.
+    # Explicit flags win; otherwise detect. Failing loudly here beats importing
+    # a workflow whose agent steps cannot run: an unresolvable exec alias falls
+    # through to the step's placeholder command, and a placeholder that exits 0
+    # would make the nightly report success while doing nothing.
+    detected = detect_worker_agent_id(wiki_root)
+    explicit = bool(args.classifier_agent_id and args.compiler_agent_id)
+    if detected is None and not explicit:
+        print(
+            "install-workflows: no CLI worker alias configured.\n"
+            f"  Looked for {' or '.join(WORKER_AGENT_PREFERENCE)} under "
+            f"cli_exec_aliases in {wiki_root / 'config.yaml'}.\n"
+            "  The agent steps (wiki extraction, taste distillation) cannot run "
+            "without one.\n"
+            "  Fix: install the Claude Code CLI or the Codex CLI and re-run "
+            "`digital-me setup`, which registers the alias.\n"
+            "  Override: pass --classifier-agent-id / --compiler-agent-id "
+            "to name a worker explicitly.",
+            file=sys.stderr,
+        )
+        return 4
+    if detected is not None:
+        overrides.setdefault("classifier_agent_id", detected)
+        overrides.setdefault("compiler_agent_id", detected)
+        print(
+            f"install-workflows: worker agent = {detected} (detected)",
+            file=sys.stderr,
+        )
 
     vars = _build_install_vars(wiki_root, python_path, overrides)
     paths = discover_bundled_workflows(args.workflows_dir)
