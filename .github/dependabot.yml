@@ -18,9 +18,27 @@ version: 2
 updates:
   # JS/TS workspace — root manifest plus every package in the pnpm monorepo.
   - package-ecosystem: npm
+    # ONLY "/". Not "/packages/**", which looks like it adds per-package
+    # coverage and in fact adds nothing but breakage.
+    #
+    # pnpm keeps ONE lockfile, at the root. The "/" job understands that: it
+    # edits whichever workspace member's package.json needs the bump AND
+    # regenerates the root pnpm-lock.yaml alongside it (e.g. #80 touched
+    # packages/services/dashboard/package.json + pnpm-lock.yaml).
+    #
+    # A "/packages/**" job is scoped to its own directory, so it rewrites the
+    # nested package.json and never touches the root lockfile. Every PR it
+    # opens is therefore born failing `pnpm install --frozen-lockfile` with
+    # ERR_PNPM_OUTDATED_LOCKFILE, and no rebase can fix it — the job will
+    # regenerate the same broken diff forever.
+    #
+    # The record, before this change: per-directory jobs produced 12 PRs and
+    # merged 0 (9 closed unmerged, 3 open and unmergeable). Root-directory
+    # jobs merged normally. The dead PRs also consumed the 10-slot
+    # open-pull-requests-limit, which starved the queue — including security
+    # updates and the grouped react PR that could never open.
     directories:
       - "/"
-      - "/packages/**"
     schedule:
       interval: weekly
     open-pull-requests-limit: 10
