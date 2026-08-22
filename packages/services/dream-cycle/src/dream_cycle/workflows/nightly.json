@@ -19,9 +19,8 @@
     },
     {
       "name": "classifier_agent_id",
-      "description": "agentId that the spawn dispatcher uses for the taste-distill step. Should be an agent configured with the openclaw-brain MCP so it can read + write the staging file. Defaults to claude-code; users who route classification through a specialized ops agent (e.g. coo) override here.",
-      "required": false,
-      "defaultValue": "claude-code"
+      "description": "CLI-exec worker alias for this step (e.g. claude-code-cli, codex-cli). Injected by install_workflows from the aliases configured in config.yaml; no default \u2014 an unconfigured install must fail loudly, not silently no-op.",
+      "required": false
     },
     {
       "name": "compile_limit",
@@ -55,9 +54,8 @@
     },
     {
       "name": "compiler_agent_id",
-      "description": "agentId for the compile-extract spawn step. Should be an agent with the openclaw-brain MCP so it can read+write the compile staging file. Defaults to claude-code; this is what makes wiki extraction agent-driven instead of the legacy inline Gemini engine.",
-      "required": false,
-      "defaultValue": "claude-code"
+      "description": "CLI-exec worker alias for this step (e.g. claude-code-cli, codex-cli). Injected by install_workflows from the aliases configured in config.yaml; no default \u2014 an unconfigured install must fail loudly, not silently no-op.",
+      "required": false
     }
   ],
   "steps": [
@@ -102,8 +100,14 @@
         "stage"
       ],
       "dispatch": {
-        "mode": "spawn",
-        "agentId": "{{compiler_agent_id}}"
+        "mode": "exec",
+        "agentId": "{{compiler_agent_id}}",
+        "command": [
+          "/bin/sh",
+          "-c",
+          "echo 'dream-cycle: step \"'\"$0\"'\" needs a CLI worker (cli_exec_alias), but none is registered \u2014 the alias resolver declined and this placeholder ran instead. The step did NO work. Fix: install the Claude Code CLI or the Codex CLI, run `digital-me setup` to register the alias, then re-run `python -m dream_cycle.install_workflows`.' >&2; exit 78",
+          "compile-extract"
+        ]
       },
       "priority": "normal",
       "onUpstreamFailure": "wait",
@@ -118,8 +122,14 @@
         "stage"
       ],
       "dispatch": {
-        "mode": "spawn",
-        "agentId": "{{classifier_agent_id}}"
+        "mode": "exec",
+        "agentId": "{{classifier_agent_id}}",
+        "command": [
+          "/bin/sh",
+          "-c",
+          "echo 'dream-cycle: step \"'\"$0\"'\" needs a CLI worker (cli_exec_alias), but none is registered \u2014 the alias resolver declined and this placeholder ran instead. The step did NO work. Fix: install the Claude Code CLI or the Codex CLI, run `digital-me setup` to register the alias, then re-run `python -m dream_cycle.install_workflows`.' >&2; exit 78",
+          "taste-distill"
+        ]
       },
       "priority": "normal",
       "onUpstreamFailure": "wait",

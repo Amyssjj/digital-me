@@ -32,6 +32,7 @@ from typing import Any, Optional
 
 from dream_cycle.brain_client import BrainClient, BrainClientError
 from dream_cycle.config import resolve_wiki_root
+from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
 
 
 _VAR_RE = re.compile(r"\{\{(\w+)\}\}")
@@ -197,6 +198,24 @@ def run(args: argparse.Namespace, client: Optional[BrainClient] = None) -> int:
         "dry_run": "true" if args.dry_run else "false",
         "python_path": python_path,
     })
+
+    # The agent steps carry no default agentId on purpose (a default would
+    # resurrect the bare `claude-code` spawn agent, which has no tools and
+    # stalls). Detect the same way install_workflows does so a direct run and
+    # an installed run bind to the same worker.
+    worker = detect_worker_agent_id(wiki_root)
+    if worker is not None:
+        for name in ("compiler_agent_id", "classifier_agent_id"):
+            vars.setdefault(name, worker)
+        print(f"worker:      {worker} (detected)", file=sys.stderr)
+    else:
+        print(
+            "worker:      NONE — no "
+            f"{' or '.join(WORKER_AGENT_PREFERENCE)} in "
+            f"{wiki_root / 'config.yaml'}; the agent steps will fail loudly "
+            "(exit 78) rather than silently no-op.",
+            file=sys.stderr,
+        )
 
     materialized = materialize_workflow(template, vars)
     template_id = args.template_id or materialized["id"]

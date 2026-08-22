@@ -15,7 +15,9 @@ from dream_cycle.install_workflows import (
     _register_sibling_schedule,
     discover_bundled_workflows,
     install_workflows,
+    main,
 )
+from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
 
 
 # ── _register_sibling_schedule: timezone forwarding ──────────────────────────
@@ -405,3 +407,125 @@ def test_sibling_schedule_replaces_when_id_matches(tmp_path: Path) -> None:
     )
     assert results[0][1] is True
     client.schedule_add.assert_called_once()
+
+
+# ── worker agent detection ───────────────────────────────────────────────────
+
+
+def _write_config(tmp_path: Path, aliases: object) -> Path:
+    import yaml as _yaml
+
+    (tmp_path / "config.yaml").write_text(
+        _yaml.safe_dump({"cli_exec_aliases": aliases}), encoding="utf-8"
+    )
+    return tmp_path
+
+
+def test_detect_prefers_claude_code_cli_over_codex(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"codex-cli": {"binary": "codex"}, "claude-code-cli": {"binary": "claude"}})
+    assert detect_worker_agent_id(tmp_path) == "claude-code-cli"
+
+
+def test_detect_falls_back_to_codex_when_claude_absent(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"codex-cli": {"binary": "codex"}})
+    assert detect_worker_agent_id(tmp_path) == "codex-cli"
+
+
+def test_detect_ignores_the_bare_claude_code_spawn_agent(tmp_path: Path) -> None:
+    """`claude-code` is the known-broken bare spawn agent — never selectable."""
+    assert "claude-code" not in WORKER_AGENT_PREFERENCE
+    _write_config(tmp_path, {"claude-code": {"binary": "claude"}})
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_returns_none_when_no_config_file(tmp_path: Path) -> None:
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("cli_exec_aliases: [oops\n", encoding="utf-8")
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_returns_none_when_aliases_not_a_mapping(tmp_path: Path) -> None:
+    _write_config(tmp_path, ["claude-code-cli"])
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_ignores_non_mapping_alias_entry(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"claude-code-cli": "not-a-mapping"})
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_main_fails_loudly_when_no_worker_configured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exit 4 + actionable guidance beats importing a workflow that cannot run."""
+    rc = main(["--wiki-root", str(tmp_path)])
+    assert rc == 4
+    err = capsys.readouterr().err
+    assert "no CLI worker alias configured" in err
+    assert "claude-code-cli or codex-cli" in err
+    assert "digital-me setup" in err
+
+
+# ── bundled template: the agent steps must not silently no-op ────────────────
+
+
+def test_bundled_agent_steps_use_a_loudly_failing_placeholder() -> None:
+    """Regression guard for the ["true"] placeholder.
+
+    The alias resolver replaces `command` wholesale when the alias resolves; the
+    placeholder only survives when the alias is MISSING. A placeholder that
+    exits 0 turns an unconfigured install into a green run that did no work.
+    """
+    import subprocess
+
+    nightly = next(
+        p for p in discover_bundled_workflows() if p.name == "nightly.json"
+    )
+    steps = json.loads(nightly.read_text())["steps"]
+    agent_steps = [s for s in steps if s["stepKey"] in ("compile-extract", "taste-distill")]
+    assert len(agent_steps) == 2
+
+    for step in agent_steps:
+        dispatch = step["dispatch"]
+        assert dispatch["mode"] == "exec"
+        assert dispatch["command"] != ["true"]
+        result = subprocess.run(dispatch["command"], capture_output=True, text=True)
+        assert result.returncode != 0, f"{step['stepKey']} placeholder exited 0"
+        assert "did NO work" in (result.stdout + result.stderr)
+
+
+def test_bundled_agent_ids_have_no_default() -> None:
+    """A default would silently resurrect the broken bare spawn agent."""
+    nightly = next(
+        p for p in discover_bundled_workflows() if p.name == "nightly.json"
+    )
+    variables = json.loads(nightly.read_text()).get("variables", [])
+    for name in ("compiler_agent_id", "classifier_agent_id"):
+        var = next(v for v in variables if v["name"] == name)
+        assert "defaultValue" not in var, f"{name} must not carry a default"
+
+
+def test_main_skips_detection_when_both_agent_ids_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Explicit overrides are an escape hatch for machines we can't detect."""
+    rc = main([
+        "--wiki-root", str(tmp_path),
+        "--classifier-agent-id", "my-worker",
+        "--compiler-agent-id", "my-worker",
+        "--workflows-dir", str(tmp_path / "empty"),
+    ])
+    assert rc != 4
+    assert "no CLI worker alias configured" not in capsys.readouterr().err
+
+
+def test_main_still_fails_when_only_one_agent_id_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A half-configured override would leave the other step unrunnable."""
+    rc = main(["--wiki-root", str(tmp_path), "--classifier-agent-id", "my-worker"])
+    assert rc == 4
+    assert "no CLI worker alias configured" in capsys.readouterr().err
