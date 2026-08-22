@@ -87,7 +87,15 @@ export type WorkflowStepTemplateRecord = {
 // ── Schema migration ──────────────────────────────────────────────────────
 
 const WORKFLOWS_VERSION = 300;
-const WORKFLOWS_PROVENANCE_VERSION = 301;
+// 800, NOT 301. `runMigrations` tracks a SINGLE global `PRAGMA user_version`
+// and skips `m.version <= current`, so a new migration must outrank the highest
+// version ever shipped — not sit in its store's numeric block. Numbered 301 it
+// sorted under the already-applied 711 (traces), was skipped forever on every
+// existing DB, and the store's prepared statements then threw
+// "table workflow_templates has no column named source_path" during register(),
+// taking the whole plugin down on upgrade. Fresh installs were fine, which is
+// why tests missed it. Next migration: pick a number above 800.
+const WORKFLOWS_PROVENANCE_VERSION = 800;
 
 export const WORKFLOWS_MIGRATIONS: readonly Migration[] = [
   {
