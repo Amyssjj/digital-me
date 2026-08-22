@@ -916,3 +916,76 @@ describe("importWorkflowFromJson", () => {
     expect(deps.workflows.listSteps("wf-def")[0]!.sortOrder).toBe(0);
   });
 });
+
+describe("importWorkflowFromJson provenance", () => {
+  const withSource = (source: unknown) =>
+    JSON.stringify({
+      id: "wf-src",
+      name: "S",
+      steps: [{ stepKey: "s", dispatch: { mode: "manual" } }],
+      source,
+    });
+
+  it("records a well-formed source stamp", () => {
+    const deps = makeDeps();
+    const r = importWorkflowFromJson(
+      deps,
+      withSource({ path: "/w/n.json", hash: "h1", version: "9.9.9" }),
+    );
+    expect(r.ok).toBe(true);
+    expect(deps.workflows.get("wf-src")!.source).toEqual({
+      path: "/w/n.json",
+      hash: "h1",
+      version: "9.9.9",
+    });
+  });
+
+  it.each([
+    ["not an object", "nope"],
+    ["null", null],
+    ["missing hash", { path: "/w/n.json" }],
+    ["missing path", { hash: "h1" }],
+    ["empty path", { path: "", hash: "h1" }],
+    ["empty hash", { path: "/w/n.json", hash: "" }],
+    ["non-string path", { path: 7, hash: "h1" }],
+  ])("ignores a malformed source stamp (%s)", (_label, source) => {
+    // A half-written stamp is worse than none: doctor would compare against
+    // a hash that never meant anything. Drop it rather than store it.
+    const deps = makeDeps();
+    const r = importWorkflowFromJson(deps, withSource(source));
+    expect(r.ok).toBe(true);
+    expect(deps.workflows.get("wf-src")!.source).toBeUndefined();
+  });
+
+  it("drops a non-string version but keeps the stamp", () => {
+    const deps = makeDeps();
+    importWorkflowFromJson(
+      deps,
+      withSource({ path: "/w/n.json", hash: "h1", version: 3 }),
+    );
+    expect(deps.workflows.get("wf-src")!.source).toEqual({
+      path: "/w/n.json",
+      hash: "h1",
+      version: undefined,
+    });
+  });
+
+  it("an upsert without a stamp preserves the previous one", () => {
+    const deps = makeDeps();
+    importWorkflowFromJson(
+      deps,
+      withSource({ path: "/w/n.json", hash: "h1" }),
+    );
+    const r = importWorkflowFromJson(
+      deps,
+      JSON.stringify({
+        id: "wf-src",
+        name: "S2",
+        steps: [{ stepKey: "s", dispatch: { mode: "manual" } }],
+      }),
+      "upsert",
+    );
+    expect(r.ok).toBe(true);
+    expect(deps.workflows.get("wf-src")!.source?.hash).toBe("h1");
+  });
+});

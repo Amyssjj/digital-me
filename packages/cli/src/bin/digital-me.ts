@@ -42,6 +42,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -71,7 +73,12 @@ import {
 } from "@digital-me/runtime-hermes";
 import { updateOpenclaw } from "@digital-me/runtime-openclaw";
 import { materializeOpenclawOverlay } from "../openclaw-overlay.js";
-import { runDoctor, formatReport, type RuntimeId } from "../doctor.js";
+import {
+  runDoctor,
+  formatReport,
+  type RuntimeId,
+  type WorkflowProvenance,
+} from "../doctor.js";
 import { resolveOpenclawExtensionsDir } from "../openclaw-paths.js";
 import { ensureOpenclawMemoryPaths } from "../openclaw-memory.js";
 import {
@@ -393,6 +400,45 @@ function linkCliGlobally(): void {
   }
 }
 
+/**
+ * Read each workflow template's provenance straight from the brain DB.
+ *
+ * Read-only and best-effort: doctor must never be the reason a machine
+ * looks broken. A missing DB, a pre-migration schema, or a locked file all
+ * degrade to "skipped", never to a failed check.
+ */
+function readWorkflowProvenance(): WorkflowProvenance[] {
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  if (!home) return [];
+  const dbPath = path.join(home, ".openclaw", "data", "brain.db");
+  if (!existsSync(dbPath)) return [];
+  const db = new DatabaseSync(`file:${dbPath}?mode=ro`, { open: true });
+  try {
+    const rows = db
+      .prepare(
+        "SELECT id, source_path, source_hash, created_at FROM workflow_templates",
+      )
+      .all() as Array<{
+      id: string;
+      source_path: string | null;
+      source_hash: string | null;
+      created_at: number;
+    }>;
+    return rows.map((r) => ({
+      id: r.id,
+      sourcePath: r.source_path ?? undefined,
+      sourceHash: r.source_hash ?? undefined,
+      importedAt: r.created_at,
+    }));
+  } catch {
+    // Pre-v301 schema has no source_* columns. Nothing is wrong, there is
+    // just nothing to verify yet.
+    return [];
+  } finally {
+    db.close();
+  }
+}
+
 function doctor(runtimes: RuntimeId[]): number {
   const report = runDoctor(
     {
@@ -403,6 +449,14 @@ function doctor(runtimes: RuntimeId[]): number {
       readFile: (p) => readFileSync(p, "utf-8"),
       brainMcpProxyBinPath: BRAIN_MCP_PROXY_BIN,
       repoRoot: resolveRepoRoot(),
+      workflowProvenance: readWorkflowProvenance,
+      hashFile: (p) => {
+        try {
+          return createHash("sha256").update(readFileSync(p)).digest("hex");
+        } catch {
+          return undefined;
+        }
+      },
     },
     runtimes.length > 0 ? runtimes : VALID_RUNTIMES,
   );

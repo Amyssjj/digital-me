@@ -69,6 +69,25 @@ export type DoctorDeps = {
    * `<digital-me-os-repo>` placeholder.
    */
   readonly repoRoot?: string;
+  /**
+   * Provenance of every workflow template in the brain, for the
+   * template-drift check. Optional — when undefined the check reports
+   * itself as skipped, matching the execCommand/readFile convention.
+   *
+   * Kept as an injected reader rather than a DB handle so this module
+   * stays free of sqlite: the caller owns opening the brain.
+   */
+  readonly workflowProvenance?: () => readonly WorkflowProvenance[];
+  /** sha256 of a file's raw bytes; undefined when unreadable. */
+  readonly hashFile?: (path: string) => string | undefined;
+};
+
+/** One template's link back to the file it was imported from. */
+export type WorkflowProvenance = {
+  readonly id: string;
+  readonly sourcePath?: string;
+  readonly sourceHash?: string;
+  readonly importedAt?: number;
 };
 
 export type RuntimeId =
@@ -265,6 +284,10 @@ export function runDoctor(
   if (enabledRuntimes.includes("openclaw")) {
     checks.push(...runMemoryIndexChecks(deps));
     checks.push(...runOpenclawShadowCheck(deps));
+  }
+
+  if (enabledRuntimes.includes("dream-cycle")) {
+    checks.push(...runWorkflowDriftChecks(deps));
   }
 
   const passed = checks.filter((c) => c.ok).length;
@@ -819,4 +842,93 @@ export function runLlmAuthCheck(deps: DoctorDeps, python: string): CheckResult {
     label: "dream-cycle: LLM auth",
     reason: `engine=${engine}: $${envName} is not set. Export it before running dream-cycle.`,
   };
+}
+
+/**
+ * Workflow templates are copied into the brain at install and never re-read,
+ * so an edit to a bundled file leaves the live template behind without any
+ * error surfacing. The consequence is silent: a drifted prompt degrades the
+ * step's output rather than failing it, and a degraded night is
+ * indistinguishable from a quiet one in the digest.
+ *
+ * This compares the sha256 recorded at import against the file on disk now.
+ * Deliberately narrow — it answers "has the source changed since import",
+ * not "is the live template correct". A hand-edited live template with no
+ * provenance is reported as unstamped, not as drifted, because we cannot
+ * know what it should have been.
+ */
+export function runWorkflowDriftChecks(deps: DoctorDeps): CheckResult[] {
+  const label = "dream-cycle: workflow template drift";
+  if (!deps.workflowProvenance || !deps.hashFile) {
+    return [
+      { ok: true, label, note: "skipped (no brain reader wired)" },
+    ];
+  }
+
+  let rows: readonly WorkflowProvenance[];
+  try {
+    rows = deps.workflowProvenance();
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return [{ ok: false, label, reason: `Could not read templates: ${msg}` }];
+  }
+
+  if (rows.length === 0) {
+    return [{ ok: true, label, note: "no workflow templates imported" }];
+  }
+
+  const stamped = rows.filter((r) => r.sourcePath && r.sourceHash);
+  if (stamped.length === 0) {
+    // Every row predates the provenance migration. Not a failure: nothing is
+    // known to be wrong, only unverifiable. Re-importing stamps them.
+    return [
+      {
+        ok: true,
+        label,
+        note: `${rows.length} template(s) carry no provenance — re-import to stamp them`,
+      },
+    ];
+  }
+
+  const drifted: string[] = [];
+  const missing: string[] = [];
+  for (const r of stamped) {
+    const path = r.sourcePath as string;
+    if (!deps.fileExists(path)) {
+      missing.push(`${r.id} (source gone: ${path})`);
+      continue;
+    }
+    const now = deps.hashFile(path);
+    if (now === undefined) {
+      missing.push(`${r.id} (source unreadable: ${path})`);
+      continue;
+    }
+    if (now !== r.sourceHash) drifted.push(r.id);
+  }
+
+  const out: CheckResult[] = [];
+  if (drifted.length > 0) {
+    out.push({
+      ok: false,
+      label,
+      reason:
+        `${drifted.join(", ")} differ(s) from the bundled file it was imported from. ` +
+        `The live template is what actually runs. Re-import with ` +
+        `importMode="upsert" to converge.`,
+    });
+  } else {
+    out.push({
+      ok: true,
+      label,
+      note: `${stamped.length} template(s) match their source`,
+    });
+  }
+  if (missing.length > 0) {
+    out.push({
+      ok: false,
+      label: `${label} (source file)`,
+      reason: missing.join("; "),
+    });
+  }
+  return out;
 }

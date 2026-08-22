@@ -286,3 +286,122 @@ def test_install_workflows_handles_empty_input() -> None:
     results = install_workflows([], vars={"wiki_root": "/", "python_path": "/p"}, client=client)
     assert results == []
     client.import_workflow.assert_not_called()
+
+
+def test_install_stamps_provenance_and_upserts(tmp_path: Path) -> None:
+    """Every import carries a source stamp (path + sha256 of the RAW file)
+    and uses upsert, so `doctor` can detect drift and schedules survive."""
+    import hashlib
+
+    template = {
+        "id": "wf-prov",
+        "name": "Prov",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-prov", template)
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    results = install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+    assert results[0][1] is True
+
+    imported = client.import_workflow.call_args.args[0]
+    src = imported["source"]
+    assert src["path"] == str(wf_path.resolve())
+    # hash is of the raw bytes on disk, NOT the materialized dict
+    assert src["hash"] == hashlib.sha256(wf_path.read_bytes()).hexdigest()
+
+    assert client.import_workflow.call_args.kwargs.get("upsert") is True
+
+
+def test_install_no_longer_tears_down_schedules(tmp_path: Path) -> None:
+    """Regression: the old delete-then-import path removed every schedule
+    referencing the workflow, destroying any with hand-tuned variables or no
+    sibling .schedule.json. Upsert must touch neither."""
+    template = {
+        "id": "wf-keep",
+        "name": "Keep",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-keep", template)
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+
+    client.delete_workflow.assert_not_called()
+    client.schedule_remove.assert_not_called()
+
+
+def test_sibling_schedule_declines_when_another_id_targets_the_workflow(
+    tmp_path: Path,
+) -> None:
+    """A live schedule under a different id must not be duplicated. Install
+    leaves it alone and reports, rather than double-firing the workflow."""
+    template = {
+        "id": "wf-sched",
+        "name": "Sched",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-sched", template)
+    (tmp_path / "wf-sched.schedule.json").write_text(
+        json.dumps(
+            {"scheduleId": "bundled-id", "cronExpr": "0 3 * * *"}
+        ),
+        encoding="utf-8",
+    )
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    client.schedule_list.return_value = [
+        {"id": "renamed-live-id", "workflowId": "wf-sched"}
+    ]
+
+    results = install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+
+    _, ok, msg = results[0]
+    assert ok is True
+    assert "renamed-live-id" in msg
+    assert "left as-is" in msg
+    client.schedule_add.assert_not_called()
+    client.schedule_remove.assert_not_called()
+
+
+def test_sibling_schedule_replaces_when_id_matches(tmp_path: Path) -> None:
+    """The ordinary re-install path still replaces the schedule in place."""
+    template = {
+        "id": "wf-sched2",
+        "name": "Sched2",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-sched2", template)
+    (tmp_path / "wf-sched2.schedule.json").write_text(
+        json.dumps({"scheduleId": "same-id", "cronExpr": "0 3 * * *"}),
+        encoding="utf-8",
+    )
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    client.schedule_list.return_value = [
+        {"id": "same-id", "workflowId": "wf-sched2"}
+    ]
+
+    results = install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+    assert results[0][1] is True
+    client.schedule_add.assert_called_once()
