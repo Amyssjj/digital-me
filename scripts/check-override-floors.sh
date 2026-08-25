@@ -22,7 +22,7 @@
 #
 # Environment:
 #   REPO       owner/name (required)
-#   GH_TOKEN   token for `gh`, needs security-events: read (required)
+#   GH_TOKEN   token for `gh`, needs vulnerability-alerts: read (required)
 #   DRY_RUN    "true" to report without filing an issue (default true)
 #   WORKSPACE  path to the workspace file (default pnpm-workspace.yaml)
 set -euo pipefail
