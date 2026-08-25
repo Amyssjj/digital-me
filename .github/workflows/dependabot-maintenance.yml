@@ -30,7 +30,7 @@ permissions:
   contents: write # delete the branch of a closed PR
   pull-requests: write # comment and close
   issues: write # report a failing sweep, and standing override drift
-  security-events: read # read Dependabot alerts to audit the override floors
+  vulnerability-alerts: read # read Dependabot alerts to audit the override floors
 
 concurrency:
   group: dependabot-maintenance

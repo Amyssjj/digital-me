@@ -15,7 +15,9 @@ from dream_cycle.install_workflows import (
     _register_sibling_schedule,
     discover_bundled_workflows,
     install_workflows,
+    main,
 )
+from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
 
 
 # ── _register_sibling_schedule: timezone forwarding ──────────────────────────
@@ -286,3 +288,244 @@ def test_install_workflows_handles_empty_input() -> None:
     results = install_workflows([], vars={"wiki_root": "/", "python_path": "/p"}, client=client)
     assert results == []
     client.import_workflow.assert_not_called()
+
+
+def test_install_stamps_provenance_and_upserts(tmp_path: Path) -> None:
+    """Every import carries a source stamp (path + sha256 of the RAW file)
+    and uses upsert, so `doctor` can detect drift and schedules survive."""
+    import hashlib
+
+    template = {
+        "id": "wf-prov",
+        "name": "Prov",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-prov", template)
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    results = install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+    assert results[0][1] is True
+
+    imported = client.import_workflow.call_args.args[0]
+    src = imported["source"]
+    assert src["path"] == str(wf_path.resolve())
+    # hash is of the raw bytes on disk, NOT the materialized dict
+    assert src["hash"] == hashlib.sha256(wf_path.read_bytes()).hexdigest()
+
+    assert client.import_workflow.call_args.kwargs.get("upsert") is True
+
+
+def test_install_no_longer_tears_down_schedules(tmp_path: Path) -> None:
+    """Regression: the old delete-then-import path removed every schedule
+    referencing the workflow, destroying any with hand-tuned variables or no
+    sibling .schedule.json. Upsert must touch neither."""
+    template = {
+        "id": "wf-keep",
+        "name": "Keep",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-keep", template)
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+
+    client.delete_workflow.assert_not_called()
+    client.schedule_remove.assert_not_called()
+
+
+def test_sibling_schedule_declines_when_another_id_targets_the_workflow(
+    tmp_path: Path,
+) -> None:
+    """A live schedule under a different id must not be duplicated. Install
+    leaves it alone and reports, rather than double-firing the workflow."""
+    template = {
+        "id": "wf-sched",
+        "name": "Sched",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-sched", template)
+    (tmp_path / "wf-sched.schedule.json").write_text(
+        json.dumps(
+            {"scheduleId": "bundled-id", "cronExpr": "0 3 * * *"}
+        ),
+        encoding="utf-8",
+    )
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    client.schedule_list.return_value = [
+        {"id": "renamed-live-id", "workflowId": "wf-sched"}
+    ]
+
+    results = install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+
+    _, ok, msg = results[0]
+    assert ok is True
+    assert "renamed-live-id" in msg
+    assert "left as-is" in msg
+    client.schedule_add.assert_not_called()
+    client.schedule_remove.assert_not_called()
+
+
+def test_sibling_schedule_replaces_when_id_matches(tmp_path: Path) -> None:
+    """The ordinary re-install path still replaces the schedule in place."""
+    template = {
+        "id": "wf-sched2",
+        "name": "Sched2",
+        "steps": [{"stepKey": "s", "dispatch": {"mode": "manual"}}],
+    }
+    wf_path = _make_workflow_file(tmp_path, "wf-sched2", template)
+    (tmp_path / "wf-sched2.schedule.json").write_text(
+        json.dumps({"scheduleId": "same-id", "cronExpr": "0 3 * * *"}),
+        encoding="utf-8",
+    )
+
+    client = MagicMock()
+    client.import_workflow.return_value = {"ok": True}
+    client.schedule_list.return_value = [
+        {"id": "same-id", "workflowId": "wf-sched2"}
+    ]
+
+    results = install_workflows(
+        [wf_path],
+        vars={"wiki_root": "/tmp/w", "python_path": "/venv/bin/python"},
+        client=client,
+    )
+    assert results[0][1] is True
+    client.schedule_add.assert_called_once()
+
+
+# ── worker agent detection ───────────────────────────────────────────────────
+
+
+def _write_config(tmp_path: Path, aliases: object) -> Path:
+    import yaml as _yaml
+
+    (tmp_path / "config.yaml").write_text(
+        _yaml.safe_dump({"cli_exec_aliases": aliases}), encoding="utf-8"
+    )
+    return tmp_path
+
+
+def test_detect_prefers_claude_code_cli_over_codex(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"codex-cli": {"binary": "codex"}, "claude-code-cli": {"binary": "claude"}})
+    assert detect_worker_agent_id(tmp_path) == "claude-code-cli"
+
+
+def test_detect_falls_back_to_codex_when_claude_absent(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"codex-cli": {"binary": "codex"}})
+    assert detect_worker_agent_id(tmp_path) == "codex-cli"
+
+
+def test_detect_ignores_the_bare_claude_code_spawn_agent(tmp_path: Path) -> None:
+    """`claude-code` is the known-broken bare spawn agent — never selectable."""
+    assert "claude-code" not in WORKER_AGENT_PREFERENCE
+    _write_config(tmp_path, {"claude-code": {"binary": "claude"}})
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_returns_none_when_no_config_file(tmp_path: Path) -> None:
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_returns_none_on_malformed_yaml(tmp_path: Path) -> None:
+    (tmp_path / "config.yaml").write_text("cli_exec_aliases: [oops\n", encoding="utf-8")
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_returns_none_when_aliases_not_a_mapping(tmp_path: Path) -> None:
+    _write_config(tmp_path, ["claude-code-cli"])
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_detect_ignores_non_mapping_alias_entry(tmp_path: Path) -> None:
+    _write_config(tmp_path, {"claude-code-cli": "not-a-mapping"})
+    assert detect_worker_agent_id(tmp_path) is None
+
+
+def test_main_fails_loudly_when_no_worker_configured(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Exit 4 + actionable guidance beats importing a workflow that cannot run."""
+    rc = main(["--wiki-root", str(tmp_path)])
+    assert rc == 4
+    err = capsys.readouterr().err
+    assert "no CLI worker alias configured" in err
+    assert "claude-code-cli or codex-cli" in err
+    assert "digital-me setup" in err
+
+
+# ── bundled template: the agent steps must not silently no-op ────────────────
+
+
+def test_bundled_agent_steps_use_a_loudly_failing_placeholder() -> None:
+    """Regression guard for the ["true"] placeholder.
+
+    The alias resolver replaces `command` wholesale when the alias resolves; the
+    placeholder only survives when the alias is MISSING. A placeholder that
+    exits 0 turns an unconfigured install into a green run that did no work.
+    """
+    import subprocess
+
+    nightly = next(
+        p for p in discover_bundled_workflows() if p.name == "nightly.json"
+    )
+    steps = json.loads(nightly.read_text())["steps"]
+    agent_steps = [s for s in steps if s["stepKey"] in ("compile-extract", "taste-distill")]
+    assert len(agent_steps) == 2
+
+    for step in agent_steps:
+        dispatch = step["dispatch"]
+        assert dispatch["mode"] == "exec"
+        assert dispatch["command"] != ["true"]
+        result = subprocess.run(dispatch["command"], capture_output=True, text=True)
+        assert result.returncode != 0, f"{step['stepKey']} placeholder exited 0"
+        assert "did NO work" in (result.stdout + result.stderr)
+
+
+def test_bundled_agent_ids_have_no_default() -> None:
+    """A default would silently resurrect the broken bare spawn agent."""
+    nightly = next(
+        p for p in discover_bundled_workflows() if p.name == "nightly.json"
+    )
+    variables = json.loads(nightly.read_text()).get("variables", [])
+    for name in ("compiler_agent_id", "classifier_agent_id"):
+        var = next(v for v in variables if v["name"] == name)
+        assert "defaultValue" not in var, f"{name} must not carry a default"
+
+
+def test_main_skips_detection_when_both_agent_ids_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Explicit overrides are an escape hatch for machines we can't detect."""
+    rc = main([
+        "--wiki-root", str(tmp_path),
+        "--classifier-agent-id", "my-worker",
+        "--compiler-agent-id", "my-worker",
+        "--workflows-dir", str(tmp_path / "empty"),
+    ])
+    assert rc != 4
+    assert "no CLI worker alias configured" not in capsys.readouterr().err
+
+
+def test_main_still_fails_when_only_one_agent_id_given(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """A half-configured override would leave the other step unrunnable."""
+    rc = main(["--wiki-root", str(tmp_path), "--classifier-agent-id", "my-worker"])
+    assert rc == 4
+    assert "no CLI worker alias configured" in capsys.readouterr().err

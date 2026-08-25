@@ -203,19 +203,32 @@ class BrainClient:
             args["force"] = True
         return self._invoke("tasks", args)
 
-    def import_workflow(self, template: dict[str, Any]) -> dict[str, Any]:
+    def import_workflow(
+        self, template: dict[str, Any], upsert: bool = False
+    ) -> dict[str, Any]:
         """Import a workflow template into the brain's `workflow_templates`
         table. The gateway's `workflow_import` action expects a stringified
         JSON blob in `workflowJson` (NOT a dict), so we serialize here.
 
         Returns the parsed gateway result on success. Raises BrainClientError
-        if the workflow id already exists or any validation fails — note
-        the brain rejects same-id imports rather than upserting, so callers
-        wanting overwrite semantics must `delete_workflow` first."""
-        return self._invoke(
-            "tasks",
-            {"action": "workflow_import", "workflowJson": json.dumps(template)},
-        )
+        on validation failure.
+
+        `upsert=True` replaces an existing template and its steps in place,
+        preserving schedules and the original createdAt. Without it the
+        brain refuses a same-id import, and the only other overwrite path is
+        `delete_workflow` first — which is gated on tearing down every
+        schedule that references the workflow.
+
+        Sends `importMode` (not `mode`) because the tasks tool already uses
+        `mode` for retry's restart|resume. Older gateways ignore the unknown
+        param and fall back to create semantics."""
+        params: dict[str, Any] = {
+            "action": "workflow_import",
+            "workflowJson": json.dumps(template),
+        }
+        if upsert:
+            params["importMode"] = "upsert"
+        return self._invoke("tasks", params)
 
     def delete_workflow(self, template_id: str) -> dict[str, Any]:
         """Delete a workflow template by id. Raises BrainClientError if

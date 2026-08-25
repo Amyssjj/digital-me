@@ -51,6 +51,21 @@ export type WorkflowTemplateRecord = {
   readonly tags?: readonly string[];
   readonly branching?: WorkflowBranchingPolicy;
   readonly notifyTarget?: Originator;
+  /**
+   * Where this template was imported from, when it came from a file.
+   * Absent for hand-authored templates and for rows imported before the
+   * v301 migration. `hash` is the sha256 of the source file's raw bytes at
+   * import time — `digital-me doctor` re-hashes the file on disk and
+   * compares, which is how a drifted live template becomes visible.
+   */
+  readonly source?: WorkflowSource;
+};
+
+export type WorkflowSource = {
+  readonly path: string;
+  readonly hash: string;
+  /** Version of the package that shipped the file, when known. */
+  readonly version?: string;
 };
 
 export type WorkflowStepTemplateRecord = {
@@ -72,6 +87,15 @@ export type WorkflowStepTemplateRecord = {
 // ── Schema migration ──────────────────────────────────────────────────────
 
 const WORKFLOWS_VERSION = 300;
+// 800, NOT 301. `runMigrations` tracks a SINGLE global `PRAGMA user_version`
+// and skips `m.version <= current`, so a new migration must outrank the highest
+// version ever shipped — not sit in its store's numeric block. Numbered 301 it
+// sorted under the already-applied 711 (traces), was skipped forever on every
+// existing DB, and the store's prepared statements then threw
+// "table workflow_templates has no column named source_path" during register(),
+// taking the whole plugin down on upgrade. Fresh installs were fine, which is
+// why tests missed it. Next migration: pick a number above 800.
+const WORKFLOWS_PROVENANCE_VERSION = 800;
 
 export const WORKFLOWS_MIGRATIONS: readonly Migration[] = [
   {
@@ -111,6 +135,31 @@ export const WORKFLOWS_MIGRATIONS: readonly Migration[] = [
       `);
     },
   },
+  {
+    version: WORKFLOWS_PROVENANCE_VERSION,
+    description:
+      "v301: workflow_templates provenance (source_path/source_hash/source_version)",
+    up: (db: DatabaseSync) => {
+      // Templates are imported FROM a bundled file but kept no link back to
+      // it, so a drifted copy was undetectable. These columns record which
+      // file a template was imported from and what it hashed to at the time,
+      // which is what `digital-me doctor` compares against on disk.
+      // Nullable throughout: rows imported before this migration, and
+      // hand-authored templates with no file behind them, legitimately have
+      // no provenance.
+      for (const col of [
+        "source_path TEXT",
+        "source_hash TEXT",
+        "source_version TEXT",
+      ]) {
+        try {
+          db.exec(`ALTER TABLE workflow_templates ADD COLUMN ${col};`);
+        } catch {
+          // Column already present (re-run against a partially migrated DB).
+        }
+      }
+    },
+  },
 ];
 
 // ── Row mapping ────────────────────────────────────────────────────────────
@@ -126,6 +175,9 @@ type WorkflowRow = {
   tags: string;
   branching: string | null;
   notify_target: string | null;
+  source_path: string | null;
+  source_hash: string | null;
+  source_version: string | null;
 };
 
 type WorkflowStepRow = {
@@ -178,6 +230,13 @@ function rowToWorkflow(row: WorkflowRow): WorkflowTemplateRecord {
     tags: jsonParseOr<readonly string[]>(row.tags, []),
     branching: jsonParseOpt<WorkflowBranchingPolicy>(row.branching),
     notifyTarget: jsonParseOpt<Originator>(row.notify_target),
+    source: row.source_path
+      ? {
+          path: row.source_path,
+          hash: row.source_hash ?? "",
+          version: row.source_version ?? undefined,
+        }
+      : undefined,
   };
 }
 
@@ -224,8 +283,9 @@ export function createWorkflowsStore(deps: {
   const insertWorkflow = db.prepare(`
     INSERT INTO workflow_templates
       (id, name, description, variables, created_at, updated_at,
-       version, tags, branching, notify_target)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       version, tags, branching, notify_target,
+       source_path, source_hash, source_version)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const selectById = db.prepare(
     "SELECT * FROM workflow_templates WHERE id = ?",
@@ -236,7 +296,8 @@ export function createWorkflowsStore(deps: {
   const updateStmt = db.prepare(`
     UPDATE workflow_templates SET
       name = ?, description = ?, variables = ?, updated_at = ?, version = ?,
-      tags = ?, branching = ?, notify_target = ?
+      tags = ?, branching = ?, notify_target = ?,
+      source_path = ?, source_hash = ?, source_version = ?
     WHERE id = ?
   `);
   const deleteSteps = db.prepare(
@@ -269,6 +330,9 @@ export function createWorkflowsStore(deps: {
       JSON.stringify(template.tags ?? []),
       template.branching ? JSON.stringify(template.branching) : null,
       template.notifyTarget ? JSON.stringify(template.notifyTarget) : null,
+      template.source?.path ?? null,
+      template.source?.hash ?? null,
+      template.source?.version ?? null,
     );
   }
 
@@ -291,6 +355,9 @@ export function createWorkflowsStore(deps: {
       JSON.stringify(template.tags ?? []),
       template.branching ? JSON.stringify(template.branching) : null,
       template.notifyTarget ? JSON.stringify(template.notifyTarget) : null,
+      template.source?.path ?? null,
+      template.source?.hash ?? null,
+      template.source?.version ?? null,
       template.id,
     );
   }

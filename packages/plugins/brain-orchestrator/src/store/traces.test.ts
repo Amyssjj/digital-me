@@ -248,27 +248,19 @@ describe("TRACES_MIGRATIONS", () => {
     shipped.close();
   });
 
-  it("versions the kind index above every other store's migrations", async () => {
-    // Guard against the shared-user_version trap: a new migration must beat
-    // the global max across ALL migration groups, not just its own file.
-    const { GOALS_MIGRATIONS } = await import("./goals.js");
-    const { TASKS_MIGRATIONS } = await import("./tasks.js");
-    const { WORKFLOWS_MIGRATIONS } = await import("./workflows.js");
-    const { SCHEDULES_MIGRATIONS } = await import("./schedules.js");
-    const { AGENTS_MIGRATIONS } = await import("./agents.js");
-    const { LEARNINGS_MIGRATIONS } = await import("./learnings.js");
-    const { M1_EVENTS_MIGRATIONS } = await import("./m1-events.js");
-    const others = [
-      ...GOALS_MIGRATIONS,
-      ...TASKS_MIGRATIONS,
-      ...WORKFLOWS_MIGRATIONS,
-      ...SCHEDULES_MIGRATIONS,
-      ...AGENTS_MIGRATIONS,
-      ...LEARNINGS_MIGRATIONS,
-      ...M1_EVENTS_MIGRATIONS,
-      TRACES_MIGRATIONS[0]!,
-    ].map((m) => m.version);
-    const indexVersion = TRACES_MIGRATIONS[1]!.version;
-    expect(indexVersion).toBeGreaterThan(Math.max(...others));
+  it("versions the kind index above the base traces migration", async () => {
+    // The general invariant — "a new migration must beat the global max across
+    // ALL stores, because runMigrations keeps one shared user_version" — is
+    // enforced in migrations.test.ts by the "upgrade path" suite, which proves
+    // upgrading from every prior version reaches the fresh-install schema.
+    //
+    // This test used to assert the kind index outranked every other store. That
+    // only guarded THIS migration: workflow provenance was later added as 301,
+    // sorted under the already-applied 711, was skipped on every existing DB,
+    // and took the whole plugin down at register(). A guard that protects one
+    // migration does not protect the rule.
+    expect(TRACES_MIGRATIONS[1]!.version).toBeGreaterThan(
+      TRACES_MIGRATIONS[0]!.version,
+    );
   });
 });

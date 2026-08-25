@@ -21,6 +21,7 @@ Optional variables flow from CLI flags or kept at workflow defaults.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import sys
@@ -29,6 +30,7 @@ from typing import Any, Iterable, Optional
 
 from dream_cycle.brain_client import BrainClient, BrainClientError
 from dream_cycle.config import resolve_wiki_root
+from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
 from dream_cycle.via_agents import materialize_workflow
 
 
@@ -95,6 +97,22 @@ def _apply_template_defaults(
     return merged
 
 
+def _hash_file(path: Path) -> str:
+    """sha256 of a file's raw bytes, as lowercase hex."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _package_version() -> Optional[str]:
+    """Installed dream-cycle version, when resolvable. Best-effort: a source
+    checkout that was never pip-installed has no distribution metadata."""
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        return version("digital-me-dream-cycle")
+    except Exception:
+        return None
+
+
 def _sibling_schedule_path(wf_path: Path) -> Path:
     """Convention: workflows/foo.json's companion schedule lives at
     workflows/foo.schedule.json. Returns the expected path (may not exist)."""
@@ -139,6 +157,38 @@ def _register_sibling_schedule(
     # re-install. None → brain keeps its UTC default (unchanged behavior).
     tz_raw = sched.get("timezone")
     timezone = tz_raw if isinstance(tz_raw, str) and tz_raw.strip() else None
+
+    # Guard against creating a SECOND schedule for the same workflow.
+    #
+    # Install no longer tears down every schedule referencing the workflow
+    # (upsert made that unnecessary, and the teardown destroyed hand-tuned
+    # schedules). But that removes the accident that used to mask a rename:
+    # if the live schedule carries an id different from the bundled
+    # sibling's, a blind add would leave BOTH in place and the workflow
+    # would fire twice a night.
+    #
+    # So: if some other schedule already targets this workflow, leave it
+    # alone and say so. Destroying a live schedule and silently doubling one
+    # are both worse than declining and reporting.
+    try:
+        for sched in client.schedule_list():
+            if not isinstance(sched, dict):
+                continue
+            # MCP returns camelCase; be defensive.
+            ref = sched.get("workflowId") or sched.get("workflow_id")
+            if ref != wf_id:
+                continue
+            existing_id = sched.get("id") or sched.get("scheduleId")
+            if isinstance(existing_id, str) and existing_id != schedule_id:
+                return (
+                    f"schedule '{existing_id}' already targets this workflow "
+                    f"(bundled id is '{schedule_id}') — left as-is; "
+                    f"remove one to converge"
+                )
+    except BrainClientError:
+        # Can't enumerate: fall through to the id-scoped replace below,
+        # which is the pre-existing behavior.
+        pass
 
     # Idempotent install: drop any prior schedule with this id, then
     # re-create. Swallow not-found on first install.
@@ -188,46 +238,25 @@ def install_workflows(
             effective_vars = _apply_template_defaults(template, vars)
             materialized = materialize_workflow(template, effective_vars)
             wf_id = template.get("id", "?")
-            # workflow_import rejects same-id duplicates rather than
-            # upserting. For idempotent re-install (the common path:
-            # `digital-me install --runtime dream-cycle` re-run after an
-            # OS update), delete-first-then-import. The brain refuses to
-            # delete a workflow whose enabled schedule references it, so
-            # remove ANY schedule pointing at this workflow first.
-            #
-            # We enumerate schedule_list rather than guessing from the
-            # sibling .schedule.json's `scheduleId`: legacy installs may
-            # have renamed the schedule, so the only reliable cleanup is
-            # by workflow reference. Swallow not-found errors throughout
-            # since first-time install has nothing prior to delete.
-            try:
-                for sched in client.schedule_list():
-                    if not isinstance(sched, dict):
-                        continue
-                    # MCP returns camelCase fields; be defensive.
-                    sched_workflow_id = (
-                        sched.get("workflowId") or sched.get("workflow_id")
-                    )
-                    if sched_workflow_id != wf_id:
-                        continue
-                    sched_id = sched.get("id") or sched.get("scheduleId")
-                    if not isinstance(sched_id, str):
-                        continue
-                    try:
-                        client.schedule_remove(sched_id)
-                    except BrainClientError:
-                        pass
-            except BrainClientError:
-                # schedule_list itself failed — log nothing, let workflow_delete
-                # surface its own error if the schedule is still blocking.
-                pass
-            try:
-                client.delete_workflow(wf_id)
-            except BrainClientError:
-                # Either not-found (first install) or some other error;
-                # let the import try anyway and surface its own error.
-                pass
-            client.import_workflow(materialized)
+            # Stamp provenance so `digital-me doctor` can tell whether the
+            # live template still matches the file it came from. The hash is
+            # of the file's RAW bytes, pre-substitution: it answers "has the
+            # source changed since import", which is the question drift asks.
+            materialized["source"] = {
+                "path": str(wf_path.resolve()),
+                "hash": _hash_file(wf_path),
+                "version": _package_version(),
+            }
+            # Upsert replaces the template and its steps in place. The old
+            # path here was delete-then-import, which required first removing
+            # EVERY schedule referencing the workflow (the brain refuses to
+            # delete an workflow an enabled schedule points at) and then
+            # re-registering only what the sibling .schedule.json describes —
+            # so any live schedule with no sibling, or with hand-tuned
+            # variables, was silently destroyed by a routine re-install.
+            # Upsert keeps schedules untouched and removes the window where
+            # the workflow does not exist.
+            client.import_workflow(materialized, upsert=True)
         except (OSError, json.JSONDecodeError) as e:
             results.append((wf_path, False, f"failed to read/parse: {e}"))
             continue
@@ -267,7 +296,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--classifier-agent-id",
         type=str,
         default=None,
-        help="Override the spawn agentId for the taste-distill step (workflow's default applies otherwise).",
+        help="Override the agentId for the taste-distill step (detected worker applies otherwise).",
+    )
+    parser.add_argument(
+        "--compiler-agent-id",
+        type=str,
+        default=None,
+        help="Override the agentId for the compile-extract step (detected worker applies otherwise).",
     )
     parser.add_argument(
         "--dashboard-db",
@@ -290,8 +325,39 @@ def main(argv: Optional[list[str]] = None) -> int:
     overrides: dict[str, str] = {}
     if args.classifier_agent_id:
         overrides["classifier_agent_id"] = args.classifier_agent_id
+    if args.compiler_agent_id:
+        overrides["compiler_agent_id"] = args.compiler_agent_id
     if args.dashboard_db:
         overrides["dashboard_db"] = str(args.dashboard_db)
+
+    # Bind the agent steps to a worker that actually exists on this machine.
+    # Explicit flags win; otherwise detect. Failing loudly here beats importing
+    # a workflow whose agent steps cannot run: an unresolvable exec alias falls
+    # through to the step's placeholder command, and a placeholder that exits 0
+    # would make the nightly report success while doing nothing.
+    detected = detect_worker_agent_id(wiki_root)
+    explicit = bool(args.classifier_agent_id and args.compiler_agent_id)
+    if detected is None and not explicit:
+        print(
+            "install-workflows: no CLI worker alias configured.\n"
+            f"  Looked for {' or '.join(WORKER_AGENT_PREFERENCE)} under "
+            f"cli_exec_aliases in {wiki_root / 'config.yaml'}.\n"
+            "  The agent steps (wiki extraction, taste distillation) cannot run "
+            "without one.\n"
+            "  Fix: install the Claude Code CLI or the Codex CLI and re-run "
+            "`digital-me setup`, which registers the alias.\n"
+            "  Override: pass --classifier-agent-id / --compiler-agent-id "
+            "to name a worker explicitly.",
+            file=sys.stderr,
+        )
+        return 4
+    if detected is not None:
+        overrides.setdefault("classifier_agent_id", detected)
+        overrides.setdefault("compiler_agent_id", detected)
+        print(
+            f"install-workflows: worker agent = {detected} (detected)",
+            file=sys.stderr,
+        )
 
     vars = _build_install_vars(wiki_root, python_path, overrides)
     paths = discover_bundled_workflows(args.workflows_dir)

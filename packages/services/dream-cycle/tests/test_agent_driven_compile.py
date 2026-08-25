@@ -107,8 +107,13 @@ def test_nightly_workflow_is_agent_driven() -> None:
     assert nightly["version"] >= 2
     steps = {s["stepKey"]: s for s in nightly["steps"]}
     assert set(steps) == {"stage", "compile-extract", "taste-distill", "apply"}
-    # compile extraction is now a spawn, not inline
-    assert steps["compile-extract"]["dispatch"]["mode"] == "spawn"
+    # Compile extraction is agent-driven, not inline. It dispatches via a
+    # CLI-exec alias (mode=exec + agentId), NOT mode=spawn: the bare in-gateway
+    # spawn agent has no exec tools and no brain MCP, so it can neither read the
+    # staging file nor call tasks.handoff, and stalls until the watchdog fires.
+    compile_dispatch = steps["compile-extract"]["dispatch"]
+    assert compile_dispatch["mode"] == "exec"
+    assert compile_dispatch["agentId"] == "{{compiler_agent_id}}"
     # apply waits on BOTH spawns and runs even if one fails
     assert set(steps["apply"]["blockedByKeys"]) == {"compile-extract", "taste-distill"}
     assert steps["apply"]["onUpstreamFailure"] == "continue"
