@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 // view is rewritten; §G's final pass collapses .mc duplicates into canonical
 // filenames once nothing imports the legacy modules anymore.
 import { fetchDashboardData } from "./data.mc.js";
-import { getGoals, getGoalMetrics, getAllGoalMetrics, getImprovements, getFeedback, getInsights, getCronRunsSummary, getCronRunsPerJob, getRecentTraces, getTraceById, getIssuesSummary, getIssuesTimeSeries, getTeamHealthTimeSeries, getAutomationOpportunitiesTimeSeries, getKanbanData, getLayerHealth, getWorkflowsForMechanism, getKnowledgeRows, getValidationRows } from "./db.js";
+import { getRecentTraces, getTraceById, getKanbanData, getLayerHealth, getWorkflowsForMechanism } from "./db.js";
 import { getSystemStatus, loadSkillsConfig } from "./drift-status.mc.js";
 import { brainMemorySearch, initBrainClient } from "./brain-client.mc.js";
 // Feed search: ranked memory_search results with containment-checked previews.
@@ -49,35 +49,6 @@ app.use((req, res, next) => {
 // browser visits read this unauthenticated personal-data API.
 app.use(express.json());
 
-// ── Cutover resilience for legacy SQLite endpoints ──
-// db.ts still reads goal_metrics / issues / daily_agent_activity / etc. Those
-// tables don't exist in the new canonical dashboard.db (the schema cutover
-// dropped them; db.ts is being rewritten in §B-§G). Until then, a stale
-// frontend, a bookmarked URL, or an external monitor hitting these routes
-// would get a hard 500 and spew error logs. Normalize "no such table" into an
-// empty 200 so the cutover degrades gracefully instead of looking broken.
-function isMissingTableError(err: unknown): boolean {
-  return err instanceof Error && /no such table/i.test(err.message);
-}
-function legacyJson<T>(
-  res: express.Response,
-  tag: string,
-  fallback: unknown,
-  compute: () => T | Promise<T>,
-): void {
-  Promise.resolve()
-    .then(compute)
-    .then((data) => res.json(data))
-    .catch((err) => {
-      if (isMissingTableError(err)) {
-        console.warn(`[${tag}] legacy table missing post-cutover — returning empty payload`);
-        res.json(fallback);
-        return;
-      }
-      console.error(`[${tag}]`, err);
-      res.status(500).json({ error: `Failed: ${tag}` });
-    });
-}
 
 // Canonical dashboard DB path. Honors $DASHBOARD_DB for dev (matches the
 // Python intake side in dashboard_intake/__init__.py).
@@ -180,118 +151,13 @@ app.get("/api/dashboard", (_req, res) => {
   catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
 });
 
-// ── OA Dashboard endpoints ──
-
-app.get("/api/goals", (_req, res) => {
-  legacyJson(res, "/api/goals", { goals: [], overallHealth: 0, overallTrend: null, lastUpdated: new Date().toISOString() }, () => {
-    const goals = getGoals();
-    // Use healthScore (0-100 normalized) for overall, not raw values
-    const scores = goals.map((g) => g.healthScore).filter((v): v is number => v !== null);
-    const overallHealth = scores.length > 0
-      ? +(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
-      : 0;
-
-    const trends = goals.map((g) => g.trend).filter((t): t is number => t !== null);
-    const overallTrend = trends.length > 0
-      ? +(trends.reduce((a, b) => a + b, 0) / trends.length).toFixed(1)
-      : null;
-
-    return {
-      goals,
-      overallHealth,
-      overallTrend,
-      lastUpdated: new Date().toISOString(),
-    };
-  });
-});
-
-app.get("/api/goals/:goalId/metrics", (req, res) => {
-  const days = parseInt(req.query.days as string) || 56;
-  legacyJson(res, "/api/goals/:goalId/metrics", [], () => getGoalMetrics(req.params.goalId, days));
-});
-
-app.get("/api/goals/knowledge/rows", (req, res) => {
-  const days = parseInt(req.query.days as string) || 56;
-  legacyJson(res, "/api/goals/knowledge/rows", {}, () => getKnowledgeRows(days));
-});
-
-app.get("/api/goals/validation/rows", (req, res) => {
-  const days = parseInt(req.query.days as string) || 56;
-  legacyJson(res, "/api/goals/validation/rows", {}, () => getValidationRows(days));
-});
-
-app.get("/api/goal-details", (_req, res) => {
-  const days = parseInt((_req.query as Record<string, string>).days) || 56;
-  legacyJson(res, "/api/goal-details", { metrics: {} }, () => ({ metrics: getAllGoalMetrics(days) }));
-});
-
-app.get("/api/goals/:goalId/improvements", (req, res) => {
-  legacyJson(res, "/api/goals/:goalId/improvements", [], () => getImprovements()[req.params.goalId] || []);
-});
-
-app.get("/api/improvements", (_req, res) => {
-  legacyJson(res, "/api/improvements", {}, () => getImprovements());
-});
-
-// ── G3: Team Health ──
-app.get("/api/team-health", (req, res) => {
-  const days = parseInt((req.query as Record<string, string>).days) || 45;
-  legacyJson(res, "/api/team-health", { agents: [], dates: [], heatmap: {}, dailyActive: [], agentSummary: [], timeSeries: [], agentBars: [] }, () => getTeamHealthTimeSeries(days));
-});
-
-// ── G2: Automation Opportunities ──
-app.get("/api/automation-opportunities", (req, res) => {
-  const days = parseInt((req.query as Record<string, string>).days) || 60;
-  legacyJson(res, "/api/automation-opportunities", { timeSeries: [], totals: { detected: 0, resolved: 0, pending: 0, awaitingReview: 0, conversionRate: 0 } }, () => getAutomationOpportunitiesTimeSeries(days));
-});
-
-// ── G2: Issues endpoints ──
-app.get("/api/issues/summary", (_req, res) => {
-  legacyJson(res, "/api/issues/summary", { byReporter: [], total: 0, closed: 0, fixRate: 0 }, () => getIssuesSummary());
-});
-
-app.get("/api/issues/timeseries", (req, res) => {
-  const days = parseInt((req.query as Record<string, string>).days) || 30;
-  legacyJson(res, "/api/issues/timeseries", { reporters: [], data: [] }, () => getIssuesTimeSeries(days));
-});
-
-app.get("/api/feedback", (_req, res) => {
-  legacyJson(res, "/api/feedback", [], () => getFeedback());
-});
-
-app.get("/api/insights", (_req, res) => {
-  legacyJson(res, "/api/insights", [], () => getInsights());
-});
-
-// ── Cron Runs (per-slot tracking) ──
-
-app.get("/api/cron-runs/summary", async (_req, res) => {
-  const days = parseInt((_req.query as Record<string, string>).days) || 30;
-  legacyJson(res, "/api/cron-runs/summary", [], async () => {
-    const summary = getCronRunsSummary(days);
-    const perJob = await getCronRunsPerJob(days);
-
-    // Group per-job data by date
-    const jobsByDate: Record<string, Array<{ name: string; total: number; success: number; failed: number; missed: number; rate: number }>> = {};
-    for (const row of perJob) {
-      if (!jobsByDate[row.date]) jobsByDate[row.date] = [];
-      jobsByDate[row.date].push({
-        name: row.cron_name,
-        total: row.total_slots,
-        success: row.success_count,
-        failed: row.failed_count,
-        missed: row.missed_count,
-        rate: row.success_rate,
-      });
-    }
-
-    // Merge into summary
-    return summary.map((s) => ({
-      ...s,
-      jobs: jobsByDate[s.date] || [],
-    }));
-  });
-});
+// ── Legacy endpoints removed in dashboard cutover PR ──
+// The following endpoints read from legacy tables (goal_metrics, issues,
+// feedback, insights, cron_runs, daily_agent_activity) that no longer exist
+// in the new dashboard.db schema. The frontend views have been rewritten to
+// use the new /api/metrics/* and /api/mechanism/* endpoints that read from
+// the new schema or brain MCP tools directly. This removal is part of §B-§G
+// migration cleanup. See git history for original implementations.
 
 // ── Workflow (View 3) endpoints ──
 
