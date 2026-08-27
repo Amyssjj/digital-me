@@ -442,8 +442,8 @@ export interface WorkflowLatestRun {
   goalId: string;
   status: string;
   startedAt: string;
-  completedAt?: string | null;
-  taskStatuses?: Record<string, string>;
+  completedAt: string | null;
+  taskStatuses: Record<string, string>;
 }
 
 export interface WorkflowTemplate {
@@ -495,8 +495,16 @@ export async function getWorkflowsForMechanism(): Promise<WorkflowsForMechanismR
     const totalRuns = tmpl.totalRuns ?? linkedGoals.length;
     const completedRuns = linkedGoals.filter((g) => g.status === "completed").length;
 
-    // Latest run
-    let latestRun: WorkflowLatestRun | null = tmpl.latestRun ?? null;
+    // Latest run — normalize to ensure required fields have defaults
+    let latestRun: WorkflowLatestRun | null = tmpl.latestRun
+      ? {
+          goalId: tmpl.latestRun.goalId,
+          status: tmpl.latestRun.status,
+          startedAt: tmpl.latestRun.startedAt,
+          completedAt: tmpl.latestRun.completedAt ?? null,
+          taskStatuses: tmpl.latestRun.taskStatuses ?? {},
+        }
+      : null;
     if (!latestRun && linkedGoals.length > 0) {
       const sorted = [...linkedGoals].sort((a, b) => {
         const ta = String(a.created_at ?? a.createdAt ?? "");
@@ -512,7 +520,7 @@ export async function getWorkflowsForMechanism(): Promise<WorkflowsForMechanismR
         goalId: latest.id,
         status: latest.status,
         startedAt: epochToIso(latest.created_at ?? latest.createdAt ?? null) ?? "",
-        completedAt: epochToIso(latest.completed_at ?? latest.completedAt ?? null),
+        completedAt: epochToIso(latest.completed_at ?? latest.completedAt ?? null) ?? null,
         taskStatuses,
       };
     }
