@@ -312,7 +312,7 @@ export function readWikiBody(
   // hitPath may be absolute, '../..-style relative, or 'foo/bar.md'.
   // Normalize to a path relative to ~/digital-me/.
   let rel: string;
-  let treePrefix: "wiki" | "tastes" | null = null;
+  let treePrefix: "wiki" | "tastes" | null;
   if (hitPath.includes("/wiki/")) {
     // `?? hitPath` only narrows TS's index type — split() after a successful
     // includes() always yields ≥2 parts, so [1] is never undefined at runtime.
