@@ -524,6 +524,7 @@ function readUserJson(filePath: string): Record<string, unknown> {
     throw new Error(
       `${filePath} is not valid JSON (${err instanceof Error ? err.message : String(err)}). ` +
         `Fix or remove the file, then re-run.`,
+      { cause: err },
     );
   }
 }
