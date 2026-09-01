@@ -52,10 +52,18 @@ fi
 # Trim prompt for the query (brain does semantic search; long verbatim prompts add noise)
 QUERY="$(printf '%s' "$PROMPT" | head -c 400)"
 
-REQ="$(jq -cn --arg q "$QUERY" '{tool:"memory_search", args:{query:$q, limit:6, corpus:"all"}}' 2>/dev/null)"
+# openclaw >= 2026.8.1 REJECTS /tools/invoke on a multi-agent host unless the
+# caller names an owner: "Multiple agents are configured, but session key
+# \"main\" has no explicit owner. Pass agentId or use an agent-prefixed session
+# key." Without it every injection fails and the hook exits 0 silently, so
+# recall just stops with no error anywhere. Override per machine if the
+# default agent is not "main".
+AGENT_ID="${DIGITAL_ME_OPENCLAW_AGENT_ID:-main}"
+REQ="$(jq -cn --arg q "$QUERY" --arg a "$AGENT_ID" '{tool:"memory_search", agentId:$a, args:{query:$q, limit:6, corpus:"all"}}' 2>/dev/null)"
 [ -z "$REQ" ] && exit 0
 
-RESP="$(curl -sS -m 4 -X POST http://localhost:18789/tools/invoke \
+HOOK_TIMEOUT="${DIGITAL_ME_HOOK_TIMEOUT_SECS:-12}"
+RESP="$(curl -sS -m "$HOOK_TIMEOUT" -X POST http://localhost:18789/tools/invoke \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$REQ" 2>/dev/null)"
