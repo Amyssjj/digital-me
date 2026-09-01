@@ -19,6 +19,12 @@
       "cmd": "bash scripts/verify_openclaw_memory_index.sh",
       "timeoutSec": 60,
       "note": "openclaw's full reindex builds into <agent>.sqlite.memory-reindex-<uuid> and does NOT delete it when the build aborts on a revision race, so every failed attempt strands a copy of the whole index (observed: 5.1 GiB in one afternoon). Invisible to every other signal \u2014 `memory status` still reports Dirty:no and search keeps working. Upstream defect (memory-core-host-engine-storage); this is the detect-and-notify half we own."
+    },
+    {
+      "id": "gateway-callers",
+      "cmd": "bash scripts/verify_gateway_callers.sh",
+      "timeoutSec": 30,
+      "note": "Every /tools/invoke caller must send an owning agent. One upstream change (2026.8.1) had SIX call sites across TS/Python/Bash; two were found only by enumeration, with no reported symptom. This is that enumeration made permanent."
     }
   ],
   "contractChecks": [

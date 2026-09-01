@@ -28,6 +28,14 @@
       "parse": "exitCode",
       "timeoutSec": 60,
       "note": "Orphaned reindex databases + full-reindex livelock. Recurs on its own schedule, not only after an update, so it is checked here as ongoing health as well as in the update gate."
+    },
+    {
+      "id": "gateway-callers",
+      "runtime": "openclaw",
+      "cmd": "bash scripts/verify_gateway_callers.sh",
+      "parse": "exitCode",
+      "timeoutSec": 30,
+      "note": "Static invariant over the gateway seam; catches a new caller that omits agentId before it ships."
     }
   ],
   "artifactPins": [

@@ -148,7 +148,12 @@ class BrainClient:
         self.timeout_s = timeout_s
 
     def _invoke(self, tool: str, args: dict[str, Any]) -> dict[str, Any]:
-        body = json.dumps({"tool": tool, "args": args}).encode("utf-8")
+        # openclaw >= 2026.8.1 rejects /tools/invoke on a multi-agent host without
+        # an explicit owner. Distinct from args["agent_id"], which is attribution.
+        _gw_agent = os.environ.get("OPENCLAW_GATEWAY_AGENT_ID", "main")
+        body = json.dumps(
+            {"tool": tool, "agentId": _gw_agent, "args": args}
+        ).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
             "Authorization": f"Bearer {self.gateway.token}",
