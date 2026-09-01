@@ -36,6 +36,14 @@
       "parse": "exitCode",
       "timeoutSec": 30,
       "note": "Static invariant over the gateway seam; catches a new caller that omits agentId before it ships."
+    },
+    {
+      "id": "m1-recall-liveness",
+      "runtime": "all",
+      "cmd": "python3 scripts/verify_m1_application.py --days 7 --stale-hours 24",
+      "parse": "exitCode",
+      "timeoutSec": 60,
+      "note": "OUTCOME check, not a component check. Fails when a runtime that surfaced knowledge during the 7d baseline has surfaced NOTHING in 24h \u2014 i.e. it was working and stopped. This is the only gate here that catches a cause nobody has thought of yet: it asks whether recall still happens, not whether any particular component reports healthy. On 2026-09-01 recall was dead across claude-code, codex and hermes for ~18h while `plugins inspect` said loaded, the gateway probe passed, and coverage was 100%. The existing --days-only check could not see it, because a runtime that worked for six days and died today still shows surfaced>0 and acked>0."
     }
   ],
   "artifactPins": [
