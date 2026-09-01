@@ -3,9 +3,11 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import {
+  DEFAULT_GATEWAY_AGENT_ID,
+  GatewayConfigError,
   loadGatewayConfig,
   resolveDefaultAgentId,
-  GatewayConfigError,
+  resolveGatewayAgentId,
 } from "./config.js";
 
 let tmpDir: string;
@@ -243,5 +245,33 @@ describe("resolveDefaultAgentId", () => {
         argv: ["--other-flag=value", "--agent-id=picked"],
       }),
     ).toBe("picked");
+  });
+});
+
+describe("resolveGatewayAgentId", () => {
+  it("defaults to openclaw's conventional first agent", () => {
+    expect(resolveGatewayAgentId({})).toBe("main");
+    expect(resolveGatewayAgentId({})).toBe(DEFAULT_GATEWAY_AGENT_ID);
+  });
+
+  it("honours an explicit override for hosts whose primary agent isn't 'main'", () => {
+    expect(resolveGatewayAgentId({ OPENCLAW_GATEWAY_AGENT_ID: "coo" })).toBe("coo");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(resolveGatewayAgentId({ OPENCLAW_GATEWAY_AGENT_ID: "  coo \n" })).toBe("coo");
+  });
+
+  it("falls back when the override is blank", () => {
+    expect(resolveGatewayAgentId({ OPENCLAW_GATEWAY_AGENT_ID: "   " })).toBe("main");
+    expect(resolveGatewayAgentId({ OPENCLAW_GATEWAY_AGENT_ID: "" })).toBe("main");
+  });
+
+  it("is INDEPENDENT of OPENCLAW_AGENT_ID — they mean different things", () => {
+    // OPENCLAW_AGENT_ID is the calling client's attribution label ("hermes").
+    // Sending it as the gateway owner produced `Unknown agent id "hermes"`,
+    // because no openclaw agent by that name exists. The owner must be a real
+    // entry in agents.entries; the label must not leak into it.
+    expect(resolveGatewayAgentId({ OPENCLAW_AGENT_ID: "hermes" })).toBe("main");
   });
 });

@@ -61,8 +61,23 @@ export async function invokeGatewayTool(input: {
   gateway: GatewayEndpoint;
   fetchFn: FetchFn;
   timeoutMs: number;
+  /**
+   * Owning agent for this call. openclaw >= 2026.8.1 REFUSES /tools/invoke on
+   * a multi-agent host without one:
+   *
+   *   Multiple agents are configured, but session key "main" has no explicit
+   *   owner. Pass agentId or use an agent-prefixed session key.
+   *
+   * Note this is distinct from `args.agent_id`, which is attribution metadata
+   * the brain tools read; the gateway needs the owner at the TOP level of the
+   * envelope. Sending only the former made every brain tool fail for every
+   * MCP client at once (2026-09-01).
+   *
+   * Optional so a single-agent host, which needs no owner, is unaffected.
+   */
+  agentId?: string;
 }): Promise<CallToolResult> {
-  const { toolName, args, gateway, fetchFn, timeoutMs } = input;
+  const { toolName, args, gateway, fetchFn, timeoutMs, agentId } = input;
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
@@ -75,7 +90,11 @@ export async function invokeGatewayTool(input: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${gateway.token}`,
       },
-      body: JSON.stringify({ tool: toolName, args }),
+      body: JSON.stringify({
+        tool: toolName,
+        ...(agentId !== undefined && agentId !== "" ? { agentId } : {}),
+        args,
+      }),
       signal: ctrl.signal,
     });
     data = (await resp.json()) as GatewayResponse;

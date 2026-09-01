@@ -177,6 +177,8 @@ export function oversizeResult(input: {
 export type GatewayInvoker = (input: {
   toolName: string;
   args: Record<string, unknown>;
+  /** Owning agent, required by openclaw >= 2026.8.1 on a multi-agent host. */
+  agentId?: string;
 }) => Promise<CallToolResult>;
 
 export type CallToolRequest = {
@@ -329,7 +331,7 @@ export function createCallToolHandler(deps: {
     };
 
     try {
-      const result = await invokeFn({ toolName: req.name, args });
+      const result = await invokeFn({ toolName: req.name, args, agentId });
       // Augment memory_search responses with the top hit's body. Inliner
       // is fault-tolerant — on any internal error it returns the input
       // result unchanged. Wrap defensively anyway.

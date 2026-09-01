@@ -63,6 +63,7 @@ import {
   mergeMcpServer,
 } from "@digital-me/runtime-codex";
 import { BIN_PATH as BRAIN_MCP_PROXY_BIN } from "@digital-me/brain-mcp-proxy";
+import { stabilizeRegistration } from "../stable-registration.js";
 import {
   SOUL_MD_TEMPLATE,
   mergeSoulMd,
@@ -587,9 +588,15 @@ function installCodex(home: string): void {
   // openclaw.json from this path to discover the gateway port + auth token.
   const openclawHome =
     process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  // ~/.codex/config.toml is persistent user config — same hardening as the
+  // other two clients (see stable-registration.ts).
+  const codexStable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
+  for (const note of codexStable.notes) {
+    console.log(`     codex MCP: ${note}`);
+  }
   const tomlFragment = buildCodexMcpConfig({
-    nodeBin: process.execPath,
-    proxyBinPath: BRAIN_MCP_PROXY_BIN,
+    nodeBin: codexStable.nodePath,
+    proxyBinPath: codexStable.binPath,
     openclawHome,
     agentId: "codex",
   });
@@ -622,7 +629,7 @@ function installCodex(home: string): void {
   writeFileSync(hooksJsonPath, JSON.stringify(mergedHooks, null, 2) + "\n", "utf-8");
   console.log(
     `[OK] installed codex: CODEX.md + config.toml merged ` +
-      `(mcp openclaw-brain → ${BRAIN_MCP_PROXY_BIN}); ` +
+      `(mcp openclaw-brain → ${codexStable.binPath}); ` +
       `${CODEX_HOOK_NAMES.length} hooks + hooks.json wired`,
   );
 }
@@ -664,7 +671,13 @@ function installClaudeCodeMcp(): void {
   for (const [k, v] of Object.entries(env)) {
     args.push("-e", `${k}=${v}`);
   }
-  args.push("--", process.execPath, BRAIN_MCP_PROXY_BIN);
+  // Never bake a worktree path or a version-pinned interpreter into
+  // ~/.claude.json — it outlives this process (see stable-registration.ts).
+  const stable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
+  for (const note of stable.notes) {
+    console.log(`     claude-code MCP: ${note}`);
+  }
+  args.push("--", stable.nodePath, stable.binPath);
   const r = spawnSync("claude", args, {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -677,7 +690,7 @@ function installClaudeCodeMcp(): void {
     return;
   }
   console.log(
-    `[OK] claude-code MCP: registered openclaw-brain → ${BRAIN_MCP_PROXY_BIN}`,
+    `[OK] claude-code MCP: registered openclaw-brain → ${stable.binPath}`,
   );
 }
 
@@ -1311,14 +1324,21 @@ function installHermesMcp(home: string): void {
   });
   const openclawHome =
     process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  // ~/.hermes/config.yaml is persistent user config: harden the same way as
+  // claude-code. Hermes was found in 2026-09 still pointing at a worktree
+  // deleted months earlier, pinned to a since-broken Cellar node.
+  const hermesStable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
+  for (const note of hermesStable.notes) {
+    console.log(`     hermes MCP: ${note}`);
+  }
   const args = [
     "mcp",
     "add",
     "openclaw-brain",
     "--command",
-    process.execPath,
+    hermesStable.nodePath,
     "--args",
-    BRAIN_MCP_PROXY_BIN,
+    hermesStable.binPath,
     "--env",
     `OPENCLAW_HOME=${openclawHome}`,
     `OPENCLAW_AGENT_ID=hermes`,

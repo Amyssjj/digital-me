@@ -22,6 +22,7 @@ import {
 } from "./app-rate-writer.js";
 import { loadGatewayConfig } from "./config.js";
 import { invokeGatewayTool } from "./gateway.js";
+import { resolveGatewayAgentId } from "./config.js";
 import { createCallToolHandler, resolveMaxResultBytes } from "./handler.js";
 import { createRequestListener, MCP_PATH } from "./http-app.js";
 import { isLoopbackHost, loadHttpConfig } from "./http-config.js";
@@ -74,6 +75,7 @@ export async function mainHttp(): Promise<void> {
     warn: emitStderr,
   });
 
+  const gatewayAgentId = resolveGatewayAgentId(process.env);
   const listener = createRequestListener({
     token: httpConfig.token,
     maxBodyBytes: httpConfig.maxBodyBytes,
@@ -85,6 +87,8 @@ export async function mainHttp(): Promise<void> {
           invokeGatewayTool({
             toolName: input.toolName,
             args: input.args,
+            // Owning openclaw agent, not the caller's attribution label.
+            agentId: gatewayAgentId,
             gateway: { url: gateway.url, token: gateway.token },
             fetchFn: globalThis.fetch,
             timeoutMs: GATEWAY_TIMEOUT_MS,
