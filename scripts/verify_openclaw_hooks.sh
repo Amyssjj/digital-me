@@ -34,7 +34,28 @@ set -uo pipefail
 
 OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$OPENCLAW_HOME/openclaw.json}"
-GATEWAY_LOG="${OPENCLAW_GATEWAY_LOG:-$OPENCLAW_HOME/logs/gateway.log}"
+
+# Resolve the log the RUNNING gateway writes to — not the first path that
+# happens to exist. `$OPENCLAW_HOME/logs/gateway.log` is a real file on this
+# machine but has been frozen since the service moved its StandardOutPath to
+# ~/Library/Logs; reading it would make this gate silently blind, which is the
+# exact failure class the gate exists to catch. Pick the NEWEST candidate.
+resolve_gateway_log() {
+  if [[ -n "${OPENCLAW_GATEWAY_LOG:-}" ]]; then
+    printf '%s\n' "$OPENCLAW_GATEWAY_LOG"
+    return
+  fi
+  local newest="" cand
+  for cand in \
+    "$HOME/Library/Logs/openclaw/gateway.log" \
+    "$OPENCLAW_HOME/logs/gateway.log" \
+    "${XDG_STATE_HOME:-$HOME/.local/state}/openclaw/gateway.log"; do
+    [[ -f "$cand" ]] || continue
+    if [[ -z "$newest" || "$cand" -nt "$newest" ]]; then newest="$cand"; fi
+  done
+  printf '%s\n' "$newest"
+}
+GATEWAY_LOG="$(resolve_gateway_log)"
 # Plugins that actually register conversation hooks. digital-me-brain
 # registers tools only, so it needs no grant (least privilege).
 PLUGINS=("digital-me-recall")
@@ -76,7 +97,8 @@ done
 
 # ── 2. Runtime: did the host or the plugin report a block? ──────────────
 # Only the tail matters — earlier boots may predate the fix.
-if [[ -f "$GATEWAY_LOG" ]]; then
+if [[ -n "$GATEWAY_LOG" && -f "$GATEWAY_LOG" ]]; then
+  note "log     $GATEWAY_LOG"
   tail_txt=$(tail -c 2000000 "$GATEWAY_LOG" 2>/dev/null)
 
   if grep -q "blocked because non-bundled plugins must set" <<<"$tail_txt"; then
