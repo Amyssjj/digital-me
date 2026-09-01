@@ -78,9 +78,25 @@ export function mergeCodexMd(
   existing: string,
   newManagedSection: string,
 ): string {
-  const wrapped = `${SECTION_BEGIN}\n${newManagedSection.trim()}\n${SECTION_END}`;
+  // Strip any markers the incoming section already carries before wrapping.
+  // The shipped CODEX.md template contains its own BEGIN/END pair (lines 11
+  // and 132), so wrapping it verbatim nests a section inside a section on
+  // EVERY install. Identical root cause to hermes' SOUL.md.
+  const bare = newManagedSection
+    .split("\n")
+    .filter((l) => l.trim() !== SECTION_BEGIN && l.trim() !== SECTION_END)
+    .join("\n")
+    .trim();
+  const wrapped = `${SECTION_BEGIN}\n${bare}\n${SECTION_END}`;
   const beginIdx = existing.indexOf(SECTION_BEGIN);
-  const endIdx = existing.indexOf(SECTION_END);
+  // LAST end marker, not the first: with `indexOf`, every marker after the
+  // first one landed in `after` and survived each merge, so damage
+  // accumulated instead of being replaced. The live CODEX.md had reached
+  // 2 BEGIN / 9 END markers this way (2026-09-01) — the hermes fix was
+  // applied and this twin was missed, caught in maintainer review.
+  // Spanning to the last marker makes a damaged file self-heal on the next
+  // install.
+  const endIdx = existing.lastIndexOf(SECTION_END);
   if (beginIdx >= 0 && endIdx > beginIdx) {
     // Replace the existing managed span (inclusive of both markers).
     const before = existing.slice(0, beginIdx);

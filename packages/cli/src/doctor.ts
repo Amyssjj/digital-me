@@ -10,7 +10,8 @@
  *   3. Each enabled runtime has its hook scripts / templates installed.
  *   4. The brain MCP proxy is on PATH.
  *   5. The memory index is actually wired: the wiki + tastes dirs exist, both
- *      sit in openclaw's `agents.defaults.memorySearch.extraPaths`, and the
+ *      sit in openclaw's memory-search `extraPaths` (`memory.search` on
+ *      >= 2026.7.1, `agents.defaults.memorySearch` before), and the
  *      embedding config can build an index on this machine (openclaw's
  *      default provider is `openai`, which silently indexes nothing without
  *      an API key — the #1 "memory_search finds nothing" fresh-install trap).
@@ -423,7 +424,8 @@ function asTrimmedString(v: unknown): string | undefined {
 
 /**
  * Verify the memory index is actually wired end-to-end: knowledge dirs on
- * disk, both dirs listed in `agents.defaults.memorySearch.extraPaths`, and
+ * disk, both dirs listed in the memory-search block's `extraPaths` (whichever
+ * layout this host uses), and
  * an embedding config that can index without manual surgery. Pure/data-layer.
  */
 export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
@@ -537,7 +539,7 @@ export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
 
   checks.push(runConversationHookGrantCheck(cfg, configPath));
 
-  checks.push(runEmbeddingsCheck(deps.env, ms));
+  checks.push(runEmbeddingsCheck(deps.env, ms, msKey));
   return checks;
 }
 
@@ -553,6 +555,8 @@ export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
 export function runEmbeddingsCheck(
   env: Readonly<Record<string, string | undefined>>,
   memorySearch: Readonly<Record<string, unknown>>,
+  /** Config key the block lives under on THIS host, for the repair hint. */
+  msKey: string = "agents.defaults.memorySearch",
 ): CheckResult {
   const provider = asTrimmedString(memorySearch.provider);
   const fallback = asTrimmedString(memorySearch.fallback);
@@ -594,10 +598,10 @@ export function runEmbeddingsCheck(
     label: EMBEDDINGS_LABEL,
     reason:
       "memory_search embeddings default to the 'openai' provider but no API key " +
-      "was found ($OPENAI_API_KEY / agents.defaults.memorySearch.remote.apiKey) — " +
+      `was found ($OPENAI_API_KEY / ${msKey}.remote.apiKey) — ` +
       "the wiki + tastes index will NOT build. Re-run 'digital-me install " +
       "--runtime openclaw' (seeds the keyless fallback: 'local'), or set " +
-      "agents.defaults.memorySearch.provider + key. 'openclaw doctor' validates " +
+      `${msKey}.provider + key. 'openclaw doctor' validates ` +
       "embeddings end-to-end.",
   };
 }

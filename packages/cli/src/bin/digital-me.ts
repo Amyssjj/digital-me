@@ -81,7 +81,11 @@ import {
   type WorkflowProvenance,
 } from "../doctor.js";
 import { resolveOpenclawExtensionsDir } from "../openclaw-paths.js";
-import { ensureOpenclawMemoryPaths } from "../openclaw-memory.js";
+import JSON5 from "json5";
+import {
+  ensureOpenclawMemoryPaths,
+  resolveOpenclawConfigPath,
+} from "../openclaw-memory.js";
 import {
   DASHBOARD_SERVICE_LABEL,
   buildDashboardServiceUnit,
@@ -102,6 +106,7 @@ import {
   parseAheadBehind,
   parseRecallAckMode,
   planDeployRuntimes,
+  expectedRecallAckMode,
 } from "../deploy.js";
 import {
   buildDefaultAliases,
@@ -1433,8 +1438,10 @@ async function installOpenclaw(
   if (!mem.ok) {
     console.error(
       `install openclaw: could not update memory paths (${mem.error}). ` +
-        `Add the wiki + tastes dirs to agents.defaults.memorySearch.extraPaths ` +
-        `in ${mem.configPath} manually.`,
+        `Add the wiki + tastes dirs to the memory-search block's extraPaths ` +
+        `in ${mem.configPath} manually (memory.search on openclaw >= 2026.7.1, ` +
+        `agents.defaults.memorySearch before — the schemas are strict, so the ` +
+        `wrong one is rejected).`,
     );
   } else if (mem.added.length > 0) {
     console.log(
@@ -1448,7 +1455,8 @@ async function installOpenclaw(
     console.log(
       `[OK] memory_search embeddings: no provider configured — seeded ` +
         `fallback: "local" (openclaw's keyless bundled embedder) so the index ` +
-        `builds without an API key. Override under agents.defaults.memorySearch ` +
+        `builds without an API key. Override under ` +
+        `${mem.layout === "namespaced" ? "memory.search" : "agents.defaults.memorySearch"} ` +
         `in ${mem.configPath}.`,
     );
   }
@@ -2337,15 +2345,19 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
     return false;
   }
   spawnSync("openclaw", ["gateway", "restart"], { stdio: "inherit" });
-  // Expected fingerprint = the marker baked into the just-deployed bundle.
-  const recallEntry = path.join(
-    resolveOpenclawExtensionsDir(home, process.env, undefined),
-    "digital-me-recall",
-    "index.mjs",
-  );
-  const expected = existsSync(recallEntry)
-    ? readFileSync(recallEntry, "utf-8").match(/assistant_ack=([^,"`)\s]+)/)?.[1] ?? null
-    : null;
+  // Expected marker = what this host's config entitles the plugin to register.
+  // Derived from the same grant the plugin reads, so a missing
+  // allowConversationAccess shows up here as a divergence rather than as a
+  // recall outage nobody notices.
+  const expected = ((): string | null => {
+    const cfgPath = resolveOpenclawConfigPath(home, process.env);
+    if (!existsSync(cfgPath)) return null;
+    try {
+      return expectedRecallAckMode(JSON5.parse(readFileSync(cfgPath, "utf-8")));
+    } catch {
+      return null;
+    }
+  })();
   const logPath = path.join(home, "Library", "Logs", "openclaw", "gateway.log");
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
@@ -2357,7 +2369,11 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
           return true;
         }
         console.error(
-          `deploy openclaw: DIVERGENCE — live marker (${live}) != deployed (${expected}).`,
+          `deploy openclaw: DIVERGENCE — live marker (${live}) != expected (${expected}). ` +
+            `The host registered a different set of ack hooks than the config entitles. ` +
+            `If 'agent_end' is missing live, plugins.entries.digital-me-recall.hooks` +
+            `.allowConversationAccess is not being honoured — run ` +
+            `scripts/verify_openclaw_hooks.sh.`,
         );
         return false;
       }

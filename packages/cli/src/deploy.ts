@@ -80,6 +80,33 @@ export function parseRecallAckMode(logText: string): string | null {
 }
 
 /**
+ * The `assistant_ack=` marker digital-me-recall SHOULD log on this host,
+ * derived from the openclaw config the same way the plugin derives it.
+ *
+ * The plugin emits `agent_end` and `before_message_write` as ack sources,
+ * minus any the host will refuse. openclaw drops a conversation hook from a
+ * non-bundled plugin unless `plugins.entries.digital-me-recall.hooks
+ * .allowConversationAccess` is true — and `agent_end` is in that gated set,
+ * `before_message_write` is not. So the marker is a function of the grant.
+ *
+ * This replaced a regex over the deployed bundle's SOURCE. That worked only
+ * while the marker was a string literal; once it became a template
+ * expression the grep captured `${ackSources.join(` and every deploy reported
+ * a false divergence. Fingerprinting the build was never the point —
+ * comparing what the host actually registered against what it should have
+ * registered is, and that also turns a missing grant into a deploy failure
+ * instead of a silent recall outage.
+ */
+export function expectedRecallAckMode(cfg: Readonly<Record<string, unknown>>): string {
+  const plugins = cfg.plugins as Record<string, unknown> | undefined;
+  const entries = plugins?.entries as Record<string, unknown> | undefined;
+  const recall = entries?.["digital-me-recall"] as Record<string, unknown> | undefined;
+  const hooks = recall?.hooks as Record<string, unknown> | undefined;
+  const granted = hooks?.allowConversationAccess === true;
+  return granted ? "agent_end+before_message_write" : "before_message_write";
+}
+
+/**
  * Which runtimes to deploy: the explicit `--runtime` set (filtered to the
  * deployable ones), else every deployable runtime detected as installed.
  */

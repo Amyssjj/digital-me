@@ -449,3 +449,45 @@ describe("stripDuplicatedSubTables", () => {
     expect(out).toEqual(["[a.b.tools.t]", "m = 2"]);
   });
 });
+
+describe("mergeCodexMd — duplicate marker accumulation (2026-09-01)", () => {
+  // Twin of the hermes SOUL.md bug: the template embeds its own markers and
+  // the merge took the FIRST end marker, so the live CODEX.md reached
+  // 2 BEGIN / 9 END. Missed when hermes was fixed; caught in review.
+  const damaged = [
+    "# Codex",
+    "",
+    SECTION_BEGIN,
+    "old protocol text",
+    SECTION_BEGIN,
+    "duplicated inner block",
+    SECTION_END,
+    SECTION_END,
+    SECTION_END,
+    "",
+  ].join("\n");
+
+  it("collapses every stray marker into one clean managed section", () => {
+    const out = mergeCodexMd(damaged, "## Digital Me Protocol\nfresh");
+    expect(out.split(SECTION_BEGIN).length - 1).toBe(1);
+    expect(out.split(SECTION_END).length - 1).toBe(1);
+    expect(out).toContain("fresh");
+    expect(out).not.toContain("duplicated inner block");
+  });
+
+  it("does not nest when the incoming section already carries markers (the template does)", () => {
+    const templateLike = `${SECTION_BEGIN}\nbody\n${SECTION_END}`;
+    const out = mergeCodexMd("# Codex\n", templateLike);
+    expect(out.split(SECTION_BEGIN).length - 1).toBe(1);
+    expect(out.split(SECTION_END).length - 1).toBe(1);
+  });
+
+  it("preserves the operator's own content outside the section", () => {
+    expect(mergeCodexMd(damaged, "fresh").startsWith("# Codex")).toBe(true);
+  });
+
+  it("is idempotent on an already-clean file", () => {
+    const once = mergeCodexMd(damaged, "fresh");
+    expect(mergeCodexMd(once, "fresh")).toBe(once);
+  });
+});
