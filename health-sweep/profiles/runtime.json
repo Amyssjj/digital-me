@@ -20,6 +20,14 @@
       "timeoutSec": 60,
       "required": false,
       "note": "advisory: --require-all also fails on an IDLE runtime (surfaced==0 in the window). Worth seeing, not worth blocking \u2014 idle is not broken."
+    },
+    {
+      "id": "openclaw-memory-index",
+      "runtime": "openclaw",
+      "cmd": "bash scripts/verify_openclaw_memory_index.sh",
+      "parse": "exitCode",
+      "timeoutSec": 60,
+      "note": "Orphaned reindex databases + full-reindex livelock. Recurs on its own schedule, not only after an update, so it is checked here as ongoing health as well as in the update gate."
     }
   ],
   "artifactPins": [
