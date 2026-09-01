@@ -86,7 +86,10 @@ export type {
 } from "./installer.js";
 
 export {
+  CONVERSATION_HOOK_PROMPT_BUILD_MIN_VERSION,
+  isAtLeastOpenclawVersion,
   MAX_TESTED_OPENCLAW_VERSION,
+  MEMORY_SEARCH_NAMESPACE_MIN_VERSION,
   MIN_OPENCLAW_VERSION,
   OPENCLAW_MIN_HOST_VERSION,
   resolveHostOpenclawVersion,
