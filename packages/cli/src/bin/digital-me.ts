@@ -1337,11 +1337,16 @@ function installHermesMcp(home: string): void {
     "openclaw-brain",
     "--command",
     hermesStable.nodePath,
-    "--args",
-    hermesStable.binPath,
+    // `hermes mcp add --help`: "--args ... must be the last option". With
+    // --args before --env, argparse's REMAINDER swallowed the env flags into
+    // the args list, so the proxy was launched with `--env OPENCLAW_HOME=...`
+    // as positional arguments and NO environment at all (config showed
+    // `env: None`). Keep --env first and --args strictly last.
     "--env",
     `OPENCLAW_HOME=${openclawHome}`,
     `OPENCLAW_AGENT_ID=hermes`,
+    "--args",
+    hermesStable.binPath,
   ];
   // hermes mcp add probes the server, prints its tool list, then prompts
   // "Enable all N tools? [Y/n/select]:". From a non-TTY parent the prompt
@@ -1359,7 +1364,7 @@ function installHermesMcp(home: string): void {
     return;
   }
   console.log(
-    `[OK] hermes MCP: registered openclaw-brain → ${BRAIN_MCP_PROXY_BIN}`,
+    `[OK] hermes MCP: registered openclaw-brain → ${hermesStable.binPath}`,
   );
 }
 

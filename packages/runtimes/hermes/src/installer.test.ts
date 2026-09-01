@@ -208,3 +208,45 @@ describe("digital-me-recall-hermes plugin shipping", () => {
     );
   });
 });
+
+describe("mergeSoulMd — duplicate marker accumulation (2026-09-01)", () => {
+  // A live SOUL.md reached 2 BEGIN + 9 END markers: taking the FIRST end
+  // marker left every later one in the untouched tail, so each install added
+  // to the damage instead of repairing it.
+  const damaged = [
+    "# Soul",
+    "",
+    SECTION_BEGIN,
+    "old protocol text",
+    SECTION_BEGIN,
+    "duplicated inner block",
+    SECTION_END,
+    SECTION_END,
+    SECTION_END,
+    "",
+  ].join("\n");
+
+  it("collapses every stray marker into one clean managed section", () => {
+    const out = mergeSoulMd(damaged, "## Digital Me Protocol\nfresh");
+    expect(out.split(SECTION_BEGIN).length - 1).toBe(1);
+    expect(out.split(SECTION_END).length - 1).toBe(1);
+    expect(out).toContain("fresh");
+    expect(out).not.toContain("duplicated inner block");
+  });
+
+  it("preserves the operator's own content outside the section", () => {
+    const out = mergeSoulMd(damaged, "fresh");
+    expect(out.startsWith("# Soul")).toBe(true);
+  });
+
+  it("is idempotent on an already-clean file", () => {
+    const once = mergeSoulMd(damaged, "fresh");
+    expect(mergeSoulMd(once, "fresh")).toBe(once);
+  });
+
+  it("still appends when no managed section exists", () => {
+    const out = mergeSoulMd("# Soul\n", "fresh");
+    expect(out).toContain(SECTION_BEGIN);
+    expect(out.split(SECTION_END).length - 1).toBe(1);
+  });
+});
