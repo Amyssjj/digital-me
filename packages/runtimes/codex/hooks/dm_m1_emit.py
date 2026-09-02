@@ -159,8 +159,12 @@ def post_to_brain(
     # openclaw >= 2026.8.1 requires an explicit owner on a multi-agent host;
     # without agentId the gateway returns invalid_request and the event only
     # ever reaches the WAL (replayable via m1_backfill.py, but brain.db
-    # silently stops receiving live events).
-    agent_id = os.environ.get("DIGITAL_ME_OPENCLAW_AGENT_ID", "main")
+    # silently stops receiving live events). Canonical name is
+    # OPENCLAW_GATEWAY_AGENT_ID; DIGITAL_ME_OPENCLAW_AGENT_ID is aliased.
+    agent_id = os.environ.get(
+        "OPENCLAW_GATEWAY_AGENT_ID",
+        os.environ.get("DIGITAL_ME_OPENCLAW_AGENT_ID", "main"),
+    )
     body = json.dumps(
         {"tool": "m1_event_record", "agentId": agent_id, "args": args}
     ).encode("utf-8")

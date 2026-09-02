@@ -75,22 +75,33 @@ fi
 
 for id in "${PLUGINS[@]}"; do
   granted=$(python3 - "$CONFIG" "$id" <<'PY'
-import json, sys
+import sys
+# openclaw parses its config as JSON5 (comments, trailing commas, unquoted keys).
+# Use pyjson5 if available; fall back to a lenient JSON parser that strips
+# comments/trailing-commas manually (the same dialect the installer uses).
 try:
-    # openclaw parses its config as JSON5; strict=False tolerates the control
-    # characters a hand-edited file can carry. A parse failure is reported as
-    # "unknown" rather than "ungranted" so this gate never fails on syntax.
-    cfg = json.loads(open(sys.argv[1]).read(), strict=False)
-except Exception:
-    print("unknown")
-    raise SystemExit
+    import pyjson5
+    cfg = pyjson5.load(open(sys.argv[1]))
+except ImportError:
+    import json, re
+    raw = open(sys.argv[1]).read()
+    # Strip // and /* */ comments (minimal; sufficient for openclaw.json)
+    raw = re.sub(r'//.*?$', '', raw, flags=re.MULTILINE)
+    raw = re.sub(r'/\*.*?\*/', '', raw, flags=re.DOTALL)
+    # Strip trailing commas before } or ]
+    raw = re.sub(r',(\s*[}\]])', r'\1', raw)
+    cfg = json.loads(raw)
+except Exception as e:
+    print(f"FAIL: config parse error: {e}", file=sys.stderr)
+    raise SystemExit(1)
+
 entry = (cfg.get("plugins") or {}).get("entries", {}).get(sys.argv[2]) or {}
-print("yes" if (entry.get("hooks") or {}).get("allowConversationAccess") is True else "no")
+granted = (entry.get("hooks") or {}).get("allowConversationAccess") is True
+print("yes" if granted else "no")
 PY
 )
   case "$granted" in
     yes) note "ok      $id: allowConversationAccess=true" ;;
-    unknown) note "warn    $id: config unparseable, grant not verified" ;;
     *)
       note "FAIL    $id: plugins.entries.$id.hooks.allowConversationAccess is not true"
       note "        openclaw will silently drop its before_prompt_build / agent_end hooks."
@@ -105,13 +116,6 @@ if [[ -n "$GATEWAY_LOG" && -f "$GATEWAY_LOG" ]]; then
   note "log     $GATEWAY_LOG"
   tail_txt=$(tail -c 2000000 "$GATEWAY_LOG" 2>/dev/null)
 
-  if grep -q "blocked because non-bundled plugins must set" <<<"$tail_txt"; then
-    note "FAIL    gateway log carries a host hook-block diagnostic:"
-    grep -o "typed hook \"[a-z_]*\" blocked because non-bundled[^\"]*" <<<"$tail_txt" \
-      | tail -3 | sed 's/^/          /'
-    fail=1
-  fi
-
   # The plugin's own boot self-check (see templates/recall/index.mjs). Use the
   # LAST registration line only: an older blocked boot must not fail a fixed one.
   last_reg=$(grep "digital-me-recall: registered hooks" <<<"$tail_txt" | tail -1)
@@ -122,6 +126,23 @@ if [[ -n "$GATEWAY_LOG" && -f "$GATEWAY_LOG" ]]; then
     elif grep -q "conversation_hooks=granted" <<<"$last_reg"; then
       note "ok      recall self-check reported conversation_hooks=granted"
     fi
+  fi
+
+  # Host-side hook-block diagnostic. Scope to the last boot (everything after the
+  # last registration line) so an old `agent_end` gate warn doesn't false-red the
+  # update sweep after the grant is written.
+  if [[ -n "$last_reg" ]]; then
+    # Extract everything from the last registration onward
+    last_boot_txt=$(grep -A 99999 "digital-me-recall: registered hooks" <<<"$tail_txt" | tail -n +1)
+  else
+    # No registration found — check the whole tail (first boot or pre-recall install)
+    last_boot_txt="$tail_txt"
+  fi
+  if grep -q "blocked because non-bundled plugins must set" <<<"$last_boot_txt"; then
+    note "FAIL    gateway log carries a host hook-block diagnostic in the last boot:"
+    grep -o "typed hook \"[a-z_]*\" blocked because non-bundled[^\"]*" <<<"$last_boot_txt" \
+      | tail -3 | sed 's/^/          /'
+    fail=1
   fi
 else
   note "warn    no gateway log at $GATEWAY_LOG — runtime signal not checked"

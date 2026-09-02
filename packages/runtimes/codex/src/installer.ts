@@ -262,6 +262,11 @@ export const DEFAULT_CODEX_HOOKS_DIR = "$HOME/.codex/hooks";
  *                        dm_session_extract.sh         (skinny audit log)
  *                        dm_application_rate.sh        (M1 assistant_ack + session_end)
  *   - PreToolUse       → brain_route_inject.sh         (brain-MCP protocol injection)
+ *
+ * Timeouts:
+ *   - memory_search inject: 12s to match the hook script's curl default
+ *     (DIGITAL_ME_HOOK_TIMEOUT_SECS:-12). A shorter manifest timeout kills
+ *     the hook before curl finishes, making slow searches look like empty injects.
  */
 export function buildCodexHooksManifest(
   hooksDir: string = DEFAULT_CODEX_HOOKS_DIR,
@@ -274,7 +279,7 @@ export function buildCodexHooksManifest(
           {
             type: "command",
             command: cmd("dm_memory_search_inject.sh"),
-            timeout: 8,
+            timeout: 12,
             statusMessage: "Digital Me: searching brain…",
           },
         ],

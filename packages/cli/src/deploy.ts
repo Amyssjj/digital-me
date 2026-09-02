@@ -9,6 +9,69 @@
  * skipped. deploy runs them all, then verifies the live fingerprint matches.
  */
 
+import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+
+/**
+ * Resolve the gateway log path the RUNNING openclaw gateway actually writes to.
+ * Mirrors `resolve_gateway_log` in scripts/verify_openclaw_hooks.sh. Picks the
+ * NEWEST candidate (by mtime) so we never read a frozen log that predates the
+ * service's StandardOutPath move.
+ */
+export function resolveGatewayLog(env: NodeJS.ProcessEnv, home: string): string | null {
+  const openclawHome = env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  
+  if (env.OPENCLAW_GATEWAY_LOG) {
+    return env.OPENCLAW_GATEWAY_LOG;
+  }
+
+  // Candidates in priority order (newest file wins)
+  const candidates = [
+    // Debug file log (what `openclaw logs` tails)
+    ...findNewestTmpLog(),
+    path.join(home, "Library", "Logs", "openclaw", "gateway.log"),  // Mac launchd
+    path.join(openclawHome, "logs", "gateway.log"),                  // legacy
+    path.join(env.XDG_STATE_HOME ?? path.join(home, ".local", "state"), "openclaw", "gateway.log"),  // Linux systemd
+  ];
+
+  let newest: string | null = null;
+  let newestMtime = 0;
+  for (const c of candidates) {
+    if (!c || !existsSync(c)) continue;
+    try {
+      const mtime = statSync(c).mtimeMs;
+      if (!newest || mtime > newestMtime) {
+        newest = c;
+        newestMtime = mtime;
+      }
+    } catch {
+      // skip unreadable
+    }
+  }
+  return newest;
+}
+
+function findNewestTmpLog(): string[] {
+  const tmpDir = "/tmp/openclaw";
+  if (!existsSync(tmpDir)) return [];
+  try {
+    const files = readdirSync(tmpDir)
+      .filter((f) => f.startsWith("openclaw-") && f.endsWith(".log"))
+      .map((f) => path.join(tmpDir, f));
+    // Sort by mtime descending, return the newest
+    files.sort((a, b) => {
+      try {
+        return statSync(b).mtimeMs - statSync(a).mtimeMs;
+      } catch {
+        return 0;
+      }
+    });
+    return files.length > 0 ? [files[0]!] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Runtimes that have a *running system* to redeploy + verify (a daemon/service). */
 export type DeployRuntime = "openclaw" | "dashboard";
 export const DEPLOYABLE_RUNTIMES: readonly DeployRuntime[] = ["openclaw", "dashboard"];

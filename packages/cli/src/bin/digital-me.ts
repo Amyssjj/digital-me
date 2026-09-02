@@ -107,6 +107,7 @@ import {
   parseRecallAckMode,
   planDeployRuntimes,
   expectedRecallAckMode,
+  resolveGatewayLog,
 } from "../deploy.js";
 import {
   buildDefaultAliases,
@@ -2358,7 +2359,14 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
       return null;
     }
   })();
-  const logPath = path.join(home, "Library", "Logs", "openclaw", "gateway.log");
+  const logPath = resolveGatewayLog(process.env, home);
+  if (!logPath) {
+    console.log(
+      "deploy openclaw: no gateway log found — restart succeeded but cannot verify the live marker yet. " +
+        "Marker will confirm on the first agent turn after the gateway emits its log.",
+    );
+    return true;
+  }
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
     if (existsSync(logPath)) {
