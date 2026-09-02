@@ -84,10 +84,17 @@ fi
 # StandardErrorPath to /dev/null (daemon/launchd-service-files.ts), so the
 # error stream is only visible when the operator has redirected it. Pick the
 # newest candidate and say which one was read.
+#
+# 2026-09-01: the stdout log has NO memory-subsystem lines at all. openclaw's
+# debug FILE log — /tmp/openclaw/openclaw-<YYYY-MM-DD>.log, what `openclaw
+# logs` tails over RPC — is where "Memory index changed while full reindex was
+# building" actually lands (24 aborts on the day this was found; the stdout
+# log showed zero). It is the first candidate for that reason.
 resolve_log() {
   local newest="" cand
   for cand in \
     "${OPENCLAW_GATEWAY_LOG:-}" \
+    "$(ls -t /tmp/openclaw/openclaw-*.log 2>/dev/null | head -1)" \
     "$HOME/Library/Logs/openclaw/gateway.err.log" \
     "$HOME/Library/Logs/openclaw/gateway.log" \
     "$OPENCLAW_HOME/logs/gateway.log"; do

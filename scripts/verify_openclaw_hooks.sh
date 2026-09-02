@@ -45,12 +45,16 @@ resolve_gateway_log() {
     printf '%s\n' "$OPENCLAW_GATEWAY_LOG"
     return
   fi
+  # The debug file log (/tmp/openclaw/openclaw-<date>.log, what `openclaw logs`
+  # tails) carries every plugin/hook diagnostic the stdout log carries and more;
+  # it is a candidate so a host whose stdout log is frozen is still observable.
   local newest="" cand
   for cand in \
+    "$(ls -t /tmp/openclaw/openclaw-*.log 2>/dev/null | head -1)" \
     "$HOME/Library/Logs/openclaw/gateway.log" \
     "$OPENCLAW_HOME/logs/gateway.log" \
     "${XDG_STATE_HOME:-$HOME/.local/state}/openclaw/gateway.log"; do
-    [[ -f "$cand" ]] || continue
+    [[ -n "$cand" && -f "$cand" ]] || continue
     if [[ -z "$newest" || "$cand" -nt "$newest" ]]; then newest="$cand"; fi
   done
   printf '%s\n' "$newest"
