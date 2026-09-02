@@ -88,7 +88,8 @@ export async function mainHttp(): Promise<void> {
             toolName: input.toolName,
             args: input.args,
             // Owning openclaw agent, not the caller's attribution label.
-            agentId: gatewayAgentId,
+            // A per-call `agent` argument wins over the process default.
+            agentId: input.ownerAgentId ?? gatewayAgentId,
             gateway: { url: gateway.url, token: gateway.token },
             fetchFn: globalThis.fetch,
             timeoutMs: GATEWAY_TIMEOUT_MS,

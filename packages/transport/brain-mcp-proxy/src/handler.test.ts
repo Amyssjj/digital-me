@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   attributionLabel,
   buildToolArgs,
+  splitOwnerAgent,
+  OWNER_AGENT_ARG,
   createCallToolHandler,
   DEFAULT_MAX_RESULT_BYTES,
   extractHitCount,
@@ -88,7 +90,78 @@ describe("attributionLabel", () => {
   });
 });
 
+describe("splitOwnerAgent", () => {
+  it("returns the args untouched when no owner override is present", () => {
+    const args = { query: "x", agent_id: "hermes" };
+    const out = splitOwnerAgent(args);
+    expect(out.ownerAgentId).toBeUndefined();
+    expect(out.forwardedArgs).toBe(args);
+  });
+
+  it("extracts a non-empty owner and strips it from the forwarded args", () => {
+    const out = splitOwnerAgent({ query: "x", [OWNER_AGENT_ARG]: " coo " });
+    expect(out.ownerAgentId).toBe("coo");
+    expect(out.forwardedArgs).toEqual({ query: "x" });
+  });
+
+  it("ignores an empty or non-string owner but still strips the key", () => {
+    expect(splitOwnerAgent({ query: "x", agent: "" })).toEqual({
+      forwardedArgs: { query: "x" },
+      ownerAgentId: undefined,
+    });
+    expect(splitOwnerAgent({ query: "x", agent: 42 })).toEqual({
+      forwardedArgs: { query: "x" },
+      ownerAgentId: undefined,
+    });
+  });
+
+  it("does not mutate the input", () => {
+    const args = { query: "x", agent: "coo" };
+    splitOwnerAgent(args);
+    expect(args).toEqual({ query: "x", agent: "coo" });
+  });
+});
+
 describe("createCallToolHandler", () => {
+  it("forwards a per-call owning agent to the invoker and strips it from the args", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "ok" }],
+    });
+    const log = vi.fn();
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log,
+    });
+    await handler({
+      name: "memory_search",
+      arguments: { query: "heartbeat liveness", agent: "coo" },
+    });
+    expect(invoke.mock.calls[0]![0]).toEqual({
+      toolName: "memory_search",
+      args: { query: "heartbeat liveness", agent_id: "claude-code" },
+      agentId: "claude-code",
+      ownerAgentId: "coo",
+    });
+    // Attribution stays the caller; the owner is only annotated.
+    expect(log.mock.calls[0]![0]).toBe(
+      "[brain] memory_search called by claude-code (owner coo)",
+    );
+  });
+
+  it("omits ownerAgentId entirely when the caller sets no owner", async () => {
+    const invoke = vi.fn().mockResolvedValue({
+      content: [{ type: "text", text: "ok" }],
+    });
+    const handler = createCallToolHandler({
+      invokeFn: invoke,
+      defaultAgentId: "claude-code",
+      log: vi.fn(),
+    });
+    await handler({ name: "memory_search", arguments: { query: "x" } });
+    expect(invoke.mock.calls[0]![0]).not.toHaveProperty("ownerAgentId");
+  });
+
   it("invokes the gateway with toolName and prepared args, returns its result", async () => {
     const invoke = vi.fn().mockResolvedValue({
       content: [{ type: "text", text: "ok" }],

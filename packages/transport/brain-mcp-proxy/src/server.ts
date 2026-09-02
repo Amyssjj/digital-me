@@ -119,8 +119,10 @@ export async function main(): Promise<void> {
         args: input.args,
         // The OWNER of the invocation — a real openclaw agent. Not
         // input.agentId, which is the calling client's attribution label
-        // ("hermes"/"codex") and is rejected as `Unknown agent id`.
-        agentId: gatewayAgentId,
+        // ("hermes"/"codex") and is rejected as `Unknown agent id`. A
+        // per-call `agent` argument (input.ownerAgentId) wins over the
+        // process-wide default so a caller can search another agent's index.
+        agentId: input.ownerAgentId ?? gatewayAgentId,
         gateway: { url: gateway.url, token: gateway.token },
         fetchFn: globalThis.fetch,
         timeoutMs: GATEWAY_TIMEOUT_MS,

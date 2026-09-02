@@ -179,7 +179,47 @@ export type GatewayInvoker = (input: {
   args: Record<string, unknown>;
   /** Owning agent, required by openclaw >= 2026.8.1 on a multi-agent host. */
   agentId?: string;
+  /**
+   * Per-call owning-agent override taken from the `agent` tool argument.
+   * When set, the transport must send THIS as the gateway's top-level
+   * agentId instead of its process-wide default, so a caller can search
+   * another configured agent's memory index (e.g. the COO's own store from
+   * a one-shot CLI session). See splitOwnerAgent.
+   */
+  ownerAgentId?: string;
 }) => Promise<CallToolResult>;
+
+/**
+ * Name of the optional tool argument that selects which openclaw agent OWNS
+ * the call (i.e. whose memory index is searched). Distinct from `agent_id`,
+ * which is the caller's attribution label and is forwarded as-is.
+ *
+ * Why this exists (2026-09-01): openclaw's own `memory_search`, when reached
+ * from a one-shot CLI session (the cli-backend heartbeat path), builds a
+ * transient memory manager per call — a cold open of the whole store plus a
+ * KNN subprocess — and on a large store that cannot meet its hardcoded 15s
+ * deadline (0/19 heartbeat calls succeeded on a 1.7 GB index). This proxy's
+ * `/tools/invoke` path runs on the gateway's warm manager (~1.5s), but was
+ * pinned to one owning agent; `agent` lets the caller pick the index.
+ */
+export const OWNER_AGENT_ARG = "agent";
+
+/**
+ * Split the owning-agent override out of the tool args. The `agent` key is
+ * always removed from the forwarded args (openclaw's tools do not take it);
+ * only a non-empty string selects an owner — anything else is ignored.
+ */
+export function splitOwnerAgent(args: Record<string, unknown>): {
+  forwardedArgs: Record<string, unknown>;
+  ownerAgentId: string | undefined;
+} {
+  if (!Object.hasOwn(args, OWNER_AGENT_ARG)) {
+    return { forwardedArgs: args, ownerAgentId: undefined };
+  }
+  const { [OWNER_AGENT_ARG]: raw, ...forwardedArgs } = args;
+  const trimmed = typeof raw === "string" ? raw.trim() : "";
+  return { forwardedArgs, ownerAgentId: trimmed === "" ? undefined : trimmed };
+}
 
 export type CallToolRequest = {
   name: string;
@@ -306,7 +346,11 @@ export function createCallToolHandler(deps: {
   return async (req) => {
     const args = buildToolArgs(req.arguments, defaultAgentId);
     const agentId = attributionLabel(args);
-    log(`[brain] ${req.name} called by ${agentId}`);
+    const { forwardedArgs, ownerAgentId } = splitOwnerAgent(args);
+    log(
+      `[brain] ${req.name} called by ${agentId}` +
+        (ownerAgentId !== undefined ? ` (owner ${ownerAgentId})` : ""),
+    );
     const startedAt = Date.now();
     const recordTrace = (result: CallToolResult, isError: boolean): void => {
       if (!traceWriter) return;
@@ -331,7 +375,12 @@ export function createCallToolHandler(deps: {
     };
 
     try {
-      const result = await invokeFn({ toolName: req.name, args, agentId });
+      const result = await invokeFn({
+        toolName: req.name,
+        args: forwardedArgs,
+        agentId,
+        ...(ownerAgentId !== undefined ? { ownerAgentId } : {}),
+      });
       // Augment memory_search responses with the top hit's body. Inliner
       // is fault-tolerant — on any internal error it returns the input
       // result unchanged. Wrap defensively anyway.
