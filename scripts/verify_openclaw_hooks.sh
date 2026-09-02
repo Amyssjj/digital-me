@@ -74,23 +74,37 @@ if [[ ! -f "$CONFIG" ]]; then
 fi
 
 for id in "${PLUGINS[@]}"; do
-  granted=$(python3 - "$CONFIG" "$id" <<'PY'
+  # openclaw parses its config as JSON5 (comments, trailing commas, unquoted keys).
+  # Try Node + json5 package first (avoids URL-eating regex), then pyjson5.
+  granted=""
+  if command -v node >/dev/null 2>&1; then
+    granted=$(node - "$CONFIG" "$id" 2>/dev/null <<'JS'
+const fs = require('fs');
+try {
+  const JSON5 = require('json5');
+  const cfg = JSON5.parse(fs.readFileSync(process.argv[2], 'utf8'));
+  const entry = (cfg.plugins?.entries || {})[process.argv[3]] || {};
+  const allow = (entry.hooks || {}).allowConversationAccess === true;
+  console.log(allow ? 'yes' : 'no');
+} catch (e) {
+  console.error('FAIL: JSON5 parse error:', e.message);
+  process.exit(1);
+}
+JS
+) || granted=""
+  fi
+  
+  if [[ -z "$granted" ]]; then
+    granted=$(python3 - "$CONFIG" "$id" <<'PY'
 import sys
-# openclaw parses its config as JSON5 (comments, trailing commas, unquoted keys).
-# Use pyjson5 if available; fall back to a lenient JSON parser that strips
-# comments/trailing-commas manually (the same dialect the installer uses).
 try:
     import pyjson5
     cfg = pyjson5.load(open(sys.argv[1]))
 except ImportError:
-    import json, re
-    raw = open(sys.argv[1]).read()
-    # Strip // and /* */ comments (minimal; sufficient for openclaw.json)
-    raw = re.sub(r'//.*?$', '', raw, flags=re.MULTILINE)
-    raw = re.sub(r'/\*.*?\*/', '', raw, flags=re.DOTALL)
-    # Strip trailing commas before } or ]
-    raw = re.sub(r',(\s*[}\]])', r'\1', raw)
-    cfg = json.loads(raw)
+    print("FAIL: openclaw.json is JSON5 (comments/trailing-commas/unquoted-keys).", file=sys.stderr)
+    print("      Install pyjson5:  pip install pyjson5", file=sys.stderr)
+    print("      (or ensure 'node' + json5 package are on PATH)", file=sys.stderr)
+    raise SystemExit(1)
 except Exception as e:
     print(f"FAIL: config parse error: {e}", file=sys.stderr)
     raise SystemExit(1)
@@ -100,6 +114,8 @@ granted = (entry.get("hooks") or {}).get("allowConversationAccess") is True
 print("yes" if granted else "no")
 PY
 )
+  fi
+  
   case "$granted" in
     yes) note "ok      $id: allowConversationAccess=true" ;;
     *)
@@ -132,13 +148,22 @@ if [[ -n "$GATEWAY_LOG" && -f "$GATEWAY_LOG" ]]; then
   # last registration line) so an old `agent_end` gate warn doesn't false-red the
   # update sweep after the grant is written.
   if [[ -n "$last_reg" ]]; then
-    # Extract everything from the last registration onward
-    last_boot_txt=$(grep -A 99999 "digital-me-recall: registered hooks" <<<"$tail_txt" | tail -n +1)
+    # Extract everything AFTER the LAST registration line (not the first).
+    # awk: print=1 once we see the last occurrence of the registration marker.
+    last_boot_txt=$(awk -v marker="digital-me-recall: registered hooks" '
+      {line[NR]=$0}
+      $0 ~ marker {last_match=NR}
+      END {
+        if (last_match) {
+          for (i=last_match; i<=NR; i++) print line[i]
+        }
+      }
+    ' <<<"$tail_txt")
   else
     # No registration found — check the whole tail (first boot or pre-recall install)
     last_boot_txt="$tail_txt"
   fi
-  if grep -q "blocked because non-bundled plugins must set" <<<"$last_boot_txt"; then
+  if [[ -n "$last_boot_txt" ]] && grep -q "blocked because non-bundled plugins must set" <<<"$last_boot_txt"; then
     note "FAIL    gateway log carries a host hook-block diagnostic in the last boot:"
     grep -o "typed hook \"[a-z_]*\" blocked because non-bundled[^\"]*" <<<"$last_boot_txt" \
       | tail -3 | sed 's/^/          /'
