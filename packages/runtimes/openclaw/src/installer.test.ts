@@ -47,12 +47,13 @@ describe("installer paths — brain plugin", () => {
     expect(targets).toEqual(["index.mjs", "openclaw.plugin.json"]);
   });
 
-  it("the brain manifest declares all 7 brain tool contracts (incl. M1 universal protocol)", () => {
+  it("the brain manifest declares all 8 brain tool contracts (incl. M1 universal protocol + brain_memory_search)", () => {
     const manifest = JSON.parse(
       fs.readFileSync(BRAIN_MANIFEST_TEMPLATE, "utf8"),
     ) as { contracts: { tools: string[] } };
     expect(manifest.contracts.tools.sort()).toEqual([
       "agent_identify",
+      "brain_memory_search",
       "learning_capture",
       "m1_event_record",
       "m1_score",

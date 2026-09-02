@@ -13,7 +13,8 @@
       "traces_record",
       "traces_query",
       "m1_event_record",
-      "m1_score"
+      "m1_score",
+      "brain_memory_search"
     ]
   },
   "configSchema": {
