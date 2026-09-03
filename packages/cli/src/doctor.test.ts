@@ -878,12 +878,24 @@ describe("runMemoryIndexChecks", () => {
   const DIRS = "openclaw: knowledge dirs";
   const PATHS = "openclaw: memory_search extraPaths";
   const EMB = "openclaw: memory embeddings";
+  const HOOKS = "openclaw: conversation-hook access";
+  // The grant is part of a healthy config: without it openclaw silently drops
+  // digital-me-recall's before_prompt_build / agent_end hooks.
+  const hookGrant = {
+    plugins: { entries: { "digital-me-recall": { hooks: { allowConversationAccess: true } } } },
+  };
   const goodCfg = JSON.stringify({
     agents: {
       defaults: {
         memorySearch: { fallback: "local", extraPaths: [wiki, tastes] },
       },
     },
+    ...hookGrant,
+  });
+  /** Same config on openclaw >= 2026.7.1's `memory.search` layout. */
+  const goodCfgNamespaced = JSON.stringify({
+    memory: { search: { fallback: "local", extraPaths: [wiki, tastes] } },
+    ...hookGrant,
   });
   const find = (checks: ReturnType<typeof runMemoryIndexChecks>, label: string) =>
     checks.find((c) => c.label === label)!;
@@ -892,10 +904,77 @@ describe("runMemoryIndexChecks", () => {
     const checks = runMemoryIndexChecks(
       makeDeps({ fileExists: () => true, readFile: () => goodCfg }),
     );
-    expect(checks).toHaveLength(3);
+    expect(checks).toHaveLength(4);
     expect(checks.every((c) => c.ok)).toBe(true);
     const paths = find(checks, PATHS);
     if (paths.ok) expect(paths.note).toContain(cfgPath);
+  });
+
+  it("reads the openclaw >= 2026.7.1 memory.search layout and names it", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({ fileExists: () => true, readFile: () => goodCfgNamespaced }),
+    );
+    expect(checks.every((c) => c.ok)).toBe(true);
+    const paths = find(checks, PATHS);
+    // The repair hint must name a key that exists on THIS host, so the note
+    // tracks the layout rather than hard-coding the legacy path.
+    if (paths.ok) expect(paths.note).toContain("memory.search");
+  });
+
+  it("names the legacy key when the config still uses it", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({
+        fileExists: () => true,
+        readFile: () =>
+          JSON.stringify({
+            agents: { defaults: { memorySearch: { fallback: "local", extraPaths: [wiki] } } },
+            ...hookGrant,
+          }),
+      }),
+    );
+    const paths = find(checks, PATHS);
+    expect(paths.ok).toBe(false);
+    if (!paths.ok) {
+      expect(paths.reason).toContain("agents.defaults.memorySearch.extraPaths");
+      expect(paths.reason).toContain(tastes);
+    }
+  });
+
+  it("FAILs the hook-grant check when allowConversationAccess is missing", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({
+        fileExists: () => true,
+        readFile: () =>
+          JSON.stringify({
+            agents: { defaults: { memorySearch: { fallback: "local", extraPaths: [wiki, tastes] } } },
+          }),
+      }),
+    );
+    const hooks = find(checks, HOOKS);
+    expect(hooks.ok).toBe(false);
+    if (!hooks.ok) {
+      expect(hooks.reason).toContain("digital-me-recall");
+      expect(hooks.reason).toMatch(/silently drops/);
+    }
+    // The paths + embeddings checks stay green: this failure is invisible to them.
+    expect(find(checks, PATHS).ok).toBe(true);
+    expect(find(checks, EMB).ok).toBe(true);
+  });
+
+  it("FAILs the hook-grant check on an explicit false (deliberate opt-out is still a broken recall)", () => {
+    const checks = runMemoryIndexChecks(
+      makeDeps({
+        fileExists: () => true,
+        readFile: () =>
+          JSON.stringify({
+            agents: { defaults: { memorySearch: { fallback: "local", extraPaths: [wiki, tastes] } } },
+            plugins: {
+              entries: { "digital-me-recall": { hooks: { allowConversationAccess: false } } },
+            },
+          }),
+      }),
+    );
+    expect(find(checks, HOOKS).ok).toBe(false);
   });
 
   it("flags missing knowledge dirs with the startup-watch explanation", () => {
@@ -973,6 +1052,9 @@ describe("runMemoryIndexChecks", () => {
             agents: { defaults: { memorySearch: {
               fallback: 'local',
               extraPaths: ['${wiki}', '${tastes}',],
+            } } },
+            plugins: { entries: { 'digital-me-recall': {
+              hooks: { allowConversationAccess: true },
             } } },
           }`,
       }),

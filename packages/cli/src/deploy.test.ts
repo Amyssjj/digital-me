@@ -3,6 +3,7 @@ import {
   DEPLOYABLE_RUNTIMES,
   analyzeDeployPreflight,
   parseAheadBehind,
+  expectedRecallAckMode,
   parseRecallAckMode,
   planDeployRuntimes,
 } from "./deploy.js";
@@ -83,5 +84,42 @@ describe("planDeployRuntimes", () => {
 
   it("only openclaw + dashboard are deployable", () => {
     expect([...DEPLOYABLE_RUNTIMES]).toEqual(["openclaw", "dashboard"]);
+  });
+});
+
+describe("expectedRecallAckMode", () => {
+  it("includes agent_end only when the conversation-hook grant is present", () => {
+    expect(
+      expectedRecallAckMode({
+        plugins: { entries: { "digital-me-recall": { hooks: { allowConversationAccess: true } } } },
+      }),
+    ).toBe("agent_end+before_message_write");
+  });
+
+  it("drops agent_end when the grant is absent — the host will refuse that hook", () => {
+    expect(expectedRecallAckMode({})).toBe("before_message_write");
+    expect(expectedRecallAckMode({ plugins: { entries: {} } })).toBe("before_message_write");
+    expect(
+      expectedRecallAckMode({ plugins: { entries: { "digital-me-recall": { enabled: true } } } }),
+    ).toBe("before_message_write");
+  });
+
+  it("treats an explicit false as ungranted", () => {
+    expect(
+      expectedRecallAckMode({
+        plugins: { entries: { "digital-me-recall": { hooks: { allowConversationAccess: false } } } },
+      }),
+    ).toBe("before_message_write");
+  });
+
+  it("agrees with what parseRecallAckMode reads off a real registration line", () => {
+    // The two halves of the deploy check must speak the same vocabulary.
+    const line =
+      "[plugins] digital-me-recall: registered hooks (boot=on, conversation_hooks=granted, assistant_ack=agent_end+before_message_write, app_rate=on)";
+    expect(parseRecallAckMode(line)).toBe(
+      expectedRecallAckMode({
+        plugins: { entries: { "digital-me-recall": { hooks: { allowConversationAccess: true } } } },
+      }),
+    );
   });
 });

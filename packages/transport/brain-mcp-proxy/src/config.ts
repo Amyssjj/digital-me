@@ -136,6 +136,39 @@ export function loadGatewayConfig(input: {
   };
 }
 
+/**
+ * Default openclaw agent that OWNS gateway invocations.
+ *
+ * openclaw's conventional first agent. Used only when nothing overrides it.
+ */
+export const DEFAULT_GATEWAY_AGENT_ID = "main";
+
+/**
+ * Resolve the owning openclaw agent for `/tools/invoke`.
+ *
+ * DISTINCT FROM {@link resolveDefaultAgentId}, and conflating the two is a
+ * live bug we shipped:
+ *
+ *  - `resolveDefaultAgentId` (`$OPENCLAW_AGENT_ID`) is an ATTRIBUTION label —
+ *    which client is calling ("hermes", "codex", "claude-code"). It lands in
+ *    `args.agent_id` and is what the brain tools record.
+ *  - This one is the openclaw AGENT that owns the call. It must name a real
+ *    entry in `agents.entries`, because openclaw >= 2026.8.1 rejects an
+ *    invocation on a multi-agent host with no owner — and rejects an owner it
+ *    does not recognise just as hard (`Unknown agent id "hermes"`).
+ *
+ * Override with `$OPENCLAW_GATEWAY_AGENT_ID` on a host whose primary agent is
+ * not "main".
+ */
+export function resolveGatewayAgentId(env: NodeJS.ProcessEnv): string {
+  const raw = env.OPENCLAW_GATEWAY_AGENT_ID;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed !== "") return trimmed;
+  }
+  return DEFAULT_GATEWAY_AGENT_ID;
+}
+
 export function resolveDefaultAgentId(input: {
   env: NodeJS.ProcessEnv;
   argv: readonly string[];

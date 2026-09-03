@@ -33,8 +33,11 @@ import path from "node:path";
 // cli alias (see infra wiki: run-local-cli-as-brain-exec-worker-via-cli-exec-aliases).
 import * as YAML from "yaml";
 
-// openclaw plugin SDK (the only openclaw-side import).
+// openclaw plugin SDK (the only openclaw-side imports).
 import { definePluginEntry } from "openclaw/plugin-sdk/plugin-entry";
+// Resolves the gateway's long-lived memory manager for an agent — the warm
+// search path. See brain_memory_search below for why this tool exists.
+import { getActiveMemorySearchManager } from "openclaw/plugin-sdk/memory-host-search";
 
 // brain-orchestrator: stores, migrations, scheduler.
 import {
@@ -63,6 +66,7 @@ import {
 
 // runtime-openclaw: Dispatcher + alias resolver + tool builder + compat check.
 import {
+  buildBrainMemorySearchTool,
   buildOpenClawBrainTools,
   createOpenClawAliasResolver,
   createOpenClawDispatcher,
@@ -214,7 +218,34 @@ export default definePluginEntry({
     for (const tool of tools) {
       api.registerTool(tool);
     }
-    api.logger.info(`digital-me-brain: registered ${tools.length} tools`);
+
+    // 5b. brain_memory_search — memory search on the gateway's WARM manager.
+    //     One-shot CLI runs (the cli-backend heartbeat) get a transient manager
+    //     for openclaw's own memory_search: a cold open of the whole store per
+    //     call that cannot meet the hardcoded 15 s deadline on a large index
+    //     (0/19 COO heartbeats on 2026-09-01), and each attempt strands a
+    //     temp reindex database. Plugin tools are served through the bundle
+    //     server without the native-tool approval gate that blocks external
+    //     MCP servers in those runs, so this is the only warm path they have.
+    const memorySearchDefaultAgent =
+      typeof api.pluginConfig?.memorySearchDefaultAgent === "string" &&
+      api.pluginConfig.memorySearchDefaultAgent.trim() !== ""
+        ? api.pluginConfig.memorySearchDefaultAgent.trim()
+        : "main";
+    const memorySearchTool = buildBrainMemorySearchTool({
+      defaultAgentId: memorySearchDefaultAgent,
+      search: async ({ agentId, query, maxResults }) => {
+        const memory = await getActiveMemorySearchManager({ cfg: api.config, agentId });
+        if (!memory.manager) {
+          throw new Error(memory.error ?? `memory search unavailable for agent "${agentId}"`);
+        }
+        return await memory.manager.search(query, { maxResults });
+      },
+    });
+    api.registerTool(memorySearchTool);
+    api.logger.info(
+      `digital-me-brain: registered ${tools.length + 1} tools (incl. brain_memory_search, default agent ${memorySearchDefaultAgent})`,
+    );
 
     // 6. The scheduler's `instantiateWorkflow` callback: given a
     //    (workflowId, vars), create the goal + tasks via brain-orchestrator's

@@ -188,7 +188,17 @@ def _invoke_gateway(tool: str, args: Dict[str, Any], timeout: float = 4.0) -> Op
     token = _get_token()
     if not token:
         return None
-    req_body = json.dumps({"tool": tool, "args": args}).encode("utf-8")
+    # openclaw >= 2026.8.1 rejects /tools/invoke on a multi-agent host without
+    # an explicit owner ("Multiple agents are configured, but session key
+    # \"main\" has no explicit owner"). This is the OWNING openclaw agent and
+    # is distinct from args["agent_id"], which is hermes' own attribution
+    # label — passing the label here fails differently ("Unknown agent id").
+    # Without it every recall call is refused and this plugin silently
+    # injects nothing, exactly like the claude-code hook did.
+    gateway_agent = os.environ.get("OPENCLAW_GATEWAY_AGENT_ID", "main")
+    req_body = json.dumps(
+        {"tool": tool, "agentId": gateway_agent, "args": args}
+    ).encode("utf-8")
     req = urllib.request.Request(
         GATEWAY_URL,
         data=req_body,

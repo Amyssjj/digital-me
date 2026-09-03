@@ -83,6 +83,11 @@ export type ClaudeHooksManifest = {
  * `~/.claude/settings.json`. Uses `$HOME/.claude/hooks/<name>` paths so
  * the installed location is canonical regardless of where the runtime
  * package itself lives.
+ *
+ * Timeouts:
+ *   - memory_search inject: 12s to match the hook script's curl default
+ *     (DIGITAL_ME_HOOK_TIMEOUT_SECS:-12). A shorter manifest timeout kills
+ *     the hook before curl finishes, making slow searches look like empty injects.
  */
 export function buildClaudeHooksManifest(): ClaudeHooksManifest {
   const cmd = (name: HookName) => `$HOME/.claude/hooks/${name}`;
@@ -93,7 +98,7 @@ export function buildClaudeHooksManifest(): ClaudeHooksManifest {
           {
             type: "command",
             command: cmd("dm_memory_search_inject.sh"),
-            timeout: 8,
+            timeout: 12,
             statusMessage: "Digital Me: searching brain…",
           },
         ],

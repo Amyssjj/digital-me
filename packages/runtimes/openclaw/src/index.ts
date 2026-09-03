@@ -20,6 +20,22 @@ export {
 } from "./plugin-entry.js";
 export type { OpenClawAgentTool } from "./plugin-entry.js";
 
+export {
+  BRAIN_MEMORY_SEARCH_DEFAULT_RESULTS,
+  BRAIN_MEMORY_SEARCH_MAX_RESULTS,
+  BRAIN_MEMORY_SEARCH_TOOL_NAME,
+  BrainMemorySearchToolSchema,
+  buildBrainMemorySearchTool,
+  normalizeMemoryHit,
+  resolveMaxResults,
+} from "./memory-search-tool.js";
+export type {
+  BrainMemorySearchHit,
+  BrainMemorySearchToolParams,
+  MemorySearchFn,
+  RawMemoryHit,
+} from "./memory-search-tool.js";
+
 export { TRANSCRIPT_SOURCE } from "./manifest.js";
 
 export {
@@ -86,7 +102,10 @@ export type {
 } from "./installer.js";
 
 export {
+  CONVERSATION_HOOK_PROMPT_BUILD_MIN_VERSION,
+  isAtLeastOpenclawVersion,
   MAX_TESTED_OPENCLAW_VERSION,
+  MEMORY_SEARCH_NAMESPACE_MIN_VERSION,
   MIN_OPENCLAW_VERSION,
   OPENCLAW_MIN_HOST_VERSION,
   resolveHostOpenclawVersion,

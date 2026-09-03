@@ -133,6 +133,10 @@ def test_run_workflow_sends_expected_request_shape() -> None:
     assert captured["headers"]["Content-Type"] == "application/json"
     assert captured["body"] == {
         "tool": "tasks",
+        # openclaw >= 2026.8.1 refuses /tools/invoke on a multi-agent host with
+        # no explicit owner. Distinct from any args-level agent_id, which is
+        # attribution rather than ownership.
+        "agentId": "main",
         "args": {
             "action": "run_workflow",
             "templateId": "wf_dream_cycle_v2",
@@ -193,7 +197,7 @@ def test_schedule_tick_posts_correct_action() -> None:
         captured=captured,
     )
     client.schedule_tick()
-    assert captured["body"] == {"tool": "tasks", "args": {"action": "schedule_tick"}}
+    assert captured["body"] == {"tool": "tasks", "agentId": "main", "args": {"action": "schedule_tick"}}
 
 
 def test_task_status_sends_taskId() -> None:

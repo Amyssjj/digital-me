@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   CODEX_MD_TEMPLATE,
-  HOOK_NAMES,
   HOOKS_DIR,
+  HOOK_NAMES,
   MCP_TOML_TEMPLATE,
   PACKAGE_ROOT,
   SECTION_BEGIN,
@@ -10,9 +10,11 @@ import {
   TEMPLATES_DIR,
   buildCodexHooksManifest,
   buildCodexMcpConfig,
+  inlineKeysOf,
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  stripDuplicatedSubTables,
 } from "./installer.js";
 
 describe("buildCodexMcpConfig", () => {
@@ -349,5 +351,143 @@ args = []
     const twice = mergeMcpServer(once, FRAGMENT);
     // Content equivalent (whitespace normalization aside)
     expect(twice.trim()).toBe(once.trim());
+  });
+});
+
+describe("mergeMcpServer — duplicate sub-table regression (2026-09-01)", () => {
+  // Codex writes `env` as a SUB-TABLE; our fragment writes it inline. TOML
+  // forbids both, and the failure is whole-file: the parser aborts and every
+  // MCP server in config.toml disappears, not just ours. Re-installing the
+  // codex runtime did exactly this on a live machine.
+  const fragment = [
+    "[mcp_servers.openclaw-brain]",
+    'command = "/opt/homebrew/bin/node"',
+    'args = ["/main/brain-mcp-proxy.mjs"]',
+    'env = { OPENCLAW_HOME = "/h", OPENCLAW_AGENT_ID = "codex" }',
+    "",
+  ].join("\n");
+
+  const existing = [
+    "[mcp_servers.other]",
+    'command = "x"',
+    "",
+    "[mcp_servers.openclaw-brain]",
+    'command = "/opt/homebrew/Cellar/node/25.4.0/bin/node"',
+    'args = ["/worktree/brain-mcp-proxy.mjs"]',
+    "",
+    "[mcp_servers.openclaw-brain.env]",
+    'OPENCLAW_HOME = "/h"',
+    'OPENCLAW_AGENT_ID = "codex"',
+    "",
+    "[mcp_servers.openclaw-brain.tools.memory_search]",
+    'approval_mode = "approve"',
+    "",
+  ].join("\n");
+
+  it("removes the colliding env sub-table so the result is valid TOML", () => {
+    const out = mergeMcpServer(existing, fragment);
+    expect(out).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(out).toContain('env = { OPENCLAW_HOME = "/h"');
+    // exactly one declaration of env for this server
+    expect(out.match(/openclaw-brain\.env\]/g)).toBeNull();
+  });
+
+  it("PRESERVES per-tool approval settings, which are not ours to delete", () => {
+    const out = mergeMcpServer(existing, fragment);
+    expect(out).toContain("[mcp_servers.openclaw-brain.tools.memory_search]");
+    expect(out).toContain('approval_mode = "approve"');
+  });
+
+  it("leaves unrelated servers intact", () => {
+    const out = mergeMcpServer(existing, fragment);
+    expect(out).toContain("[mcp_servers.other]");
+  });
+
+  it("still replaces the stale command/args", () => {
+    const out = mergeMcpServer(existing, fragment);
+    expect(out).toContain("/main/brain-mcp-proxy.mjs");
+    expect(out).not.toContain("/worktree/brain-mcp-proxy.mjs");
+    expect(out).not.toContain("Cellar/node/25.4.0");
+  });
+
+  it("is idempotent — merging twice does not reintroduce a duplicate", () => {
+    const once = mergeMcpServer(existing, fragment);
+    const twice = mergeMcpServer(once, fragment);
+    expect(twice.match(/openclaw-brain\.env\]/g)).toBeNull();
+    expect(twice).toBe(once);
+  });
+});
+
+describe("inlineKeysOf", () => {
+  it("collects only keys declared directly under the fragment header", () => {
+    expect(
+      inlineKeysOf('[mcp_servers.x]\ncommand = "n"\nenv = { A = "1" }\n\n[mcp_servers.x.tools.t]\nk = 1\n'),
+    ).toEqual(["command", "env"]);
+  });
+
+  it("ignores lines before any header", () => {
+    expect(inlineKeysOf('stray = 1\n[mcp_servers.x]\ncommand = "n"\n')).toEqual(["command"]);
+  });
+
+  it("returns nothing for a fragment with no keys", () => {
+    expect(inlineKeysOf("[mcp_servers.x]\n")).toEqual([]);
+  });
+});
+
+describe("stripDuplicatedSubTables", () => {
+  it("returns input untouched when there is nothing to strip", () => {
+    const lines = ["[a.b.env]", "k = 1"];
+    expect(stripDuplicatedSubTables(lines, "[a.b]", [])).toEqual(lines);
+  });
+
+  it("stops skipping at the next unrelated header", () => {
+    const out = stripDuplicatedSubTables(
+      ["[a.b.env]", "k = 1", "[a.b.tools.t]", "m = 2"],
+      "[a.b]",
+      ["env"],
+    );
+    expect(out).toEqual(["[a.b.tools.t]", "m = 2"]);
+  });
+});
+
+describe("mergeCodexMd — duplicate marker accumulation (2026-09-01)", () => {
+  // Twin of the hermes SOUL.md bug: the template embeds its own markers and
+  // the merge took the FIRST end marker, so the live CODEX.md reached
+  // 2 BEGIN / 9 END. Missed when hermes was fixed; caught in review.
+  const damaged = [
+    "# Codex",
+    "",
+    SECTION_BEGIN,
+    "old protocol text",
+    SECTION_BEGIN,
+    "duplicated inner block",
+    SECTION_END,
+    SECTION_END,
+    SECTION_END,
+    "",
+  ].join("\n");
+
+  it("collapses every stray marker into one clean managed section", () => {
+    const out = mergeCodexMd(damaged, "## Digital Me Protocol\nfresh");
+    expect(out.split(SECTION_BEGIN).length - 1).toBe(1);
+    expect(out.split(SECTION_END).length - 1).toBe(1);
+    expect(out).toContain("fresh");
+    expect(out).not.toContain("duplicated inner block");
+  });
+
+  it("does not nest when the incoming section already carries markers (the template does)", () => {
+    const templateLike = `${SECTION_BEGIN}\nbody\n${SECTION_END}`;
+    const out = mergeCodexMd("# Codex\n", templateLike);
+    expect(out.split(SECTION_BEGIN).length - 1).toBe(1);
+    expect(out.split(SECTION_END).length - 1).toBe(1);
+  });
+
+  it("preserves the operator's own content outside the section", () => {
+    expect(mergeCodexMd(damaged, "fresh").startsWith("# Codex")).toBe(true);
+  });
+
+  it("is idempotent on an already-clean file", () => {
+    const once = mergeCodexMd(damaged, "fresh");
+    expect(mergeCodexMd(once, "fresh")).toBe(once);
   });
 });

@@ -309,6 +309,11 @@ export const TOOLS = [
       properties: {
         query: { type: "string", description: "Search query" },
         ...AGENT_ID_PROP,
+        agent: {
+          type: "string",
+          description:
+            "openclaw agent whose memory index to use (e.g. 'coo'). Defaults to the host's primary agent. Prefer this tool over openclaw's own memory_search from a one-shot CLI session: there openclaw cold-opens the index per call and a large store cannot meet its 15s deadline, while this proxy searches on the gateway's warm manager.",
+        },
         limit: { type: "number", description: "Max results (default 5)" },
         corpus: {
           type: "string",
@@ -331,6 +336,11 @@ export const TOOLS = [
           type: "string",
           description:
             "Memory file path to retrieve (e.g. 'MEMORY.md' or 'memory/some-note.md'), relative to the corpus root.",
+        },
+        agent: {
+          type: "string",
+          description:
+            "openclaw agent whose memory index to use (e.g. 'coo'). Defaults to the host's primary agent. Prefer this tool over openclaw's own memory_search from a one-shot CLI session: there openclaw cold-opens the index per call and a large store cannot meet its 15s deadline, while this proxy searches on the gateway's warm manager.",
         },
         corpus: {
           type: "string",

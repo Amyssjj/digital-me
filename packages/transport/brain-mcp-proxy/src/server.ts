@@ -16,6 +16,7 @@ import {
 import { loadConfig } from "@digital-me/contracts";
 import { loadGatewayConfig, resolveDefaultAgentId } from "./config.js";
 import { invokeGatewayTool } from "./gateway.js";
+import { resolveGatewayAgentId } from "./config.js";
 import { createCallToolHandler, resolveMaxResultBytes } from "./handler.js";
 import { startParentPidWatcher } from "./lifecycle.js";
 import { TOOLS } from "./tools.js";
@@ -110,11 +111,18 @@ export async function main(): Promise<void> {
   });
   appRateShutdownHook = () => appRateWriter.shutdown();
 
+  const gatewayAgentId = resolveGatewayAgentId(process.env);
   const handle = createCallToolHandler({
     invokeFn: (input) =>
       invokeGatewayTool({
         toolName: input.toolName,
         args: input.args,
+        // The OWNER of the invocation — a real openclaw agent. Not
+        // input.agentId, which is the calling client's attribution label
+        // ("hermes"/"codex") and is rejected as `Unknown agent id`. A
+        // per-call `agent` argument (input.ownerAgentId) wins over the
+        // process-wide default so a caller can search another agent's index.
+        agentId: input.ownerAgentId ?? gatewayAgentId,
         gateway: { url: gateway.url, token: gateway.token },
         fetchFn: globalThis.fetch,
         timeoutMs: GATEWAY_TIMEOUT_MS,

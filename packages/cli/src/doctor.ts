@@ -10,7 +10,8 @@
  *   3. Each enabled runtime has its hook scripts / templates installed.
  *   4. The brain MCP proxy is on PATH.
  *   5. The memory index is actually wired: the wiki + tastes dirs exist, both
- *      sit in openclaw's `agents.defaults.memorySearch.extraPaths`, and the
+ *      sit in openclaw's memory-search `extraPaths` (`memory.search` on
+ *      >= 2026.7.1, `agents.defaults.memorySearch` before), and the
  *      embedding config can build an index on this machine (openclaw's
  *      default provider is `openai`, which silently indexes nothing without
  *      an API key — the #1 "memory_search finds nothing" fresh-install trap).
@@ -18,7 +19,9 @@
 
 import JSON5 from "json5";
 import {
+  CONVERSATION_HOOK_PLUGIN_IDS,
   KEY_OPTIONAL_EMBEDDING_PROVIDERS,
+  detectMemorySearchLayout,
   digitalMeKnowledgePaths,
   resolveOpenclawConfigPath,
 } from "./openclaw-memory.js";
@@ -369,6 +372,44 @@ export function runOpenclawShadowCheck(deps: DoctorDeps): CheckResult[] {
 const KNOWLEDGE_DIRS_LABEL = "openclaw: knowledge dirs";
 const MEMORY_PATHS_LABEL = "openclaw: memory_search extraPaths";
 const EMBEDDINGS_LABEL = "openclaw: memory embeddings";
+const HOOK_GRANT_LABEL = "openclaw: conversation-hook access";
+
+/**
+ * The failure this check exists for is invisible everywhere else: openclaw
+ * silently DROPS a conversation typed hook when a non-bundled plugin has not
+ * set `hooks.allowConversationAccess: true` — a warn diagnostic and an early
+ * return, so the plugin still loads, still registers its tools, and still
+ * reports healthy. Only the hooks are gone. On openclaw >= 2026.8.1 that set
+ * includes `before_prompt_build`, i.e. the whole wiki-recall path; `agent_end`
+ * (the M1 application-ack) has been gated for longer.
+ *
+ * Exported for direct unit testing.
+ */
+export function runConversationHookGrantCheck(
+  cfg: Record<string, unknown>,
+  configPath: string,
+): CheckResult {
+  const entries = asObject(asObject(cfg.plugins).entries);
+  const ungranted = CONVERSATION_HOOK_PLUGIN_IDS.filter(
+    (id) => asObject(asObject(entries[id]).hooks).allowConversationAccess !== true,
+  );
+  if (ungranted.length === 0) {
+    return {
+      ok: true,
+      label: HOOK_GRANT_LABEL,
+      note: `granted for ${CONVERSATION_HOOK_PLUGIN_IDS.join(", ")}`,
+    };
+  }
+  return {
+    ok: false,
+    label: HOOK_GRANT_LABEL,
+    reason:
+      `${ungranted.join(", ")} lack plugins.entries.<id>.hooks.allowConversationAccess=true ` +
+      `in ${configPath}. openclaw silently drops their before_prompt_build / agent_end ` +
+      `hooks — recall injection and the M1 ack go to zero with no error. Run ` +
+      `'digital-me install --runtime openclaw' (idempotent), then restart the gateway.`,
+  };
+}
 
 /** Coerce an unknown JSON node to an object, or {} when it isn't one. */
 function asObject(v: unknown): Record<string, unknown> {
@@ -383,7 +424,8 @@ function asTrimmedString(v: unknown): string | undefined {
 
 /**
  * Verify the memory index is actually wired end-to-end: knowledge dirs on
- * disk, both dirs listed in `agents.defaults.memorySearch.extraPaths`, and
+ * disk, both dirs listed in the memory-search block's `extraPaths` (whichever
+ * layout this host uses), and
  * an embedding config that can index without manual surgery. Pure/data-layer.
  */
 export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
@@ -463,7 +505,17 @@ export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
     return checks;
   }
 
-  const ms = asObject(asObject(asObject(cfg.agents).defaults).memorySearch);
+  // openclaw moved this block from `agents.defaults.memorySearch` to
+  // `memory.search` in 2026.7.1. Read whichever layout the config uses and
+  // name that one in any failure, so the repair hint points at a key that
+  // actually exists on this host.
+  const layout = detectMemorySearchLayout(cfg) ?? "legacy";
+  const msKey =
+    layout === "namespaced" ? "memory.search" : "agents.defaults.memorySearch";
+  const ms =
+    layout === "namespaced"
+      ? asObject(asObject(cfg.memory).search)
+      : asObject(asObject(asObject(cfg.agents).defaults).memorySearch);
   const extraPaths = Array.isArray(ms.extraPaths)
     ? ms.extraPaths.filter((x): x is string => typeof x === "string")
     : [];
@@ -472,20 +524,22 @@ export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
     checks.push({
       ok: true,
       label: MEMORY_PATHS_LABEL,
-      note: `wiki + tastes wired in ${configPath}`,
+      note: `wiki + tastes wired in ${configPath} (${msKey})`,
     });
   } else {
     checks.push({
       ok: false,
       label: MEMORY_PATHS_LABEL,
       reason:
-        `agents.defaults.memorySearch.extraPaths is missing ` +
+        `${msKey}.extraPaths is missing ` +
         `${missingPaths.join(", ")} — run 'digital-me install --runtime openclaw' ` +
         `(idempotent), then restart the openclaw gateway.`,
     });
   }
 
-  checks.push(runEmbeddingsCheck(deps.env, ms));
+  checks.push(runConversationHookGrantCheck(cfg, configPath));
+
+  checks.push(runEmbeddingsCheck(deps.env, ms, msKey));
   return checks;
 }
 
@@ -501,6 +555,8 @@ export function runMemoryIndexChecks(deps: DoctorDeps): CheckResult[] {
 export function runEmbeddingsCheck(
   env: Readonly<Record<string, string | undefined>>,
   memorySearch: Readonly<Record<string, unknown>>,
+  /** Config key the block lives under on THIS host, for the repair hint. */
+  msKey: string = "agents.defaults.memorySearch",
 ): CheckResult {
   const provider = asTrimmedString(memorySearch.provider);
   const fallback = asTrimmedString(memorySearch.fallback);
@@ -542,10 +598,10 @@ export function runEmbeddingsCheck(
     label: EMBEDDINGS_LABEL,
     reason:
       "memory_search embeddings default to the 'openai' provider but no API key " +
-      "was found ($OPENAI_API_KEY / agents.defaults.memorySearch.remote.apiKey) — " +
+      `was found ($OPENAI_API_KEY / ${msKey}.remote.apiKey) — ` +
       "the wiki + tastes index will NOT build. Re-run 'digital-me install " +
       "--runtime openclaw' (seeds the keyless fallback: 'local'), or set " +
-      "agents.defaults.memorySearch.provider + key. 'openclaw doctor' validates " +
+      `${msKey}.provider + key. 'openclaw doctor' validates ` +
       "embeddings end-to-end.",
   };
 }

@@ -9,6 +9,69 @@
  * skipped. deploy runs them all, then verifies the live fingerprint matches.
  */
 
+import { existsSync, readdirSync, statSync } from "node:fs";
+import path from "node:path";
+
+/**
+ * Resolve the gateway log path the RUNNING openclaw gateway actually writes to.
+ * Mirrors `resolve_gateway_log` in scripts/verify_openclaw_hooks.sh. Picks the
+ * NEWEST candidate (by mtime) so we never read a frozen log that predates the
+ * service's StandardOutPath move.
+ */
+export function resolveGatewayLog(env: NodeJS.ProcessEnv, home: string): string | null {
+  const openclawHome = env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  
+  if (env.OPENCLAW_GATEWAY_LOG) {
+    return env.OPENCLAW_GATEWAY_LOG;
+  }
+
+  // Candidates in priority order (newest file wins)
+  const candidates = [
+    // Debug file log (what `openclaw logs` tails)
+    ...findNewestTmpLog(),
+    path.join(home, "Library", "Logs", "openclaw", "gateway.log"),  // Mac launchd
+    path.join(openclawHome, "logs", "gateway.log"),                  // legacy
+    path.join(env.XDG_STATE_HOME ?? path.join(home, ".local", "state"), "openclaw", "gateway.log"),  // Linux systemd
+  ];
+
+  let newest: string | null = null;
+  let newestMtime = 0;
+  for (const c of candidates) {
+    if (!c || !existsSync(c)) continue;
+    try {
+      const mtime = statSync(c).mtimeMs;
+      if (!newest || mtime > newestMtime) {
+        newest = c;
+        newestMtime = mtime;
+      }
+    } catch {
+      // skip unreadable
+    }
+  }
+  return newest;
+}
+
+function findNewestTmpLog(): string[] {
+  const tmpDir = "/tmp/openclaw";
+  if (!existsSync(tmpDir)) return [];
+  try {
+    const files = readdirSync(tmpDir)
+      .filter((f) => f.startsWith("openclaw-") && f.endsWith(".log"))
+      .map((f) => path.join(tmpDir, f));
+    // Sort by mtime descending, return the newest
+    files.sort((a, b) => {
+      try {
+        return statSync(b).mtimeMs - statSync(a).mtimeMs;
+      } catch {
+        return 0;
+      }
+    });
+    return files.length > 0 ? [files[0]!] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Runtimes that have a *running system* to redeploy + verify (a daemon/service). */
 export type DeployRuntime = "openclaw" | "dashboard";
 export const DEPLOYABLE_RUNTIMES: readonly DeployRuntime[] = ["openclaw", "dashboard"];
@@ -77,6 +140,33 @@ export function parseRecallAckMode(logText: string): string | null {
   const last = lines[lines.length - 1]!;
   const m = last.match(/assistant_ack=([^,)\s]+)/);
   return m ? m[1]!.trim() : null;
+}
+
+/**
+ * The `assistant_ack=` marker digital-me-recall SHOULD log on this host,
+ * derived from the openclaw config the same way the plugin derives it.
+ *
+ * The plugin emits `agent_end` and `before_message_write` as ack sources,
+ * minus any the host will refuse. openclaw drops a conversation hook from a
+ * non-bundled plugin unless `plugins.entries.digital-me-recall.hooks
+ * .allowConversationAccess` is true — and `agent_end` is in that gated set,
+ * `before_message_write` is not. So the marker is a function of the grant.
+ *
+ * This replaced a regex over the deployed bundle's SOURCE. That worked only
+ * while the marker was a string literal; once it became a template
+ * expression the grep captured `${ackSources.join(` and every deploy reported
+ * a false divergence. Fingerprinting the build was never the point —
+ * comparing what the host actually registered against what it should have
+ * registered is, and that also turns a missing grant into a deploy failure
+ * instead of a silent recall outage.
+ */
+export function expectedRecallAckMode(cfg: Readonly<Record<string, unknown>>): string {
+  const plugins = cfg.plugins as Record<string, unknown> | undefined;
+  const entries = plugins?.entries as Record<string, unknown> | undefined;
+  const recall = entries?.["digital-me-recall"] as Record<string, unknown> | undefined;
+  const hooks = recall?.hooks as Record<string, unknown> | undefined;
+  const granted = hooks?.allowConversationAccess === true;
+  return granted ? "agent_end+before_message_write" : "before_message_write";
 }
 
 /**
