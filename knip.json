@@ -1,5 +1,5 @@
 {
-  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": [
     "**/vite-env.d.ts",
     "packages/runtimes/openclaw/scripts/cli-exec-worker.mjs",
@@ -8,7 +8,7 @@
     "scripts/backfill-route-frontmatter.mjs"
   ],
   "ignoreDependencies": ["@digital-me/contracts", "yaml"],
-  "ignoreBinaries": ["husky"],
+  "ignoreBinaries": ["hermes", "husky", "openclaw"],
   "rules": {
     "files": "error",
     "dependencies": "error",
