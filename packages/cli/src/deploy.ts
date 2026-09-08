@@ -18,9 +18,21 @@ import path from "node:path";
  * NEWEST candidate (by mtime) so we never read a frozen log that predates the
  * service's StandardOutPath move.
  */
-export function resolveGatewayLog(env: NodeJS.ProcessEnv, home: string): string | null {
+/** The subset of node:fs this resolver touches — injectable so tests can
+ *  drive the unreadable-file branches without racing the real filesystem. */
+export type GatewayLogFs = Pick<typeof import("node:fs"), "existsSync" | "readdirSync" | "statSync">;
+
+/** Where openclaw's debug file log lives (what `openclaw logs` tails). */
+export const OPENCLAW_TMP_LOG_DIR = "/tmp/openclaw";
+
+export function resolveGatewayLog(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  opts: { tmpLogDir?: string; fs?: GatewayLogFs } = {},
+): string | null {
+  const fs: GatewayLogFs = opts.fs ?? { existsSync, readdirSync, statSync };
   const openclawHome = env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
-  
+
   if (env.OPENCLAW_GATEWAY_LOG) {
     return env.OPENCLAW_GATEWAY_LOG;
   }
@@ -28,7 +40,7 @@ export function resolveGatewayLog(env: NodeJS.ProcessEnv, home: string): string 
   // Candidates in priority order (newest file wins)
   const candidates = [
     // Debug file log (what `openclaw logs` tails)
-    ...findNewestTmpLog(),
+    ...findNewestTmpLog(opts.tmpLogDir ?? OPENCLAW_TMP_LOG_DIR, fs),
     path.join(home, "Library", "Logs", "openclaw", "gateway.log"),  // Mac launchd
     path.join(openclawHome, "logs", "gateway.log"),                  // legacy
     path.join(env.XDG_STATE_HOME ?? path.join(home, ".local", "state"), "openclaw", "gateway.log"),  // Linux systemd
@@ -37,9 +49,9 @@ export function resolveGatewayLog(env: NodeJS.ProcessEnv, home: string): string 
   let newest: string | null = null;
   let newestMtime = 0;
   for (const c of candidates) {
-    if (!c || !existsSync(c)) continue;
+    if (!fs.existsSync(c)) continue; // candidates are always non-empty strings
     try {
-      const mtime = statSync(c).mtimeMs;
+      const mtime = fs.statSync(c).mtimeMs;
       if (!newest || mtime > newestMtime) {
         newest = c;
         newestMtime = mtime;
@@ -51,17 +63,18 @@ export function resolveGatewayLog(env: NodeJS.ProcessEnv, home: string): string 
   return newest;
 }
 
-function findNewestTmpLog(): string[] {
-  const tmpDir = "/tmp/openclaw";
-  if (!existsSync(tmpDir)) return [];
+export function findNewestTmpLog(tmpDir: string, fs: GatewayLogFs = { existsSync, readdirSync, statSync }): string[] {
+  if (!fs.existsSync(tmpDir)) return [];
   try {
-    const files = readdirSync(tmpDir)
+    const files = fs
+      .readdirSync(tmpDir)
+      .map((f) => String(f))
       .filter((f) => f.startsWith("openclaw-") && f.endsWith(".log"))
       .map((f) => path.join(tmpDir, f));
     // Sort by mtime descending, return the newest
     files.sort((a, b) => {
       try {
-        return statSync(b).mtimeMs - statSync(a).mtimeMs;
+        return fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs;
       } catch {
         return 0;
       }
