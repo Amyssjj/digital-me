@@ -115,6 +115,29 @@ export async function materializeOpenclawOverlay(
           // listing explicitly is safer across esbuild versions):
           "node:*",
         ],
+        // ESM output + bundled CJS dependencies = esbuild emits `__require(x)`
+        // for every require() it cannot inline (anything external, which with
+        // platform:node includes the node built-ins). That shim THROWS
+        // `Dynamic require of "x" is not supported` unless a real `require`
+        // exists in scope — and ESM has none. The gateway then refuses the
+        // whole plugin at load time, so every tool it registers silently
+        // disappears while `openclaw plugins inspect` still reports
+        // "Status: loaded" (that is manifest state, not runtime state).
+        //
+        // This bit us for real: yaml@2.9's CJS dist calls `require("process")`
+        // (a BARE specifier — note it is not matched by the "node:*" external
+        // pattern above), which took digital-me-brain offline entirely: no
+        // tasks, agent_identify, traces_record, m1_event_record or m1_score,
+        // and therefore no brain MCP for any client.
+        //
+        // Defining `require` via createRequire makes the shim delegate to a
+        // real resolver instead of throwing.
+        banner: {
+          js: [
+            'import { createRequire as __dmCreateRequire } from "node:module";',
+            "const require = __dmCreateRequire(import.meta.url);",
+          ].join("\n"),
+        },
         // Source map is small + helps debug live errors:
         sourcemap: "inline",
         // Silence the dev-time warnings about node built-ins:

@@ -78,9 +78,25 @@ export function mergeCodexMd(
   existing: string,
   newManagedSection: string,
 ): string {
-  const wrapped = `${SECTION_BEGIN}\n${newManagedSection.trim()}\n${SECTION_END}`;
+  // Strip any markers the incoming section already carries before wrapping.
+  // The shipped CODEX.md template contains its own BEGIN/END pair (lines 11
+  // and 132), so wrapping it verbatim nests a section inside a section on
+  // EVERY install. Identical root cause to hermes' SOUL.md.
+  const bare = newManagedSection
+    .split("\n")
+    .filter((l) => l.trim() !== SECTION_BEGIN && l.trim() !== SECTION_END)
+    .join("\n")
+    .trim();
+  const wrapped = `${SECTION_BEGIN}\n${bare}\n${SECTION_END}`;
   const beginIdx = existing.indexOf(SECTION_BEGIN);
-  const endIdx = existing.indexOf(SECTION_END);
+  // LAST end marker, not the first: with `indexOf`, every marker after the
+  // first one landed in `after` and survived each merge, so damage
+  // accumulated instead of being replaced. The live CODEX.md had reached
+  // 2 BEGIN / 9 END markers this way (2026-09-01) — the hermes fix was
+  // applied and this twin was missed, caught in maintainer review.
+  // Spanning to the last marker makes a damaged file self-heal on the next
+  // install.
+  const endIdx = existing.lastIndexOf(SECTION_END);
   if (beginIdx >= 0 && endIdx > beginIdx) {
     // Replace the existing managed span (inclusive of both markers).
     const before = existing.slice(0, beginIdx);
@@ -101,6 +117,51 @@ export function mergeCodexMd(
  * the simple key=value MCP-server stanzas we ship, and avoids pulling
  * in a TOML parser dependency.
  */
+
+/** Keys a fragment declares INLINE (`key = ...`) directly under its header. */
+export function inlineKeysOf(fragment: string): string[] {
+  const keys: string[] = [];
+  let seenHeader = false;
+  for (const raw of fragment.split("\n")) {
+    const line = raw.trim();
+    if (line.startsWith("[") && line.endsWith("]")) {
+      if (seenHeader) break; // a nested/next table ends the inline region
+      seenHeader = true;
+      continue;
+    }
+    if (!seenHeader) continue;
+    const m = /^([A-Za-z0-9_-]+)\s*=/.exec(line);
+    if (m) keys.push(m[1]!);
+  }
+  return keys;
+}
+
+/**
+ * Remove `[<header-body>.<key>]` sub-tables for each key in `inlineKeys`,
+ * along with the lines they own (up to the next table header).
+ *
+ * `header` arrives as `[mcp_servers.<name>]`; the sub-table to strip is
+ * therefore `[mcp_servers.<name>.<key>]`.
+ */
+export function stripDuplicatedSubTables(
+  lines: readonly string[],
+  header: string,
+  inlineKeys: readonly string[],
+): string[] {
+  if (inlineKeys.length === 0) return [...lines];
+  const base = header.trim().slice(1, -1); // "mcp_servers.<name>"
+  const targets = new Set(inlineKeys.map((k) => `[${base}.${k}]`));
+  const out: string[] = [];
+  let skipping = false;
+  for (const line of lines) {
+    const t = line.trim();
+    const isHeader = t.startsWith("[") && t.endsWith("]");
+    if (isHeader) skipping = targets.has(t);
+    if (!skipping) out.push(line);
+  }
+  return out;
+}
+
 export function mergeMcpServer(
   existingToml: string,
   fragment: string,
@@ -124,7 +185,24 @@ export function mergeMcpServer(
     }
   }
   const before = lines.slice(0, headerIdx).join("\n");
-  const after = lines.slice(endIdx).join("\n");
+  // Drop any sub-table that re-declares a key our fragment sets INLINE.
+  //
+  // TOML forbids defining a key both ways, and it is a WHOLE-FILE error: the
+  // parser aborts and every other server in config.toml disappears with it.
+  // Codex writes `env` as a sub-table (`[mcp_servers.<name>.env]`) while this
+  // fragment writes it inline, and the block-replacement above stops at the
+  // next `[...]` header — which IS that sub-table — so it survived and
+  // collided. Observed 2026-09-01: re-installing the codex runtime made the
+  // entire config unparseable, taking all six MCP servers down, not just ours.
+  //
+  // Only sub-tables we would actually duplicate are removed; anything else
+  // under the same server (notably `[mcp_servers.<name>.tools.*]`, which holds
+  // per-tool approval settings the operator or codex owns) is preserved.
+  const after = stripDuplicatedSubTables(
+    lines.slice(endIdx),
+    header,
+    inlineKeysOf(fragment),
+  ).join("\n");
   const beforeSep = before.length > 0 && !before.endsWith("\n") ? "\n" : "";
   const afterSep = after.length > 0 ? "\n" : "";
   return `${before}${beforeSep}${fragment.trim()}\n${afterSep}${after}`;
@@ -184,6 +262,11 @@ export const DEFAULT_CODEX_HOOKS_DIR = "$HOME/.codex/hooks";
  *                        dm_session_extract.sh         (skinny audit log)
  *                        dm_application_rate.sh        (M1 assistant_ack + session_end)
  *   - PreToolUse       → brain_route_inject.sh         (brain-MCP protocol injection)
+ *
+ * Timeouts:
+ *   - memory_search inject: 12s to match the hook script's curl default
+ *     (DIGITAL_ME_HOOK_TIMEOUT_SECS:-12). A shorter manifest timeout kills
+ *     the hook before curl finishes, making slow searches look like empty injects.
  */
 export function buildCodexHooksManifest(
   hooksDir: string = DEFAULT_CODEX_HOOKS_DIR,
@@ -196,7 +279,7 @@ export function buildCodexHooksManifest(
           {
             type: "command",
             command: cmd("dm_memory_search_inject.sh"),
-            timeout: 8,
+            timeout: 12,
             statusMessage: "Digital Me: searching brain…",
           },
         ],

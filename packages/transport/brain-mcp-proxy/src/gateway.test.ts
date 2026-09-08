@@ -249,3 +249,65 @@ describe("invokeGatewayTool — timeout firing in real time", () => {
     expect(receivedSignal?.aborted).toBe(true);
   });
 });
+
+describe("invokeGatewayTool — agentId in the invoke envelope", () => {
+  const gateway = { url: "http://127.0.0.1:18789/tools/invoke", token: "t" };
+  const okResponse = () =>
+    Promise.resolve({
+      json: () => Promise.resolve({ ok: true, result: { content: [] } }),
+    } as unknown as Response);
+
+  it("sends agentId at the TOP level, alongside (not inside) args", async () => {
+    // openclaw >= 2026.8.1 rejects a multi-agent invocation with no owner:
+    // 'Multiple agents are configured, but session key "main" has no explicit
+    // owner.' The owner belongs on the envelope; args.agent_id is separate
+    // attribution metadata the brain tools read.
+    let body: Record<string, unknown> = {};
+    await invokeGatewayTool({
+      toolName: "memory_search",
+      args: { query: "q", agent_id: "hermes" },
+      gateway,
+      fetchFn: ((_u: string, init: { body: string }) => {
+        body = JSON.parse(init.body) as Record<string, unknown>;
+        return okResponse();
+      }) as never,
+      timeoutMs: 1000,
+      agentId: "main",
+    });
+    expect(body.agentId).toBe("main");
+    expect(body.tool).toBe("memory_search");
+    // attribution is preserved and NOT overwritten by the owner
+    expect((body.args as Record<string, unknown>).agent_id).toBe("hermes");
+  });
+
+  it("omits agentId entirely when none is given (single-agent hosts need no owner)", async () => {
+    let body: Record<string, unknown> = {};
+    await invokeGatewayTool({
+      toolName: "tasks",
+      args: {},
+      gateway,
+      fetchFn: ((_u: string, init: { body: string }) => {
+        body = JSON.parse(init.body) as Record<string, unknown>;
+        return okResponse();
+      }) as never,
+      timeoutMs: 1000,
+    });
+    expect("agentId" in body).toBe(false);
+  });
+
+  it("omits agentId when it is blank rather than sending an empty owner", async () => {
+    let body: Record<string, unknown> = {};
+    await invokeGatewayTool({
+      toolName: "tasks",
+      args: {},
+      gateway,
+      fetchFn: ((_u: string, init: { body: string }) => {
+        body = JSON.parse(init.body) as Record<string, unknown>;
+        return okResponse();
+      }) as never,
+      timeoutMs: 1000,
+      agentId: "",
+    });
+    expect("agentId" in body).toBe(false);
+  });
+});

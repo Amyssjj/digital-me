@@ -32,7 +32,40 @@ export const MIN_OPENCLAW_VERSION = "2026.5.12";
 export const OPENCLAW_MIN_HOST_VERSION = `>=${MIN_OPENCLAW_VERSION}`;
 
 /** Highest openclaw stable release the plugins have been verified against. */
-export const MAX_TESTED_OPENCLAW_VERSION = "2026.6.10";
+export const MAX_TESTED_OPENCLAW_VERSION = "2026.8.1";
+
+/**
+ * First openclaw release that moved the memory-search config block from
+ * `agents.defaults.memorySearch` to the root `memory.search` namespace.
+ *
+ * This is a HARD cutover, not a soft rename — both schemas are `.strict()`,
+ * so the legacy key is rejected on a new host and the new key is rejected on
+ * an old one. openclaw's config loader THROWS on an unknown key
+ * (`config/io.load.ts` → `throwInvalidConfig`), which means a config carrying
+ * the wrong layout stops the gateway from starting at all. Callers that write
+ * this block must pick the layout that matches the running host.
+ *
+ * Verified: 2026.6.11 `zod-schema.agent-defaults.ts` mounts `memorySearch`
+ * and its root `MemorySchema` has no `search` key; 2026.8.1
+ * `zod-schema.root-support.ts` mounts `memory.search` and `agents.defaults`
+ * no longer accepts `memorySearch`.
+ */
+export const MEMORY_SEARCH_NAMESPACE_MIN_VERSION = "2026.7.1";
+
+/**
+ * First openclaw release that gates `before_prompt_build` behind the
+ * conversation-access plugin policy.
+ *
+ * `agent_end` has been gated since well before 2026.6.11, but 2026.8.1 added
+ * `before_prompt_build` and `agent_turn_prepare` to `CONVERSATION_HOOK_NAMES`
+ * (`plugins/hook-types.ts`). A non-bundled plugin — which every digital-me
+ * plugin is (`Origin: global`) — must set
+ * `plugins.entries.<id>.hooks.allowConversationAccess: true` or the hook is
+ * silently dropped at registration: a warn diagnostic and an early `return`,
+ * no error and no failed load. Setting the flag is valid on both sides of the
+ * cutover, so it is safe to grant unconditionally.
+ */
+export const CONVERSATION_HOOK_PROMPT_BUILD_MIN_VERSION = "2026.8.1";
 
 /** Parse a "YYYY.M.PATCH[-prerelease][+build]" version into [year, month, patch]. */
 function parseVersionTriple(version: string): [number, number, number] | null {
@@ -49,6 +82,23 @@ function isStrictlyNewer(
   if (a[0] !== b[0]) return a[0] > b[0];
   if (a[1] !== b[1]) return a[1] > b[1];
   return a[2] > b[2];
+}
+
+/**
+ * True when `version` is at least `minimum` on [year, month, patch].
+ * Returns undefined when either version cannot be parsed — callers must treat
+ * that as "unknown", never as false, so an unreadable host version never
+ * silently selects the wrong config layout.
+ */
+export function isAtLeastOpenclawVersion(
+  version: string | undefined,
+  minimum: string,
+): boolean | undefined {
+  if (!version) return undefined;
+  const a = parseVersionTriple(version);
+  const b = parseVersionTriple(minimum);
+  if (!a || !b) return undefined;
+  return !isStrictlyNewer(b, a);
 }
 
 /**

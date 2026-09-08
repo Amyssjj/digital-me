@@ -79,9 +79,29 @@ export function mergeSoulMd(
   existing: string,
   newManagedSection: string,
 ): string {
-  const wrapped = `${SECTION_BEGIN}\n${newManagedSection.trim()}\n${SECTION_END}`;
+  // Strip any markers the incoming section already carries before wrapping.
+  // The shipped template contains its own BEGIN/END pair, so wrapping it
+  // verbatim nested one section inside another on EVERY install — which is
+  // how a live SOUL.md accumulated 2 begin and 9 end markers.
+  const bare = newManagedSection
+    .split("\n")
+    .filter((l) => l.trim() !== SECTION_BEGIN && l.trim() !== SECTION_END)
+    .join("\n")
+    .trim();
+  const wrapped = `${SECTION_BEGIN}\n${bare}\n${SECTION_END}`;
   const beginIdx = existing.indexOf(SECTION_BEGIN);
-  const endIdx = existing.indexOf(SECTION_END);
+  // LAST end marker, not the first.
+  //
+  // With `indexOf` here, any marker after the first one fell into `after` and
+  // survived every subsequent merge — so duplicates accumulated instead of
+  // being replaced. A live SOUL.md reached TWO begin markers and NINE end
+  // markers this way (2026-09-01), which then tripped the malformed-section
+  // guard below and would have made the next install throw outright.
+  //
+  // Taking the last end marker makes the replacement span cover every stray
+  // marker in between, so a damaged file self-heals on the next install
+  // rather than degrading further.
+  const endIdx = existing.lastIndexOf(SECTION_END);
   if (
     (beginIdx >= 0 && endIdx < 0) ||
     (beginIdx < 0 && endIdx >= 0) ||

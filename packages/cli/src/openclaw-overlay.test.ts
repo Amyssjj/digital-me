@@ -197,6 +197,21 @@ describe("materializeOpenclawOverlay (unit)", () => {
         external: ["openclaw/*", "node:*"],
       }),
     );
+    // REGRESSION GUARD. ESM output + bundled CJS deps makes esbuild emit
+    // `__require(x)` for anything it cannot inline, and that shim throws
+    // `Dynamic require of "x" is not supported` because ESM has no `require`.
+    // The gateway then refuses the ENTIRE plugin at load while
+    // `openclaw plugins inspect` still says "Status: loaded" — so every tool
+    // it registers vanishes with no visible error.
+    //
+    // Real incident (2026-08-31): yaml@2.9's CJS dist calls
+    // `require("process")` — a BARE specifier, so the "node:*" external above
+    // does not cover it — which took digital-me-brain fully offline: tasks,
+    // agent_identify, traces_record, m1_event_record and m1_score all
+    // disappeared, and with them the brain MCP for every client.
+    const opts = vi.mocked(build).mock.calls[0]![0] as { banner?: { js?: string } };
+    expect(opts.banner?.js).toContain("createRequire");
+    expect(opts.banner?.js).toContain("import.meta.url");
     const pkg = JSON.parse(
       fs.readFileSync(path.join(target, "bundle-me-plugin", "package.json"), "utf-8"),
     ) as { description?: string; install?: { minHostVersion?: string } };

@@ -63,6 +63,7 @@ import {
   mergeMcpServer,
 } from "@digital-me/runtime-codex";
 import { BIN_PATH as BRAIN_MCP_PROXY_BIN } from "@digital-me/brain-mcp-proxy";
+import { stabilizeRegistration } from "../stable-registration.js";
 import {
   SOUL_MD_TEMPLATE,
   mergeSoulMd,
@@ -80,7 +81,11 @@ import {
   type WorkflowProvenance,
 } from "../doctor.js";
 import { resolveOpenclawExtensionsDir } from "../openclaw-paths.js";
-import { ensureOpenclawMemoryPaths } from "../openclaw-memory.js";
+import JSON5 from "json5";
+import {
+  ensureOpenclawMemoryPaths,
+  resolveOpenclawConfigPath,
+} from "../openclaw-memory.js";
 import {
   DASHBOARD_SERVICE_LABEL,
   buildDashboardServiceUnit,
@@ -101,6 +106,8 @@ import {
   parseAheadBehind,
   parseRecallAckMode,
   planDeployRuntimes,
+  expectedRecallAckMode,
+  resolveGatewayLog,
 } from "../deploy.js";
 import {
   buildDefaultAliases,
@@ -587,9 +594,15 @@ function installCodex(home: string): void {
   // openclaw.json from this path to discover the gateway port + auth token.
   const openclawHome =
     process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  // ~/.codex/config.toml is persistent user config — same hardening as the
+  // other two clients (see stable-registration.ts).
+  const codexStable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
+  for (const note of codexStable.notes) {
+    console.log(`     codex MCP: ${note}`);
+  }
   const tomlFragment = buildCodexMcpConfig({
-    nodeBin: process.execPath,
-    proxyBinPath: BRAIN_MCP_PROXY_BIN,
+    nodeBin: codexStable.nodePath,
+    proxyBinPath: codexStable.binPath,
     openclawHome,
     agentId: "codex",
   });
@@ -622,7 +635,7 @@ function installCodex(home: string): void {
   writeFileSync(hooksJsonPath, JSON.stringify(mergedHooks, null, 2) + "\n", "utf-8");
   console.log(
     `[OK] installed codex: CODEX.md + config.toml merged ` +
-      `(mcp openclaw-brain → ${BRAIN_MCP_PROXY_BIN}); ` +
+      `(mcp openclaw-brain → ${codexStable.binPath}); ` +
       `${CODEX_HOOK_NAMES.length} hooks + hooks.json wired`,
   );
 }
@@ -664,7 +677,13 @@ function installClaudeCodeMcp(): void {
   for (const [k, v] of Object.entries(env)) {
     args.push("-e", `${k}=${v}`);
   }
-  args.push("--", process.execPath, BRAIN_MCP_PROXY_BIN);
+  // Never bake a worktree path or a version-pinned interpreter into
+  // ~/.claude.json — it outlives this process (see stable-registration.ts).
+  const stable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
+  for (const note of stable.notes) {
+    console.log(`     claude-code MCP: ${note}`);
+  }
+  args.push("--", stable.nodePath, stable.binPath);
   const r = spawnSync("claude", args, {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
@@ -677,7 +696,7 @@ function installClaudeCodeMcp(): void {
     return;
   }
   console.log(
-    `[OK] claude-code MCP: registered openclaw-brain → ${BRAIN_MCP_PROXY_BIN}`,
+    `[OK] claude-code MCP: registered openclaw-brain → ${stable.binPath}`,
   );
 }
 
@@ -1311,17 +1330,29 @@ function installHermesMcp(home: string): void {
   });
   const openclawHome =
     process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  // ~/.hermes/config.yaml is persistent user config: harden the same way as
+  // claude-code. Hermes was found in 2026-09 still pointing at a worktree
+  // deleted months earlier, pinned to a since-broken Cellar node.
+  const hermesStable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
+  for (const note of hermesStable.notes) {
+    console.log(`     hermes MCP: ${note}`);
+  }
   const args = [
     "mcp",
     "add",
     "openclaw-brain",
     "--command",
-    process.execPath,
-    "--args",
-    BRAIN_MCP_PROXY_BIN,
+    hermesStable.nodePath,
+    // `hermes mcp add --help`: "--args ... must be the last option". With
+    // --args before --env, argparse's REMAINDER swallowed the env flags into
+    // the args list, so the proxy was launched with `--env OPENCLAW_HOME=...`
+    // as positional arguments and NO environment at all (config showed
+    // `env: None`). Keep --env first and --args strictly last.
     "--env",
     `OPENCLAW_HOME=${openclawHome}`,
     `OPENCLAW_AGENT_ID=hermes`,
+    "--args",
+    hermesStable.binPath,
   ];
   // hermes mcp add probes the server, prints its tool list, then prompts
   // "Enable all N tools? [Y/n/select]:". From a non-TTY parent the prompt
@@ -1339,7 +1370,7 @@ function installHermesMcp(home: string): void {
     return;
   }
   console.log(
-    `[OK] hermes MCP: registered openclaw-brain → ${BRAIN_MCP_PROXY_BIN}`,
+    `[OK] hermes MCP: registered openclaw-brain → ${hermesStable.binPath}`,
   );
 }
 
@@ -1408,8 +1439,10 @@ async function installOpenclaw(
   if (!mem.ok) {
     console.error(
       `install openclaw: could not update memory paths (${mem.error}). ` +
-        `Add the wiki + tastes dirs to agents.defaults.memorySearch.extraPaths ` +
-        `in ${mem.configPath} manually.`,
+        `Add the wiki + tastes dirs to the memory-search block's extraPaths ` +
+        `in ${mem.configPath} manually (memory.search on openclaw >= 2026.7.1, ` +
+        `agents.defaults.memorySearch before — the schemas are strict, so the ` +
+        `wrong one is rejected).`,
     );
   } else if (mem.added.length > 0) {
     console.log(
@@ -1423,7 +1456,8 @@ async function installOpenclaw(
     console.log(
       `[OK] memory_search embeddings: no provider configured — seeded ` +
         `fallback: "local" (openclaw's keyless bundled embedder) so the index ` +
-        `builds without an API key. Override under agents.defaults.memorySearch ` +
+        `builds without an API key. Override under ` +
+        `${mem.layout === "namespaced" ? "memory.search" : "agents.defaults.memorySearch"} ` +
         `in ${mem.configPath}.`,
     );
   }
@@ -2312,16 +2346,27 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
     return false;
   }
   spawnSync("openclaw", ["gateway", "restart"], { stdio: "inherit" });
-  // Expected fingerprint = the marker baked into the just-deployed bundle.
-  const recallEntry = path.join(
-    resolveOpenclawExtensionsDir(home, process.env, undefined),
-    "digital-me-recall",
-    "index.mjs",
-  );
-  const expected = existsSync(recallEntry)
-    ? readFileSync(recallEntry, "utf-8").match(/assistant_ack=([^,"`)\s]+)/)?.[1] ?? null
-    : null;
-  const logPath = path.join(home, "Library", "Logs", "openclaw", "gateway.log");
+  // Expected marker = what this host's config entitles the plugin to register.
+  // Derived from the same grant the plugin reads, so a missing
+  // allowConversationAccess shows up here as a divergence rather than as a
+  // recall outage nobody notices.
+  const expected = ((): string | null => {
+    const cfgPath = resolveOpenclawConfigPath(home, process.env);
+    if (!existsSync(cfgPath)) return null;
+    try {
+      return expectedRecallAckMode(JSON5.parse(readFileSync(cfgPath, "utf-8")));
+    } catch {
+      return null;
+    }
+  })();
+  const logPath = resolveGatewayLog(process.env, home);
+  if (!logPath) {
+    console.log(
+      "deploy openclaw: no gateway log found — restart succeeded but cannot verify the live marker yet. " +
+        "Marker will confirm on the first agent turn after the gateway emits its log.",
+    );
+    return true;
+  }
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
     if (existsSync(logPath)) {
@@ -2332,7 +2377,11 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
           return true;
         }
         console.error(
-          `deploy openclaw: DIVERGENCE — live marker (${live}) != deployed (${expected}).`,
+          `deploy openclaw: DIVERGENCE — live marker (${live}) != expected (${expected}). ` +
+            `The host registered a different set of ack hooks than the config entitles. ` +
+            `If 'agent_end' is missing live, plugins.entries.digital-me-recall.hooks` +
+            `.allowConversationAccess is not being honoured — run ` +
+            `scripts/verify_openclaw_hooks.sh.`,
         );
         return false;
       }

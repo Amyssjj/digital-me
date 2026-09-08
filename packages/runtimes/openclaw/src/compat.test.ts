@@ -1,7 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  CONVERSATION_HOOK_PROMPT_BUILD_MIN_VERSION,
+  isAtLeastOpenclawVersion,
   MAX_TESTED_OPENCLAW_VERSION,
+  MEMORY_SEARCH_NAMESPACE_MIN_VERSION,
   OPENCLAW_MIN_HOST_VERSION,
   resolveHostOpenclawVersion,
   warnIfUntestedHost,
@@ -62,11 +65,11 @@ describe("compat", () => {
   });
 
   it("warns when the host is newer than the tested range", () => {
-    const { api, warnings } = makeApi("2026.7.0");
+    const { api, warnings } = makeApi("2026.9.1");
     warnIfUntestedHost(api, "digital-me-brain");
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("digital-me-brain");
-    expect(warnings[0]).toContain("2026.7.0");
+    expect(warnings[0]).toContain("2026.9.1");
   });
 
   it("does not warn when the host equals the tested ceiling", () => {
@@ -131,5 +134,40 @@ describe("compat", () => {
       },
     };
     expect(() => warnIfUntestedHost(api, "digital-me-brain")).not.toThrow();
+  });
+});
+
+describe("isAtLeastOpenclawVersion", () => {
+  it("compares on [year, month, patch], not string order", () => {
+    // "2026.10.1" < "2026.9.1" lexicographically but is NEWER by calendar.
+    expect(isAtLeastOpenclawVersion("2026.10.1", "2026.9.1")).toBe(true);
+    expect(isAtLeastOpenclawVersion("2026.6.11", "2026.7.1")).toBe(false);
+    expect(isAtLeastOpenclawVersion("2026.7.1", "2026.7.1")).toBe(true);
+    expect(isAtLeastOpenclawVersion("2026.8.1", "2026.7.1")).toBe(true);
+    // Patch ordering within a month is numeric, not lexical: 6.34 > 6.11.
+    expect(isAtLeastOpenclawVersion("2026.6.34", "2026.6.11")).toBe(true);
+  });
+
+  it("tolerates a prerelease suffix on the host version", () => {
+    expect(isAtLeastOpenclawVersion("2026.9.1-beta.1", "2026.8.1")).toBe(true);
+  });
+
+  it("returns undefined — never false — when a version is unparseable", () => {
+    // A caller must be able to distinguish "older" from "unknown": picking a
+    // config layout from a bad parse would make openclaw reject the config.
+    expect(isAtLeastOpenclawVersion(undefined, "2026.7.1")).toBeUndefined();
+    expect(isAtLeastOpenclawVersion("unknown", "2026.7.1")).toBeUndefined();
+    expect(isAtLeastOpenclawVersion("2026.7.1", "not-a-version")).toBeUndefined();
+  });
+});
+
+describe("openclaw cutover constants", () => {
+  it("pins the releases whose behaviour digital-me branches on", () => {
+    // Changing either of these changes which config layout we write and when
+    // we expect hooks to be gated — both are load-bearing, so pin them.
+    expect(MEMORY_SEARCH_NAMESPACE_MIN_VERSION).toBe("2026.7.1");
+    expect(CONVERSATION_HOOK_PROMPT_BUILD_MIN_VERSION).toBe("2026.8.1");
+    // The verified ceiling must not drift below a cutover we already handle.
+    expect(isAtLeastOpenclawVersion(MAX_TESTED_OPENCLAW_VERSION, MEMORY_SEARCH_NAMESPACE_MIN_VERSION)).toBe(true);
   });
 });

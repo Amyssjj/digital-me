@@ -47,12 +47,13 @@ describe("installer paths — brain plugin", () => {
     expect(targets).toEqual(["index.mjs", "openclaw.plugin.json"]);
   });
 
-  it("the brain manifest declares all 7 brain tool contracts (incl. M1 universal protocol)", () => {
+  it("the brain manifest declares all 8 brain tool contracts (incl. M1 universal protocol + brain_memory_search)", () => {
     const manifest = JSON.parse(
       fs.readFileSync(BRAIN_MANIFEST_TEMPLATE, "utf8"),
     ) as { contracts: { tools: string[] } };
     expect(manifest.contracts.tools.sort()).toEqual([
       "agent_identify",
+      "brain_memory_search",
       "learning_capture",
       "m1_event_record",
       "m1_score",
@@ -156,8 +157,20 @@ describe("installer paths — recall plugin", () => {
     // before_message_write is SYNCHRONOUS — the handler must not be async
     // (the host drops Promise returns).
     expect(entry).toContain('api.on("before_message_write", (event, ctx) =>');
-    // The registration-log marker advertises both emitters.
-    expect(entry).toContain("assistant_ack=agent_end+before_message_write");
+    // The registration-log marker is DERIVED, not hardcoded. A literal
+    // `assistant_ack=agent_end+before_message_write` would keep advertising
+    // agent_end even when openclaw refused to register it — which is exactly
+    // how a blocked conversation hook stayed invisible to `digital-me deploy`'s
+    // fingerprint check. The marker must be computed from the hooks the host
+    // will actually honour.
+    expect(entry).not.toContain("assistant_ack=agent_end+before_message_write");
+    expect(entry).toContain("const ackSources = [");
+    expect(entry).toContain("assistant_ack=${ackSources.join");
+    // ...and the boot self-check that feeds it must be present, so a missing
+    // grant is loud in the gateway log instead of silent.
+    expect(entry).toContain("conversationAccessGranted");
+    expect(entry).toContain("conversation_hooks=");
+    expect(entry).toContain("CONVERSATION HOOKS NOT GRANTED");
   });
 
   it("Hook D's INSERT uses the actual traces table schema (id, agent_id, kind, payload, t)", () => {

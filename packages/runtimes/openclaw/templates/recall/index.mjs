@@ -49,6 +49,46 @@ import {
   warnIfUntestedHost,
 } from "@digital-me/runtime-openclaw";
 
+// ─── Conversation-hook access self-check ────────────────────────────────
+//
+// openclaw drops a "conversation" typed hook at registration when a
+// NON-BUNDLED plugin has not opted in via
+// `plugins.entries.<id>.hooks.allowConversationAccess: true`. It emits a warn
+// diagnostic and returns — the plugin still loads, still registers its tools,
+// and still looks healthy. Only the hooks are gone.
+//
+// `api.on()` cannot report this: the drop happens inside the host and returns
+// void either way. So instead of claiming what registered, read the policy we
+// were given and say plainly which of OUR hooks the host will refuse.
+//
+// The gated set grew over time; this is the 2026.8.1 set, which is a superset
+// of every earlier one, so a hook listed here that is NOT gated on an older
+// host only costs an over-cautious warning — never a false green.
+const CONVERSATION_GATED_HOOKS = new Set([
+  "before_model_resolve",
+  "agent_turn_prepare",
+  "before_prompt_build",
+  "before_agent_reply",
+  "llm_input",
+  "llm_output",
+  "before_agent_finalize",
+  "agent_end",
+  "before_agent_run",
+]);
+
+/** Hooks this plugin registers that the host may refuse without the grant. */
+const OUR_CONVERSATION_HOOKS = ["before_prompt_build", "agent_end"];
+
+/** True when the running config grants this plugin conversation-hook access. */
+function conversationAccessGranted(api, pluginId) {
+  try {
+    const entry = api?.config?.plugins?.entries?.[pluginId];
+    return entry?.hooks?.allowConversationAccess === true;
+  } catch {
+    return false;
+  }
+}
+
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite");
 
@@ -1060,13 +1100,36 @@ export default definePluginEntry({
       }
     });
 
+    // Report what the host will actually honour, not what we asked for. A
+    // blocked conversation hook is otherwise indistinguishable from a healthy
+    // plugin, so this is the one place the failure becomes visible at boot.
+    const convGranted = conversationAccessGranted(api, "digital-me-recall");
+    const blockedHooks = convGranted
+      ? []
+      : OUR_CONVERSATION_HOOKS.filter((h) => CONVERSATION_GATED_HOOKS.has(h));
+    if (blockedHooks.length > 0) {
+      api.logger.warn(
+        `digital-me-recall: CONVERSATION HOOKS NOT GRANTED — ${blockedHooks.join(", ")} ` +
+          `may be dropped by the host. Set ` +
+          `plugins.entries.digital-me-recall.hooks.allowConversationAccess=true in the ` +
+          `openclaw config and restart the gateway, or run ` +
+          `'digital-me install --runtime openclaw'. Symptom: wiki recall and the ` +
+          `M1 application-ack silently stop with no error.`,
+      );
+    }
+    // `assistant_ack` names the hooks that feed the ack, minus any the host
+    // will refuse — so the deploy-time fingerprint reflects reality.
+    const ackSources = ["agent_end", "before_message_write"].filter(
+      (h) => !blockedHooks.includes(h),
+    );
     api.logger.info(
       `digital-me-recall: registered hooks (` +
         `boot=on, recall=${recallMaxResults > 0 ? "on" : "off"}, ` +
         `route=${enableRouteHashmap ? "on" : "off"}, ` +
         `observability=${enableObservability && brainDb ? "on" : "off"}, ` +
         `m1_emitter=${brainDb ? "on" : "wal-only"}, ` +
-        `assistant_ack=agent_end+before_message_write, ` +
+        `conversation_hooks=${convGranted ? "granted" : "BLOCKED"}, ` +
+        `assistant_ack=${ackSources.join("+") || "none"}, ` +
         `app_rate=on, periodic_flush_ms=${m1FlushIntervalMs}, ` +
         `m1_wal_seeded_sessions=${m1Seeded})`,
     );

@@ -59,6 +59,13 @@ def _accumulate(events, since_ms, surfaced_turns, acked_turns):
             acked_turns[runtime].add(key)
 
 
+def _last_seen(events, out):
+    """Track the newest event timestamp per runtime."""
+    for runtime, _etype, _ack, _sid, _tid, t in events:
+        if isinstance(t, (int, float)) and t > out.get(runtime, 0):
+            out[runtime] = t
+
+
 def _read_brain(brain_db: Path, since_ms: int):
     if not brain_db.exists():
         return []
@@ -112,6 +119,18 @@ def main(argv=None) -> int:
     ap.add_argument("--home", type=Path, default=Path.home())
     ap.add_argument("--brain-db", type=Path, default=None)
     ap.add_argument(
+        "--stale-hours",
+        type=int,
+        default=0,
+        help=(
+            "REGRESSION mode. Fail when a runtime that WAS surfacing knowledge "
+            "during the --days baseline has surfaced nothing in the last N "
+            "hours. This is the check that catches an unknown cause: it asks "
+            "whether the outcome still happens, not whether any particular "
+            "component reports healthy. 0 disables."
+        ),
+    )
+    ap.add_argument(
         "--require-all",
         action="store_true",
         help="Fail unless EVERY known runtime is healthy (surfaced>0 and acked>0).",
@@ -152,11 +171,68 @@ def main(argv=None) -> int:
             status = "ok"
         print(f"{rt:<14}{s:>10}{a:>8}{rate_str:>9}   {status}")
 
-    print()
-    if unhealthy:
-        print(f"UNHEALTHY: {', '.join(unhealthy)}")
+    # ── regression pass: was working, now silent ────────────────────────
+    #
+    # The window check above cannot see a same-day break: a runtime that
+    # surfaced for six days and died today still shows surfaced>0, acked>0
+    # and reports "ok". That is exactly how recall stayed broken for ~18h
+    # across claude-code, codex and hermes on 2026-09-01 while every
+    # component-level check stayed green.
+    #
+    # A runtime with baseline activity and ZERO recent activity is either
+    # broken or genuinely unused; a runtime that was busy all week does not
+    # go quiet on its own. Distinguishing "idle" from "broken" is why this
+    # compares each runtime against ITS OWN history rather than a fixed
+    # expectation.
+    stalled = []
+    if args.stale_hours > 0:
+        recent_ms = int(
+            (datetime.now(timezone.utc)
+             - timedelta(hours=args.stale_hours)).timestamp() * 1000
+        )
+        r_surf, r_ack = defaultdict(set), defaultdict(set)
+        last = {}
+        for reader in (_read_brain(brain_db, since_ms), _read_wals(home, since_ms)):
+            _accumulate(reader, recent_ms, r_surf, r_ack)
+            _last_seen(reader, last)
+
+        print(f"Regression check — surfaced in the last {args.stale_hours}h?\n")
+        print(f"{'runtime':<14}{'baseline':>10}{'recent':>8}   last seen")
+        print("-" * 62)
+        for rt in runtimes:
+            base = len(surfaced_turns.get(rt, set()))
+            rec = len(r_surf.get(rt, set()))
+            ts = last.get(rt)
+            when = (
+                datetime.fromtimestamp(ts / 1000, timezone.utc)
+                .astimezone().strftime("%Y-%m-%d %H:%M")
+                if ts else "never"
+            )
+            if base > 0 and rec == 0:
+                stalled.append(rt)
+                mark = "  ← STALLED"
+            else:
+                mark = ""
+            print(f"{rt:<14}{base:>10}{rec:>8}   {when}{mark}")
+        print()
+
+    if unhealthy or stalled:
+        if unhealthy:
+            print(f"UNHEALTHY: {', '.join(unhealthy)}")
+        if stalled:
+            print(
+                f"STALLED: {', '.join(stalled)} — surfaced during the last "
+                f"{args.days}d but nothing in {args.stale_hours}h."
+            )
+            print(
+                "  Either the runtime is genuinely unused, or its recall path "
+                "is broken. Check the injection path end to end; a component "
+                "reporting healthy does not mean the path works."
+            )
         return 1
     print("All runtimes that surfaced knowledge also recorded application. ✓")
+    if args.stale_hours > 0:
+        print(f"No runtime went silent within {args.stale_hours}h. ✓")
     return 0
 
 

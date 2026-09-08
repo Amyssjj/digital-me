@@ -7,6 +7,24 @@
       "id": "digest-smoke",
       "cmd": "PYTHONPATH=packages/services/digest/src python3 -m digest.smoke",
       "timeoutSec": 120
+    },
+    {
+      "id": "openclaw-hooks-not-blocked",
+      "cmd": "bash scripts/verify_openclaw_hooks.sh",
+      "timeoutSec": 60,
+      "note": "openclaw silently DROPS a conversation typed hook when a non-bundled plugin lacks hooks.allowConversationAccess=true \u2014 warn diagnostic, early return, plugin still loads and still looks healthy. 2026.8.1 added before_prompt_build to that gated set, i.e. the entire wiki-recall path. Nothing else in this profile can see it: the overlay smoke is `node --check` (syntax only), the gateway probe passes, and digest-smoke is unaffected. This is the gate for that class."
+    },
+    {
+      "id": "openclaw-memory-index",
+      "cmd": "bash scripts/verify_openclaw_memory_index.sh",
+      "timeoutSec": 60,
+      "note": "openclaw's full reindex builds into <agent>.sqlite.memory-reindex-<uuid> and does NOT delete it when the build aborts on a revision race, so every failed attempt strands a copy of the whole index (observed: 5.1 GiB in one afternoon). Invisible to every other signal \u2014 `memory status` still reports Dirty:no and search keeps working. Upstream defect (memory-core-host-engine-storage); this is the detect-and-notify half we own."
+    },
+    {
+      "id": "gateway-callers",
+      "cmd": "bash scripts/verify_gateway_callers.sh",
+      "timeoutSec": 30,
+      "note": "Every /tools/invoke caller must send an owning agent. One upstream change (2026.8.1) had SIX call sites across TS/Python/Bash; two were found only by enumeration, with no reported symptom. This is that enumeration made permanent."
     }
   ],
   "contractChecks": [

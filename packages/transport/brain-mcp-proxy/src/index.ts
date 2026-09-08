@@ -23,7 +23,12 @@ export const PACKAGE_ROOT = path.resolve(
  */
 export const BIN_PATH = path.join(PACKAGE_ROOT, "bin", "brain-mcp-proxy.mjs");
 
-export { loadGatewayConfig, resolveDefaultAgentId } from "./config.js";
+export {
+  DEFAULT_GATEWAY_AGENT_ID,
+  loadGatewayConfig,
+  resolveDefaultAgentId,
+  resolveGatewayAgentId,
+} from "./config.js";
 export type { GatewayConfig } from "./config.js";
 export { GatewayConfigError } from "./config.js";
 export { invokeGatewayTool } from "./gateway.js";
