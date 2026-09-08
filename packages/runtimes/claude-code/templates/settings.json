@@ -8,7 +8,7 @@
           {
             "type": "command",
             "command": "$HOME/.claude/hooks/dm_memory_search_inject.sh",
-            "timeout": 8,
+            "timeout": 12,
             "statusMessage": "Digital Me: searching brain…"
           }
         ]
