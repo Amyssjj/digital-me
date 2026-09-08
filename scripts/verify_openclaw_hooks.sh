@@ -78,7 +78,14 @@ for id in "${PLUGINS[@]}"; do
   # Try Node + json5 package first (avoids URL-eating regex), then pyjson5.
   granted=""
   if command -v node >/dev/null 2>&1; then
-    granted=$(node - "$CONFIG" "$id" 2>/dev/null <<'JS'
+    # json5 is declared in packages/cli/package.json; with pnpm shamefully-hoist=false
+    # it's NOT at root node_modules. Set NODE_PATH so require() finds it from repo root.
+    # The script path is <repo>/scripts/verify_openclaw_hooks.sh, so the CLI package is
+    # one dir up, then into packages/cli/node_modules.
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    repo_root="$(dirname "$script_dir")"
+    cli_modules="$repo_root/packages/cli/node_modules"
+    granted=$(NODE_PATH="$cli_modules" node - "$CONFIG" "$id" 2>/dev/null <<'JS'
 const fs = require('fs');
 try {
   const JSON5 = require('json5');
