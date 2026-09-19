@@ -8,6 +8,8 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { HostConfig } from "./config.js";
+import type { ExecRunArgs, ExecRunResult } from "./exec-run.js";
+import { openBrainDb, Orchestrator, type Logger } from "./orchestrator.js";
 import { GeminiEmbedder, HashEmbedder, type Embedder } from "./retriever/embedder.js";
 import { buildIndex, type BuildResult } from "./retriever/index-builder.js";
 import { VectorCache } from "./retriever/search.js";
@@ -24,6 +26,10 @@ export type RuntimeOptions = {
   readonly openDb: OpenDb;
   readonly embedder?: Embedder;
   readonly log?: (line: string) => void;
+  /** Mount the brain-orchestrator tools from brain.db (serve mode). */
+  readonly orchestrator?: boolean;
+  /** Test seam: replaces the exec runner used by the orchestrator's dispatcher. */
+  readonly execRun?: (args: ExecRunArgs) => Promise<ExecRunResult>;
 };
 
 export class BrainHostRuntime {
@@ -31,6 +37,7 @@ export class BrainHostRuntime {
   readonly cache: VectorCache;
   readonly embedder: Embedder;
   readonly deps: ToolDeps;
+  readonly orchestrator: Orchestrator | null;
   private readonly config: HostConfig;
   private readonly log: (line: string) => void;
 
@@ -41,6 +48,16 @@ export class BrainHostRuntime {
     this.store = new IndexStore(opts.openDb(opts.config.dbPath));
     this.cache = new VectorCache(this.store);
     this.embedder = opts.embedder ?? selectEmbedder(opts.config, opts.offline);
+    const orchLog: Logger = (level, msg) => this.log(`[${level}] orchestrator: ${msg}`);
+    this.orchestrator = opts.orchestrator
+      ? new Orchestrator({
+          db: openBrainDb(opts.config.brainDbPath, opts.openDb),
+          wikiRoot: opts.config.wikiRoot,
+          log: orchLog,
+          stallThresholdMs: opts.config.stallThresholdMs,
+          ...(opts.execRun ? { execRun: opts.execRun } : {}),
+        })
+      : null;
     this.deps = {
       store: this.store,
       cache: this.cache,
@@ -48,7 +65,16 @@ export class BrainHostRuntime {
       readableRoots: opts.config.roots.map((r) => r.dir),
       wikiRoot: opts.config.wikiRoot,
       version: VERSION,
+      ...(this.orchestrator ? { extraTools: this.orchestrator.tools } : {}),
     };
+    if (this.orchestrator && opts.config.schedulerEnabled) {
+      this.orchestrator.startScheduler(opts.config.tickIntervalMs);
+    }
+  }
+
+  /** Stop background work (scheduler). Safe to call twice. */
+  close(): void {
+    this.orchestrator?.stopScheduler();
   }
 
   async index(force: boolean): Promise<BuildResult> {
@@ -69,6 +95,7 @@ export class BrainHostRuntime {
       ...this.store.stats(),
       dbPath: this.config.dbPath,
       wikiRoot: join(this.config.wikiRoot),
+      orchestrator: this.orchestrator ? { brainDb: this.config.brainDbPath, ...this.orchestrator.status() } : null,
     };
   }
 }

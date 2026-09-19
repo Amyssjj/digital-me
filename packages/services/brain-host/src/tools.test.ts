@@ -7,7 +7,7 @@ import { HashEmbedder } from "./retriever/embedder.js";
 import { buildIndex } from "./retriever/index-builder.js";
 import { VectorCache } from "./retriever/search.js";
 import { IndexStore } from "./retriever/store.js";
-import { errEnvelope, invokeTool, okEnvelope, resolveReadable, TOOL_NAMES, type ToolDeps } from "./tools.js";
+import { errEnvelope, fromMcpResult, invokeTool, okEnvelope, resolveReadable, TOOL_NAMES, type ToolDeps } from "./tools.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
@@ -89,6 +89,26 @@ describe("invokeTool", () => {
     const deps = await setup();
     const env = await invokeTool(deps, "tasks", {});
     expect(!env.ok && env.error.message).toContain(TOOL_NAMES.join(", "));
+  });
+
+  it("routes to mounted orchestrator tools and lists them in the unknown-tool message", async () => {
+    const deps = await setup();
+    const extra = new Map([
+      ["tasks", { name: "tasks", description: "d", execute: async (p: Readonly<Record<string, unknown>>) => ({ content: [{ type: "text" as const, text: `action=${p.action}` }], details: { json: { ok: 1 } } }) }],
+      ["failing", { name: "failing", description: "d", execute: async () => ({ content: [{ type: "text" as const, text: "nope" }], details: {}, isError: true }) }],
+    ]);
+    const withExtra = { ...deps, extraTools: extra };
+    const ok = await invokeTool(withExtra, "tasks", { action: "board" });
+    expect(ok).toEqual({ ok: true, result: { content: [{ type: "text", text: "action=board" }], details: { json: { ok: 1 } } } });
+    const failing = await invokeTool(withExtra, "failing", {});
+    expect(failing.ok && failing.result.isError).toBe(true);
+    const unknown = await invokeTool(withExtra, "zzz", {});
+    expect(!unknown.ok && unknown.error.message).toContain("tasks, failing");
+  });
+
+  it("fromMcpResult copies content and details", () => {
+    const env = fromMcpResult({ content: [{ type: "text", text: "t" }], details: { a: 1 } });
+    expect(env).toEqual({ ok: true, result: { content: [{ type: "text", text: "t" }], details: { a: 1 } } });
   });
 
   it("okEnvelope pretty-prints details", () => {

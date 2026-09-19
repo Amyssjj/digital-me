@@ -16,6 +16,19 @@ describe("loadConfig", () => {
     expect(c.geminiApiKey).toBeUndefined();
     expect(c.embedModel).toBe("gemini-embedding-001");
     expect(c.embedDims).toBe(768);
+    expect(c.brainDbPath).toBe("/home/j/.openclaw/data/brain.db");
+    expect(c.schedulerEnabled).toBe(false);
+    expect(c.tickIntervalMs).toBe(60_000);
+    expect(c.stallThresholdMs).toBe(3_600_000);
+  });
+
+  it("derives brain.db from OPENCLAW_HOME and parses scheduler settings", () => {
+    const c = loadConfig({ OPENCLAW_HOME: "~/oc", DIGITAL_ME_BRAIN_SCHEDULER: "ON", DIGITAL_ME_TICK_MS: "5000", DIGITAL_ME_STALL_MS: "0" }, "/h");
+    expect(c.brainDbPath).toBe("/h/oc/data/brain.db");
+    expect(c.schedulerEnabled).toBe(true);
+    expect(c.tickIntervalMs).toBe(5000);
+    expect(c.stallThresholdMs).toBe(3_600_000);
+    expect(loadConfig({ DIGITAL_ME_BRAIN_DB: "~/b.db" }, "/h").brainDbPath).toBe("/h/b.db");
   });
 
   it("honours every override and expands ~", () => {

@@ -186,6 +186,16 @@ importers:
         version: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0)
 
   packages/services/brain-host:
+    dependencies:
+      '@digital-me/brain-orchestrator':
+        specifier: workspace:*
+        version: link:../../plugins/brain-orchestrator
+      '@digital-me/runtime-openclaw':
+        specifier: workspace:*
+        version: link:../../runtimes/openclaw
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: ^22.0.0

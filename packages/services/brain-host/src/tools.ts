@@ -7,13 +7,17 @@
 
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, normalize as normalizePath, resolve, sep } from "node:path";
+import type { BrainTool, MCPToolResult } from "@digital-me/brain-orchestrator";
 import { errorMessage } from "./errors.js";
 import type { Embedder } from "./retriever/embedder.js";
 import { search, type VectorCache } from "./retriever/search.js";
 import type { IndexStore } from "./retriever/store.js";
 
 export type ToolEnvelope =
-  | { readonly ok: true; readonly result: { content: { type: "text"; text: string }[]; details: Record<string, unknown> } }
+  | {
+      readonly ok: true;
+      readonly result: { content: { type: "text"; text: string }[]; details: Record<string, unknown>; isError?: boolean };
+    }
   | { readonly ok: false; readonly error: { type: string; message: string } };
 
 export type ToolDeps = {
@@ -25,9 +29,23 @@ export type ToolDeps = {
   /** The directory containing wiki/ and tastes/; `wiki/x/y.md` paths resolve against it. */
   readonly wikiRoot: string;
   readonly version: string;
+  /** Orchestrator tools (tasks, agent_identify, …) mounted alongside the retriever tools. */
+  readonly extraTools?: ReadonlyMap<string, BrainTool>;
 };
 
 export const TOOL_NAMES = ["memory_search", "memory_get", "wiki"] as const;
+
+/** Wrap a brain-orchestrator MCP result in the gateway envelope (isError passes through). */
+export function fromMcpResult(r: MCPToolResult): ToolEnvelope {
+  return {
+    ok: true,
+    result: {
+      content: r.content.map((c) => ({ type: "text" as const, text: c.text })),
+      details: { ...r.details },
+      ...(r.isError ? { isError: true } : {}),
+    },
+  };
+}
 
 export function okEnvelope(details: Record<string, unknown>): ToolEnvelope {
   return { ok: true, result: { content: [{ type: "text", text: JSON.stringify(details, null, 2) }], details } };
@@ -49,8 +67,12 @@ export async function invokeTool(deps: ToolDeps, tool: string, args: Record<stri
       return memoryGet(deps, args);
     case "wiki":
       return wikiTool(deps, args);
-    default:
-      return errEnvelope("unknown_tool", `Unknown tool "${tool}" (brain-host serves: ${TOOL_NAMES.join(", ")})`);
+    default: {
+      const extra = deps.extraTools?.get(tool);
+      if (extra) return fromMcpResult(await extra.execute(args));
+      const served = [...TOOL_NAMES, ...(deps.extraTools?.keys() ?? [])].join(", ");
+      return errEnvelope("unknown_tool", `Unknown tool "${tool}" (brain-host serves: ${served})`);
+    }
   }
 }
 

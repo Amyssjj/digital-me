@@ -29,7 +29,13 @@ export async function main(argv: readonly string[]): Promise<number> {
   }
   const config = loadConfig(process.env);
   const offline = cmd.kind === "status" ? true : cmd.offline;
-  const runtime = new BrainHostRuntime({ config, offline, openDb: (p) => new DatabaseSync(p), log });
+  const runtime = new BrainHostRuntime({
+    config,
+    offline,
+    openDb: (p) => new DatabaseSync(p),
+    log,
+    orchestrator: cmd.kind === "serve" && cmd.orchestrator,
+  });
 
   switch (cmd.kind) {
     case "index": {
@@ -61,9 +67,11 @@ export async function main(argv: readonly string[]): Promise<number> {
       }
       const port = cmd.port ?? config.port;
       const server = await startServer({ runtime, token: config.token, host: config.host, port, log });
-      log(`serving http://${config.host}:${port} (tools: memory_search, memory_get, wiki)`);
+      const toolList = ["memory_search", "memory_get", "wiki", ...(runtime.orchestrator?.tools.keys() ?? [])];
+      log(`serving http://${config.host}:${port} (tools: ${toolList.join(", ")}; scheduler ${config.schedulerEnabled ? "ON" : "off"})`);
       await new Promise<void>((resolve) => {
         const stop = (): void => {
+          runtime.close();
           server.close(() => resolve());
         };
         process.once("SIGINT", stop);

@@ -9,6 +9,10 @@
  *   GEMINI_API_KEY           embedding provider key (required unless --offline)
  *   DIGITAL_ME_EMBED_MODEL   default gemini-embedding-001
  *   DIGITAL_ME_EMBED_DIMS    default 768
+ *   DIGITAL_ME_BRAIN_DB      default <OPENCLAW_HOME or ~/.openclaw>/data/brain.db
+ *   DIGITAL_ME_BRAIN_SCHEDULER  on|off (default off — one ticker per brain.db)
+ *   DIGITAL_ME_TICK_MS       default 60000
+ *   DIGITAL_ME_STALL_MS      default 3600000
  */
 
 import { homedir } from "node:os";
@@ -16,6 +20,12 @@ import { join } from "node:path";
 
 export type HostConfig = {
   readonly wikiRoot: string;
+  /** brain.db path (goals, tasks, traces, …). Default: <OPENCLAW_HOME or ~/.openclaw>/data/brain.db until the Phase 3 move. */
+  readonly brainDbPath: string;
+  /** Scheduler tick on/off. OFF by default: exactly one host may tick a brain.db. */
+  readonly schedulerEnabled: boolean;
+  readonly tickIntervalMs: number;
+  readonly stallThresholdMs: number;
   readonly roots: { dir: string; corpus: "wiki" | "tastes" }[];
   readonly dbPath: string;
   readonly token: string | undefined;
@@ -32,8 +42,13 @@ export function loadConfig(env: Record<string, string | undefined>, home: string
   const wikiRoot = expandHome(env.DIGITAL_ME_WIKI_ROOT ?? join(home, "digital-me"), home);
   const port = Number.parseInt(env.DIGITAL_ME_BRAIN_PORT ?? "", 10);
   const dims = Number.parseInt(env.DIGITAL_ME_EMBED_DIMS ?? "", 10);
+  const openclawHome = expandHome(env.OPENCLAW_HOME ?? join(home, ".openclaw"), home);
   return {
     wikiRoot,
+    brainDbPath: expandHome(env.DIGITAL_ME_BRAIN_DB ?? join(openclawHome, "data", "brain.db"), home),
+    schedulerEnabled: (env.DIGITAL_ME_BRAIN_SCHEDULER ?? "off").toLowerCase() === "on",
+    tickIntervalMs: positiveInt(env.DIGITAL_ME_TICK_MS, 60_000),
+    stallThresholdMs: positiveInt(env.DIGITAL_ME_STALL_MS, 60 * 60 * 1000),
     roots: [
       { dir: join(wikiRoot, "wiki"), corpus: "wiki" },
       { dir: join(wikiRoot, "tastes"), corpus: "tastes" },
@@ -46,6 +61,11 @@ export function loadConfig(env: Record<string, string | undefined>, home: string
     embedModel: env.DIGITAL_ME_EMBED_MODEL || "gemini-embedding-001",
     embedDims: Number.isFinite(dims) && dims > 0 ? dims : 768,
   };
+}
+
+function positiveInt(raw: string | undefined, fallback: number): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(n) && n > 0 ? n : fallback;
 }
 
 export function expandHome(p: string, home: string): string {

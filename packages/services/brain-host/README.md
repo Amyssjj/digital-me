@@ -6,7 +6,19 @@ this repo, on the same `POST /tools/invoke` wire the openclaw gateway speaks.
 Every existing caller (brain-mcp-proxy, the Claude Code / Codex / Hermes hooks,
 the dashboard) keeps working; only the host, port and token change.
 
-Later phases mount the brain-orchestrator tools and the scheduler tick here too.
+Phase 2 mounts the brain-orchestrator on the same server: `tasks`,
+`agent_identify`, `learning_capture`, `traces_record`, `traces_query`,
+`m1_event_record`, `m1_score` are served from brain.db (opened and migrated by
+brain-host, exactly as the openclaw plugin template did), and the scheduler
+tick runs here when enabled. That makes the tool surface identical to what
+`brain-mcp-proxy` advertises, so the proxy can be pointed at brain-host instead
+of the gateway.
+
+**Single-ticker rule.** The scheduler tick is OFF by default
+(`DIGITAL_ME_BRAIN_SCHEDULER=on` enables it). Exactly one process may tick a
+brain.db; while the openclaw `digital-me-brain` plugin still ticks, leave this
+off or schedules double-fire. Dispatch in Phase 2 is exec-only: `spawn` tasks
+are left `ready` and logged, never failed.
 
 ## What the retriever indexes
 
@@ -43,7 +55,12 @@ DIGITAL_ME_BRAIN_TOKEN=<secret> node --env-file=~/.openclaw/.env \
   packages/services/brain-host/bin/brain-host.mjs serve --port 18791
 ```
 
-Environment: `DIGITAL_ME_WIKI_ROOT` (default `~/digital-me`),
+`serve` mounts the orchestrator unless `--no-orchestrator` is passed.
+
+Environment: `DIGITAL_ME_BRAIN_DB` (default `<OPENCLAW_HOME or ~/.openclaw>/data/brain.db`
+until the Phase 3 move), `DIGITAL_ME_BRAIN_SCHEDULER` (`on`|`off`, default off),
+`DIGITAL_ME_TICK_MS` (60000), `DIGITAL_ME_STALL_MS` (3600000),
+`DIGITAL_ME_WIKI_ROOT` (default `~/digital-me`),
 `DIGITAL_ME_RETRIEVAL_DB` (default `<wiki-root>/.data/retrieval.db`),
 `DIGITAL_ME_BRAIN_TOKEN`, `DIGITAL_ME_BRAIN_PORT` (18791),
 `DIGITAL_ME_BRAIN_HOST` (127.0.0.1), `GEMINI_API_KEY`, `DIGITAL_ME_EMBED_MODEL`,

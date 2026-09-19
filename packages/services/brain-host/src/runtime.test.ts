@@ -46,6 +46,36 @@ describe("BrainHostRuntime", () => {
   });
 });
 
+describe("BrainHostRuntime with orchestrator", () => {
+  it("mounts orchestrator tools, serves them, reports them in health, and honours the scheduler flag", async () => {
+    const config = { ...fixture(), brainDbPath: join(dir, ".data", "brain.db"), schedulerEnabled: true, tickIntervalMs: 60_000 };
+    const rt = new BrainHostRuntime({ config, offline: true, openDb: (p) => new DatabaseSync(p), orchestrator: true, execRun: async () => ({ success: true, timedOut: false, stdout: "", stderr: "" }) });
+    expect(rt.orchestrator).not.toBeNull();
+    const board = await rt.invoke("tasks", { action: "board" });
+    expect(board.ok).toBe(true);
+    const h = rt.health() as { orchestrator: { scheduler: string; tools: string[]; brainDb: string } };
+    expect(h.orchestrator.scheduler).toBe("on");
+    expect(h.orchestrator.tools).toContain("tasks");
+    expect(h.orchestrator.brainDb).toBe(config.brainDbPath);
+    rt.close();
+    rt.close();
+    expect((rt.health() as { orchestrator: { scheduler: string } }).orchestrator.scheduler).toBe("off");
+  });
+
+  it("does not mount the orchestrator by default and close() is a no-op", () => {
+    const rt = new BrainHostRuntime({ config: fixture(), offline: true, openDb: () => new DatabaseSync(":memory:") });
+    expect(rt.orchestrator).toBeNull();
+    expect(rt.health().orchestrator).toBeNull();
+    rt.close();
+  });
+
+  it("mounts with the default exec runner and scheduler off", () => {
+    const config = { ...fixture(), brainDbPath: join(dir, "brain.db") };
+    const rt = new BrainHostRuntime({ config, offline: true, openDb: (p) => new DatabaseSync(p), orchestrator: true });
+    expect((rt.health() as { orchestrator: { scheduler: string } }).orchestrator.scheduler).toBe("off");
+  });
+});
+
 describe("selectEmbedder", () => {
   it("picks hash offline, gemini with a key, and errors without one", () => {
     const base = loadConfig({}, "/h");

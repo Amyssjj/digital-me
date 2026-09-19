@@ -6,7 +6,7 @@
 export type Command =
   | { readonly kind: "index"; readonly force: boolean; readonly offline: boolean }
   | { readonly kind: "search"; readonly query: string; readonly limit: number | undefined; readonly offline: boolean; readonly json: boolean }
-  | { readonly kind: "serve"; readonly port: number | undefined; readonly offline: boolean }
+  | { readonly kind: "serve"; readonly port: number | undefined; readonly offline: boolean; readonly orchestrator: boolean }
   | { readonly kind: "status" }
   | { readonly kind: "help" }
   | { readonly kind: "error"; readonly message: string };
@@ -16,12 +16,14 @@ export const USAGE = `digital-me-brain-host <command> [options]
 Commands
   index   [--force] [--offline]        build or refresh the retrieval index
   search  <query> [--limit N] [--json] [--offline]
-  serve   [--port N] [--offline]       serve /tools/invoke + /health
+  serve   [--port N] [--offline] [--no-orchestrator]
+                                       serve /tools/invoke + /health (retriever + orchestrator tools)
   status                               index size and provenance
 
 Environment (see config.ts): DIGITAL_ME_WIKI_ROOT, DIGITAL_ME_RETRIEVAL_DB,
 DIGITAL_ME_BRAIN_TOKEN, DIGITAL_ME_BRAIN_PORT, GEMINI_API_KEY.
---offline uses the deterministic hash embedder (tests / smoke only).`;
+--offline uses the deterministic hash embedder (tests / smoke only).
+Scheduler tick: DIGITAL_ME_BRAIN_SCHEDULER=on (default off; one ticker per brain.db).`;
 
 export function parseArgs(argv: readonly string[]): Command {
   const [cmd, ...rest] = argv;
@@ -61,7 +63,7 @@ export function parseArgs(argv: readonly string[]): Command {
     case "serve": {
       const port = num("--port");
       if (port === null) return { kind: "error", message: "--port must be a positive integer" };
-      return { kind: "serve", port, offline };
+      return { kind: "serve", port, offline, orchestrator: !flags.has("--no-orchestrator") };
     }
     case "status":
       return { kind: "status" };

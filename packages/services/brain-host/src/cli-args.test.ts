@@ -19,8 +19,8 @@ describe("parseArgs", () => {
   });
 
   it("parses serve and status", () => {
-    expect(parseArgs(["serve"])).toEqual({ kind: "serve", port: undefined, offline: false });
-    expect(parseArgs(["serve", "--port", "9999", "--offline"])).toEqual({ kind: "serve", port: 9999, offline: true });
+    expect(parseArgs(["serve"])).toEqual({ kind: "serve", port: undefined, offline: false, orchestrator: true });
+    expect(parseArgs(["serve", "--port", "9999", "--offline", "--no-orchestrator"])).toEqual({ kind: "serve", port: 9999, offline: true, orchestrator: false });
     expect(parseArgs(["serve", "--port", "-1"])).toEqual({ kind: "error", message: "--port must be a positive integer" });
     expect(parseArgs(["status"])).toEqual({ kind: "status" });
   });
