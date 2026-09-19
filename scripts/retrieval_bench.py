@@ -248,6 +248,18 @@ def build_labeled(wiki_root: Path, sample: int, seed: int) -> list[Query]:
     return out
 
 
+_JUNK_MARKERS = ("<task-notification", "<system-reminder", "<command-name>", "<local-command-stdout", "[SYSTEM NOTIFICATION")
+
+
+def is_junk_query(q: str) -> bool:
+    """Recall hooks feed raw prompts to memory_search, including harness-generated
+    payloads (task notifications, system reminders). Those are not retrieval
+    queries and would dominate any consistency metric, so both the observed set
+    and the comparison skip them."""
+    s = q.strip()
+    return s.startswith("<") or len(s) > 600 or any(m in s for m in _JUNK_MARKERS)
+
+
 def build_observed(brain_db: Path, n: int) -> list[Query]:
     if not brain_db.exists():
         return []
@@ -274,7 +286,7 @@ def build_observed(brain_db: Path, n: int) -> list[Query]:
         if not isinstance(q, str):
             continue
         key = re.sub(r"\s+", " ", q.strip().lower())
-        if len(key) < 8 or key in seen:
+        if len(key) < 8 or key in seen or is_junk_query(q):
             continue
         seen.add(key)
         out.append(Query(f"o:{len(out):03d}", q.strip()[:500], "observed"))
@@ -377,7 +389,8 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]
     base_rows = {r["qid"]: r for r in baseline["rows"]}
     cur_rows = {r["qid"]: r for r in current["rows"]}
     shared = [q for q in cur_rows if q in base_rows and cur_rows[q]["query"] == base_rows[q]["query"]]
-    obs = [q for q in shared if base_rows[q]["kind"] == "observed"]
+    obs = [q for q in shared if base_rows[q]["kind"] == "observed" and not is_junk_query(base_rows[q]["query"])]
+    junk = sum(1 for q in shared if base_rows[q]["kind"] == "observed") - len(obs)
 
     def overlap(k: int) -> Optional[float]:
         vals = []
@@ -386,6 +399,19 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]
             if a or b:
                 vals.append(len(a & b) / len(a | b))
         return round(statistics.fmean(vals), 4) if vals else None
+
+    kept_best_entry = None
+    if obs:
+        judged = 0
+        kept = 0
+        for q in obs:
+            base_entries = [p for p in _unique_paths(base_rows[q]["hits"], 10) if not p.endswith("_OVERVIEW.md")]
+            if not base_entries:
+                continue
+            judged += 1
+            if base_entries[0] in set(_unique_paths(cur_rows[q]["hits"], 5)):
+                kept += 1
+        kept_best_entry = {"judged": judged, "kept_in_top5": round(kept / judged, 4) if judged else None}
 
     same_top1 = None
     if obs:
@@ -408,8 +434,8 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]
     return {
         "baseline_label": baseline.get("label"),
         "shared_queries": len(shared),
-        "observed_consistency": {"n": len(obs), "overlap@5": overlap(5), "overlap@10": overlap(10),
-                                 "same_top1": same_top1},
+        "observed_consistency": {"n": len(obs), "junk_skipped": junk, "overlap@5": overlap(5), "overlap@10": overlap(10),
+                                 "same_top1": same_top1, "baseline_best_entry": kept_best_entry},
         "labeled_strict": delta(["labeled", "strict"]),
         "labeled_lenient": delta(["labeled", "lenient"]),
         "latency": delta(["latency_s"]),
@@ -446,7 +472,14 @@ def main() -> int:
     args = ap.parse_args()
 
     wiki_root = Path(args.wiki_root).expanduser()
-    queries = build_labeled(wiki_root, args.sample, args.seed) + build_observed(Path(args.brain_db).expanduser(), args.observed)
+    baseline = json.loads(Path(args.compare).expanduser().read_text(encoding="utf-8")) if args.compare else None
+    if baseline is not None:
+        # Replay the baseline's exact queries so every delta is like-for-like,
+        # even if the wiki or the traces changed since the baseline ran.
+        queries = [Query(r["qid"], r["query"], r["kind"], r.get("expected"), r.get("domain")) for r in baseline["rows"]]
+        print(f"replaying {len(queries)} queries from baseline {baseline.get('label')}", file=sys.stderr)
+    else:
+        queries = build_labeled(wiki_root, args.sample, args.seed) + build_observed(Path(args.brain_db).expanduser(), args.observed)
     n_lab = sum(1 for q in queries if q.expected)
     print(f"queries: {len(queries)} (labeled {n_lab}, observed {len(queries) - n_lab})", file=sys.stderr)
     if args.dry_run:
@@ -479,8 +512,7 @@ def main() -> int:
         "summary": summary,
         "rows": [asdict(r) for r in rows],
     }
-    if args.compare:
-        baseline = json.loads(Path(args.compare).expanduser().read_text(encoding="utf-8"))
+    if baseline is not None:
         snapshot["comparison"] = compare(snapshot, baseline)
 
     out_dir = Path(args.out_dir).expanduser() if args.out_dir else wiki_root / ".data" / "retrieval-bench"

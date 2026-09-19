@@ -51,7 +51,40 @@ ids and only agents with a live index return results), `--dry-run`.
 Read the same seed across runs. Changing the seed changes the labeled set and
 makes deltas meaningless.
 
+## Results (2026-09-19)
+
+Same 397 queries replayed against both backends (`--compare` replays the
+baseline's exact query set, so deltas are like-for-like even after the wiki or
+the traces change).
+
+| labeled (n=297) | openclaw memory-core | brain-host retriever |
+|---|---|---|
+| strict hit@1 | 0.12 | **0.86** |
+| strict hit@5 | 0.45 | **0.98** |
+| strict MRR | 0.25 | **0.91** |
+| lenient hit@5 | 0.82 | **0.98** |
+| title queries, strict hit@1 | 0.09 | 0.97 |
+| apply-when queries, strict hit@1 | 0.15 | 0.75 |
+| latency p50 / p95 | 1.25 s / 1.67 s | **0.20 s / 0.25 s** |
+
+Observed set: 48 of the 100 recorded queries were harness payloads
+(`<task-notification>` blocks the recall hook forwarded verbatim) and are
+skipped as junk. On the 52 clean queries, the baseline's best non-index-page
+hit is in the new top-5 for 52%; a manual read of the differences shows the new
+result is the more relevant entry in most of the rest (e.g. "publish checklist"
+→ an actual publish checklist instead of an engine-learnings rubric). Raw
+overlap is low by design because the new index excludes `_OVERVIEW.md` pages,
+which were 62% of the baseline's top-1 hits.
+
+Snapshots: `~/digital-me/.data/retrieval-bench/openclaw-2026-09-19.json` and
+`brain-host-v1-2026-09-19.json`.
+
 ## Gotchas learned on the first run (2026-09-19)
+
+- Recall hooks send raw prompts as queries, so traces contain harness payloads.
+  `is_junk_query()` drops queries that start with `<`, carry
+  `<task-notification>` / `<system-reminder>` markers, or exceed 600 chars, both
+  when building the observed set and when comparing.
 
 - The gateway returns `ok: true` with an empty result list when an agent's
   memory index is **paused** (`"index provenance classifier changed"`, i.e. the

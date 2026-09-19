@@ -185,6 +185,21 @@ importers:
         specifier: ^3.2.6
         version: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0)
 
+  packages/services/brain-host:
+    devDependencies:
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.19
+      '@vitest/coverage-v8':
+        specifier: ^3.2.6
+        version: 3.2.6(vitest@3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0))
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0)
+
   packages/services/dashboard:
     dependencies:
       '@digital-me/brain-mcp-proxy':
