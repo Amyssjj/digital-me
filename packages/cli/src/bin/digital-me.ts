@@ -98,6 +98,7 @@ import {
   brainHostInvokeUrl,
   brainHostServiceUnitPath,
   buildBrainHostServiceUnit,
+  resolveBrainCallerEnv,
   resolveBrainHostServiceConfig,
 } from "../brain-host-service.js";
 import {
@@ -608,11 +609,26 @@ function installCodex(home: string): void {
   for (const note of codexStable.notes) {
     console.log(`     codex MCP: ${note}`);
   }
+  // Backend for the proxy Codex spawns. Codex does not forward this shell's
+  // env to MCP servers, so DIGITAL_ME_BRAIN_URL/TOKEN must be baked into the
+  // stanza: this process's env first, else the always-on brain-host service
+  // (token file on disk), else the stanza stays on the openclaw gateway.
+  const brainHostCfg = resolveBrainHostServiceConfig(home, process.env, codexStable.nodePath);
+  const brainCaller = resolveBrainCallerEnv(process.env, brainHostCfg, (file) =>
+    existsSync(file) ? readFileSync(file, "utf-8") : undefined,
+  );
+  console.log(
+    brainCaller
+      ? `     codex MCP: proxy env → brain-host at ${brainCaller.brainUrl}`
+      : `     codex MCP: proxy env → openclaw gateway (no brain-host token at ${brainHostCfg.tokenFile}; run 'digital-me install --runtime brain-host' to switch)`,
+  );
   const tomlFragment = buildCodexMcpConfig({
     nodeBin: codexStable.nodePath,
     proxyBinPath: codexStable.binPath,
     openclawHome,
     agentId: "codex",
+    brainUrl: brainCaller?.brainUrl,
+    brainToken: brainCaller?.brainToken,
   });
   const tomlTarget = path.join(codexDir, "config.toml");
   const tomlExisting = existsSync(tomlTarget)

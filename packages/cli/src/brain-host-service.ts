@@ -166,3 +166,40 @@ export function buildBrainHostServiceUnit(cfg: BrainHostServiceConfig, platform:
 export function brainHostInvokeUrl(cfg: Pick<BrainHostServiceConfig, "host" | "port">): string {
   return `http://${cfg.host}:${cfg.port}/tools/invoke`;
 }
+
+interface BrainCallerEnv {
+  readonly brainUrl: string;
+  readonly brainToken: string;
+}
+
+/**
+ * The DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN pair a caller registration
+ * should carry (e.g. the `env` table of the codex `[mcp_servers.openclaw-brain]`
+ * stanza) so the proxy that caller spawns talks to brain-host, not the
+ * openclaw gateway. Registrations need the pair baked in because MCP hosts do
+ * not forward the installer's shell environment.
+ *
+ * Precedence mirrors brain-mcp-proxy/config.ts: the installer's own
+ * DIGITAL_ME_BRAIN_URL/TOKEN first (URL without token is a hard error, never a
+ * silent fallback), else the always-on brain-host service when its token file
+ * exists, else `undefined` — the caller stays on the openclaw gateway.
+ */
+export function resolveBrainCallerEnv(
+  env: Readonly<Record<string, string | undefined>>,
+  cfg: Pick<BrainHostServiceConfig, "host" | "port" | "tokenFile">,
+  readTokenFile: (file: string) => string | undefined,
+): BrainCallerEnv | undefined {
+  const url = (env.DIGITAL_ME_BRAIN_URL ?? "").trim();
+  if (url !== "") {
+    const token = (env.DIGITAL_ME_BRAIN_TOKEN ?? "").trim();
+    if (token === "") {
+      throw new Error(
+        "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — set both to use brain-host, or unset the URL to fall back to the openclaw gateway",
+      );
+    }
+    return { brainUrl: url, brainToken: token };
+  }
+  const fileToken = (readTokenFile(cfg.tokenFile) ?? "").trim();
+  if (fileToken === "") return undefined;
+  return { brainUrl: brainHostInvokeUrl(cfg), brainToken: fileToken };
+}

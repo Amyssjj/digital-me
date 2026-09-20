@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   CODEX_MD_TEMPLATE,
@@ -87,6 +88,65 @@ describe("buildCodexMcpConfig", () => {
       agentId: "codex\b\f",
     });
     expect(toml).toContain(`OPENCLAW_AGENT_ID = "codex\\b\\f"`);
+  });
+
+  // Codex does not forward the installer's shell env to MCP servers, so the
+  // brain-host contract (DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN, which
+  // brain-mcp-proxy/config.ts honours) has to be baked into the stanza.
+  const BRAIN_URL = "http://127.0.0.1:18791/tools/invoke";
+
+  it("emits DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN inside the inline env table when both are provided", () => {
+    const toml = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainToken: "s3cret" });
+    const envLine = toml.split("\n").find((l) => l.startsWith("env = {"))!;
+    expect(envLine).toContain(`DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}"`);
+    expect(envLine).toContain(`DIGITAL_ME_BRAIN_TOKEN = "s3cret"`);
+    expect(envLine).toContain(`OPENCLAW_HOME = "${inputs.openclawHome}"`);
+    expect(envLine).toContain(`OPENCLAW_AGENT_ID = "codex"`);
+    expect(envLine).toContain("PATH = ");
+    // One inline table, still 4 keys + trailing newline: no env sub-table.
+    expect(toml).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(toml.split("\n")).toHaveLength(5);
+    expect(inlineKeysOf(toml)).toEqual(["command", "args", "env"]);
+  });
+
+  it("omits the brain keys when neither is provided (the openclaw gateway stays the backend)", () => {
+    expect(buildCodexMcpConfig(inputs)).not.toContain("DIGITAL_ME_BRAIN");
+    expect(
+      buildCodexMcpConfig({ ...inputs, brainUrl: "", brainToken: "" }),
+    ).not.toContain("DIGITAL_ME_BRAIN");
+  });
+
+  it("rejects a brain URL without a token (and a token without a URL) — never a silent gateway fallback", () => {
+    expect(() => buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL })).toThrow(
+      /DIGITAL_ME_BRAIN_TOKEN/,
+    );
+    expect(() => buildCodexMcpConfig({ ...inputs, brainToken: "s3cret" })).toThrow(
+      /set together/,
+    );
+    expect(() =>
+      buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainToken: "" }),
+    ).toThrow(/set together/);
+  });
+
+  it("brain keys are replaced, not duplicated, on a re-install merge", () => {
+    const v1 = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainToken: "old" });
+    const v2 = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainToken: "new" });
+    const merged = mergeMcpServer(mergeMcpServer("", v1), v2);
+    expect(merged).toContain(`DIGITAL_ME_BRAIN_TOKEN = "new"`);
+    expect(merged).not.toContain(`DIGITAL_ME_BRAIN_TOKEN = "old"`);
+    expect(merged.match(/DIGITAL_ME_BRAIN_URL/g)).toHaveLength(1);
+  });
+
+  it("escapes the token like every other TOML value", () => {
+    const toml = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainToken: 'a"b\\c' });
+    expect(toml).toContain(`DIGITAL_ME_BRAIN_TOKEN = "a\\"b\\\\c"`);
+  });
+
+  it("the hand-install template documents the env table with both brain keys", () => {
+    const tpl = readFileSync(MCP_TOML_TEMPLATE, "utf-8");
+    expect(inlineKeysOf(tpl)).toEqual(["command", "args", "env"]);
+    expect(tpl).toContain("DIGITAL_ME_BRAIN_URL");
+    expect(tpl).toContain("DIGITAL_ME_BRAIN_TOKEN");
   });
 });
 
