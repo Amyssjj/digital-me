@@ -109,6 +109,12 @@ export default definePluginEntry({
       api.pluginConfig?.stallThresholdMs || DEFAULTS.stallThresholdMs;
     const tickIntervalMs =
       api.pluginConfig?.tickIntervalMs || DEFAULTS.tickIntervalMs;
+    // Single-ticker rule: exactly one process may tick a brain.db. Set
+    // `plugins.entries.digital-me-brain.config.scheduler: false` (or env
+    // DIGITAL_ME_OPENCLAW_SCHEDULER=off) once brain-host owns the tick.
+    const schedulerEnabled =
+      api.pluginConfig?.scheduler !== false &&
+      (process.env.DIGITAL_ME_OPENCLAW_SCHEDULER ?? "on").toLowerCase() !== "off";
 
     const configPath = path.join(wikiRoot, "config.yaml");
     let cliExecAliases = {};
@@ -295,7 +301,12 @@ export default definePluginEntry({
     //    that need fancier scheduling (per-host, leader-elected) can
     //    override by registering on the gateway's heartbeat event
     //    instead.
-    const tickHandle = setInterval(async () => {
+    if (!schedulerEnabled) {
+      api.logger.info(
+        "digital-me-brain: scheduler tick DISABLED (config.scheduler=false or DIGITAL_ME_OPENCLAW_SCHEDULER=off); another host owns the tick",
+      );
+    }
+    const tickHandle = !schedulerEnabled ? null : setInterval(async () => {
       try {
         await schedulerTick(
           {
@@ -317,11 +328,11 @@ export default definePluginEntry({
         api.logger.error(`digital-me-brain: tick failed: ${err.message}`);
       }
     }, tickIntervalMs);
-    tickHandle.unref?.();
+    tickHandle?.unref?.();
 
     // 8. Cleanup on plugin teardown.
     api.lifecycle?.onShutdown?.(() => {
-      clearInterval(tickHandle);
+      if (tickHandle) clearInterval(tickHandle);
       try {
         db.close();
       } catch {

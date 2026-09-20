@@ -15,14 +15,23 @@ Two reasons we shell out via HTTP rather than via the MCP stdio proxy:
 2. **No new dependencies.** urllib + json are stdlib. The MCP client lib
    would add a dep and a subprocess.
 
-Gateway endpoint discovery mirrors `packages/transport/brain-mcp-proxy/src/config.ts`:
+Brain endpoint discovery mirrors `packages/transport/brain-mcp-proxy/src/config.ts`
+(and the claude-code hooks `dm_memory_search_inject.sh` / `dm_m1_emit.py`):
 
-  Token:  $OPENCLAW_GATEWAY_TOKEN  →  ~/.openclaw/openclaw.json:gateway.auth.token
-                                  →  ~/.openclaw/openclaw.json:gateway.auth.password
-  Port:   $OPENCLAW_GATEWAY_PORT   →  ~/.openclaw/openclaw.json:gateway.port  →  18789
-  Host:   $OPENCLAW_GATEWAY_HOST   →  localhost
+  1. $DIGITAL_ME_BRAIN_URL + $DIGITAL_ME_BRAIN_TOKEN  — the digital-me brain-host.
+     BOTH are required: a URL without a token is a hard error, never a silent
+     fallback to openclaw. The URL is used verbatim as the /tools/invoke
+     endpoint and ~/.openclaw is never read on this path.
 
-  URL constructed as `http://<host>:<port>/tools/invoke`.
+  2. Otherwise the openclaw gateway:
+     Token:  $OPENCLAW_GATEWAY_TOKEN  →  ~/.openclaw/openclaw.json:gateway.auth.token
+                                     →  ~/.openclaw/openclaw.json:gateway.auth.password
+     Port:   $OPENCLAW_GATEWAY_PORT   →  ~/.openclaw/openclaw.json:gateway.port  →  18789
+     Host:   $OPENCLAW_GATEWAY_HOST   →  localhost
+     URL constructed as `http://<host>:<port>/tools/invoke`.
+
+  Pointing OPENCLAW_GATEWAY_HOST/PORT/TOKEN at brain-host also works (the wire
+  is identical); DIGITAL_ME_BRAIN_* is the preferred, explicit contract.
 """
 
 from __future__ import annotations
@@ -31,6 +40,7 @@ import json
 import os
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
@@ -52,10 +62,14 @@ class GatewayEndpoint:
     host: str
     port: int
     token: str
+    # Full /tools/invoke URL when the caller supplied one verbatim
+    # (DIGITAL_ME_BRAIN_URL). Lets the endpoint carry a scheme/path the
+    # host+port form cannot express. The legacy 3-arg constructor stays valid.
+    invoke_url: Optional[str] = None
 
     @property
     def url(self) -> str:
-        return f"http://{self.host}:{self.port}/tools/invoke"
+        return self.invoke_url or f"http://{self.host}:{self.port}/tools/invoke"
 
 
 def _read_openclaw_file(openclaw_home: Path) -> dict[str, Any]:
@@ -74,8 +88,38 @@ def load_gateway(
     env: Optional[dict[str, str]] = None,
     openclaw_home: Optional[Path] = None,
 ) -> GatewayEndpoint:
-    """Resolve gateway connection per env > openclaw.json > defaults."""
+    """Resolve the brain endpoint: DIGITAL_ME_BRAIN_URL/TOKEN (brain-host)
+    > OPENCLAW_GATEWAY_* env > openclaw.json > defaults."""
     env_ = dict(os.environ if env is None else env)
+
+    # digital-me brain-host takes precedence over the openclaw gateway when it
+    # is configured. Resolved BEFORE touching ~/.openclaw so a missing or
+    # corrupt openclaw.json can never break a brain-host deployment.
+    brain_url = (env_.get("DIGITAL_ME_BRAIN_URL") or "").strip()
+    if brain_url:
+        brain_token = (env_.get("DIGITAL_ME_BRAIN_TOKEN") or "").strip()
+        if not brain_token:
+            raise BrainClientError(
+                "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — "
+                "set both to use brain-host, or unset the URL to fall back to "
+                "the openclaw gateway"
+            )
+        parts = urllib.parse.urlsplit(brain_url)
+        if parts.scheme not in ("http", "https") or not parts.hostname:
+            raise BrainClientError(
+                f"DIGITAL_ME_BRAIN_URL is not a valid URL: {brain_url!r}"
+            )
+        try:
+            explicit_port = parts.port
+        except ValueError as e:
+            raise BrainClientError(
+                f"DIGITAL_ME_BRAIN_URL has an invalid port: {brain_url!r}"
+            ) from e
+        port = explicit_port or (443 if parts.scheme == "https" else 80)
+        return GatewayEndpoint(
+            host=parts.hostname, port=port, token=brain_token, invoke_url=brain_url
+        )
+
     openclaw_home = openclaw_home or Path(env_.get("OPENCLAW_HOME") or (Path.home() / ".openclaw"))
     file_shape = _read_openclaw_file(openclaw_home)
     gw_file = file_shape.get("gateway") if isinstance(file_shape, dict) else None
@@ -106,7 +150,8 @@ def load_gateway(
                 token = auth["password"]
     if not token:
         raise BrainClientError(
-            "gateway auth token not found — set OPENCLAW_GATEWAY_TOKEN or "
+            "gateway auth token not found — set DIGITAL_ME_BRAIN_URL + "
+            "DIGITAL_ME_BRAIN_TOKEN (brain-host), or OPENCLAW_GATEWAY_TOKEN, or "
             "populate gateway.auth.token in ~/.openclaw/openclaw.json"
         )
 
@@ -321,8 +366,13 @@ class BrainClient:
     def task_status(self, task_id: str) -> dict[str, Any]:
         """Return current status of a single task (the `status` MCP action
         takes a taskId, not a goalId — that was a design assumption I got
-        wrong in the first cut; `goal_status` does the goal-level lookup)."""
-        return self._invoke("tasks", {"action": "status", "taskId": task_id})
+        wrong in the first cut; `goal_status` does the goal-level lookup).
+
+        Sends `format=json` so the host returns the structured task under
+        `details.json.task` (router `handleStatusJson`) instead of markdown."""
+        return self._invoke(
+            "tasks", {"action": "status", "taskId": task_id, "format": "json"}
+        )
 
     def goal_status(self, goal_id: str) -> Optional[dict[str, Any]]:
         """Return the full goal record (with tasks[] + attempts) by listing

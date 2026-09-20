@@ -1,0 +1,45 @@
+{
+  "name": "@digital-me/brain-host",
+  "version": "0.1.0-pre",
+  "description": "digital-me brain host \u2014 serves the brain's memory_search / memory_get / wiki tools on the /tools/invoke wire from a retriever owned by this repo (wiki + tastes, hybrid FTS5 + embeddings). Phase 1 of openclaw independence.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "digital-me-brain-host": "./bin/brain-host.mjs"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./bin/brain-host.mjs": "./bin/brain-host.mjs"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "src"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@digital-me/brain-orchestrator": "workspace:*",
+    "@digital-me/runtime-openclaw": "workspace:*",
+    "yaml": "^2.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^3.2.6",
+    "typescript": "^5.6.0",
+    "vitest": "^3.2.6"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

@@ -3,9 +3,10 @@
 m1_backfill — Replay the hermes M1 write-ahead log into the brain.
 
 Reads ``~/.openclaw/data/m1_events_hermes.jsonl`` line by line, posts each
-event to the openclaw-brain gateway's ``m1_event_record`` tool, and
-reports inserted vs. deduped vs. failed counts. Closes pillar 4 of the
-universal M1 protocol (WAL → brain → backfill).
+event to the brain's ``m1_event_record`` tool (digital-me brain-host when
+``DIGITAL_ME_BRAIN_URL`` + ``DIGITAL_ME_BRAIN_TOKEN`` are set, otherwise
+the openclaw gateway), and reports inserted vs. deduped vs. failed counts.
+Closes pillar 4 of the universal M1 protocol (WAL → brain → backfill).
 
 Idempotency contract:
   Brain uses ``INSERT OR IGNORE INTO m1_events ... WHERE event_id = ?``
@@ -52,7 +53,38 @@ DEFAULT_WAL_PATH = HOME / ".openclaw" / "data" / "m1_events_hermes.jsonl"
 DEFAULT_GATEWAY_URL = "http://localhost:18789/tools/invoke"
 
 
-# ─── Auth (mirrors the plugin's own token loader) ─────────────────────────
+# ─── Endpoint + auth (mirrors the plugin's _resolve_gateway_url / token loader) ──
+#
+# Precedence, same as transport/brain-mcp-proxy and the claude-code hooks:
+#   1. DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN (both required) → brain-host
+#   2. OPENCLAW_GATEWAY_URL, or OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT,
+#      with OPENCLAW_GATEWAY_TOKEN
+#   3. the openclaw gateway on localhost:18789, token from openclaw config files
+
+
+def _brain_host_configured() -> bool:
+    return bool(os.environ.get("DIGITAL_ME_BRAIN_URL"))
+
+
+def _resolve_gateway_url() -> str:
+    url = os.environ.get("DIGITAL_ME_BRAIN_URL") or os.environ.get("OPENCLAW_GATEWAY_URL")
+    if url:
+        return url
+    host = os.environ.get("OPENCLAW_GATEWAY_HOST")
+    port = os.environ.get("OPENCLAW_GATEWAY_PORT")
+    if host or port:
+        return f"http://{host or 'localhost'}:{port or '18789'}/tools/invoke"
+    return DEFAULT_GATEWAY_URL
+
+
+def _resolve_token() -> Optional[str]:
+    """Env-only token for the resolved endpoint. When DIGITAL_ME_BRAIN_URL is
+    set only DIGITAL_ME_BRAIN_TOKEN counts — OPENCLAW_GATEWAY_TOKEN and the
+    openclaw config files authenticate a different server and are never
+    used against brain-host (main() turns the missing token into exit 1)."""
+    if _brain_host_configured():
+        return os.environ.get("DIGITAL_ME_BRAIN_TOKEN") or None
+    return os.environ.get("OPENCLAW_GATEWAY_TOKEN") or None
 
 
 def load_gateway_token() -> Optional[str]:
@@ -356,14 +388,93 @@ def run_selftest() -> int:
     assert s4.parse_errors == 1, s4
     assert len(calls) == 0, calls
 
+    print("[selftest] endpoint precedence — DIGITAL_ME_BRAIN_URL/TOKEN beat OPENCLAW_GATEWAY_*")
+    _selftest_endpoint_precedence()
+
     print("[selftest] PASSED")
     return 0
+
+
+_ENDPOINT_ENV_KEYS = (
+    "DIGITAL_ME_BRAIN_URL",
+    "DIGITAL_ME_BRAIN_TOKEN",
+    "OPENCLAW_GATEWAY_URL",
+    "OPENCLAW_GATEWAY_TOKEN",
+    "OPENCLAW_GATEWAY_HOST",
+    "OPENCLAW_GATEWAY_PORT",
+)
+
+
+def _selftest_endpoint_precedence() -> None:
+    """Assert the resolver precedence with a scratch environment, restoring
+    the caller's env afterwards. Exercises the argparse defaults through
+    a real parse so the CLI surface is what's under test, not a helper."""
+    saved = {k: os.environ.get(k) for k in _ENDPOINT_ENV_KEYS}
+
+    def _set(**env: Optional[str]) -> None:
+        for k in _ENDPOINT_ENV_KEYS:
+            os.environ.pop(k, None)
+        for k, v in env.items():
+            if v is not None:
+                os.environ[k] = v
+
+    def _parsed_defaults() -> argparse.Namespace:
+        # The real CLI parser, built after the env is set, so the defaults
+        # under test are exactly what `python -m m1_backfill` would use.
+        return _build_parser().parse_args([])
+
+    try:
+        # Both families set: brain-host wins, gateway values ignored.
+        _set(
+            DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke",
+            DIGITAL_ME_BRAIN_TOKEN="brain-tok",
+            OPENCLAW_GATEWAY_URL="http://gw.test:18789/tools/invoke",
+            OPENCLAW_GATEWAY_TOKEN="gw-tok",
+        )
+        ns = _parsed_defaults()
+        assert ns.gateway == "http://brain.test:18791/tools/invoke", ns
+        assert ns.token == "brain-tok", ns
+
+        # brain URL without brain token: the gateway token must NOT leak in.
+        _set(
+            DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke",
+            OPENCLAW_GATEWAY_TOKEN="gw-tok",
+        )
+        ns = _parsed_defaults()
+        assert ns.gateway == "http://brain.test:18791/tools/invoke", ns
+        assert ns.token is None, ns
+
+        # Gateway family only.
+        _set(OPENCLAW_GATEWAY_URL="http://gw.test:18789/tools/invoke", OPENCLAW_GATEWAY_TOKEN="gw-tok")
+        ns = _parsed_defaults()
+        assert ns.gateway == "http://gw.test:18789/tools/invoke", ns
+        assert ns.token == "gw-tok", ns
+
+        # HOST/PORT composition.
+        _set(OPENCLAW_GATEWAY_HOST="10.0.0.9", OPENCLAW_GATEWAY_PORT="28789")
+        assert _resolve_gateway_url() == "http://10.0.0.9:28789/tools/invoke"
+        _set(OPENCLAW_GATEWAY_PORT="28789")
+        assert _resolve_gateway_url() == "http://localhost:28789/tools/invoke"
+
+        # Nothing set: default gateway, no env token.
+        _set()
+        ns = _parsed_defaults()
+        assert ns.gateway == DEFAULT_GATEWAY_URL, ns
+        assert ns.token is None, ns
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────
 
 
-def main(argv: Optional[list[str]] = None) -> int:
+def _build_parser() -> argparse.ArgumentParser:
+    """The CLI surface. Factored out of main() so the selftest can assert
+    the env-derived defaults through a real parse."""
     parser = argparse.ArgumentParser(
         prog="m1_backfill",
         description="Replay the hermes M1 WAL into the brain. Idempotent.",
@@ -373,12 +484,18 @@ def main(argv: Optional[list[str]] = None) -> int:
         help=f"WAL path (default: {DEFAULT_WAL_PATH})",
     )
     parser.add_argument(
-        "--gateway", default=os.environ.get("OPENCLAW_GATEWAY_URL") or DEFAULT_GATEWAY_URL,
-        help=f"Brain gateway URL (default: {DEFAULT_GATEWAY_URL})",
+        "--gateway", default=_resolve_gateway_url(),
+        help=(
+            "Brain endpoint URL (default: DIGITAL_ME_BRAIN_URL, then "
+            f"OPENCLAW_GATEWAY_URL / HOST+PORT, then {DEFAULT_GATEWAY_URL})"
+        ),
     )
     parser.add_argument(
-        "--token", default=os.environ.get("OPENCLAW_GATEWAY_TOKEN"),
-        help="Override the gateway auth token (default: load from openclaw config)",
+        "--token", default=_resolve_token(),
+        help=(
+            "Override the auth token (default: DIGITAL_ME_BRAIN_TOKEN when "
+            "DIGITAL_ME_BRAIN_URL is set, else OPENCLAW_GATEWAY_TOKEN, else openclaw config)"
+        ),
     )
     parser.add_argument(
         "--since-line", type=int, default=0, metavar="N",
@@ -387,7 +504,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--dry-run", action="store_true", help="Parse but don't POST")
     parser.add_argument("-v", "--verbose", action="store_true", help="Per-line progress")
     parser.add_argument("--selftest", action="store_true", help="Run the built-in idempotency selftest (no live brain)")
-    args = parser.parse_args(argv)
+    return parser
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = _build_parser().parse_args(argv)
 
     if args.selftest:
         return run_selftest()
@@ -396,9 +517,24 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"WAL not found: {args.wal}", file=sys.stderr)
         return 1
 
-    token = args.token or load_gateway_token()
+    # brain-host mode never falls back to the openclaw config files: their
+    # token belongs to the gateway, and posting it to brain-host is a 401
+    # dressed up as "backfill ran". A URL without a token is a hard error.
+    token = args.token or (None if _brain_host_configured() else load_gateway_token())
     if not token and not args.dry_run:
-        print("No gateway token (set OPENCLAW_GATEWAY_TOKEN or fix openclaw config)", file=sys.stderr)
+        if _brain_host_configured():
+            print(
+                "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not "
+                "(set both to use brain-host, pass --token, or unset the URL to "
+                "fall back to the openclaw gateway)",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                "No brain token (set DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN "
+                "for brain-host, OPENCLAW_GATEWAY_TOKEN for the gateway, or fix openclaw config)",
+                file=sys.stderr,
+            )
         return 1
 
     def poster(args_dict: Dict[str, Any]) -> Optional[Dict[str, Any]]:

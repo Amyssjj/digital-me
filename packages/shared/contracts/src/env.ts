@@ -82,6 +82,17 @@ const REGISTRY = {
       "Auth token for the openclaw gateway. If unset, read from $OPENCLAW_HOME/openclaw.json.",
     required: false,
   },
+  DIGITAL_ME_BRAIN_URL: {
+    default: null,
+    description:
+      "digital-me brain-host /tools/invoke endpoint (e.g. http://127.0.0.1:18791/tools/invoke). When set, every brain caller uses it instead of the openclaw gateway; DIGITAL_ME_BRAIN_TOKEN must be set too.",
+    required: false,
+  },
+  DIGITAL_ME_BRAIN_TOKEN: {
+    default: null,
+    description: "Bearer token for DIGITAL_ME_BRAIN_URL.",
+    required: false,
+  },
   BRAIN_PROXY_PATH: {
     default: null,
     description:
@@ -147,6 +158,8 @@ export type EnvKey = keyof typeof REGISTRY;
 // over-promising `string` for keys that are frequently absent.
 type OptionalEnvKey =
   | "OPENCLAW_GATEWAY_TOKEN"
+  | "DIGITAL_ME_BRAIN_URL"
+  | "DIGITAL_ME_BRAIN_TOKEN"
   | "BRAIN_PROXY_PATH"
   | "TEAM_WORKSPACE_ROOT"
   | "LEARNING_SOURCE_DIR"
@@ -277,6 +290,8 @@ export function loadConfig(
     "OPENCLAW_GATEWAY_HOST",
     "OPENCLAW_GATEWAY_PORT",
     "OPENCLAW_GATEWAY_TOKEN",
+    "DIGITAL_ME_BRAIN_URL",
+    "DIGITAL_ME_BRAIN_TOKEN",
     "BRAIN_PROXY_PATH",
     "DASHBOARD_PORT",
     "DASHBOARD_TITLE",

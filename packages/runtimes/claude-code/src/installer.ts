@@ -175,3 +175,48 @@ export function mergeHooksIntoSettings(
   }
   return { ...existing, hooks: mergedHooks };
 }
+
+/**
+ * Brain-host plumbing for the hooks. Claude Code exports settings.json `env`
+ * to every hook process, so writing the two `DIGITAL_ME_BRAIN_*` variables
+ * there is what makes `dm_memory_search_inject.sh` / `dm_m1_emit.py` talk to
+ * the digital-me brain-host instead of the openclaw gateway — without a shell
+ * export the user has to remember per machine.
+ */
+export type BrainHostEnv = {
+  /** The brain-host `/tools/invoke` URL (DIGITAL_ME_BRAIN_URL). */
+  readonly url: string;
+  /** Its bearer token (DIGITAL_ME_BRAIN_TOKEN). */
+  readonly token: string;
+};
+
+/**
+ * Merge the brain-host env into an existing settings.json object. Both keys
+ * travel together — every caller treats a URL without a token as a hard
+ * error, so the installer refuses to write half a contract. Preserves the
+ * user's other `env` entries; a malformed non-object `env` is replaced.
+ * Pure function — the installer does the actual disk I/O.
+ */
+export function mergeBrainEnvIntoSettings(
+  existing: Record<string, unknown>,
+  brain: BrainHostEnv,
+): Record<string, unknown> {
+  if (brain.url.trim() === "" || brain.token.trim() === "") {
+    throw new Error(
+      "brain-host env needs both DIGITAL_ME_BRAIN_URL and DIGITAL_ME_BRAIN_TOKEN — refusing to write a URL without a token (callers treat that as a hard error, never a gateway fallback)",
+    );
+  }
+  const current = existing.env;
+  const existingEnv =
+    typeof current === "object" && current !== null && !Array.isArray(current)
+      ? (current as Record<string, unknown>)
+      : {};
+  return {
+    ...existing,
+    env: {
+      ...existingEnv,
+      DIGITAL_ME_BRAIN_URL: brain.url,
+      DIGITAL_ME_BRAIN_TOKEN: brain.token,
+    },
+  };
+}

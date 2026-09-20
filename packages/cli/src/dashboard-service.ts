@@ -1,4 +1,5 @@
 import path from "node:path";
+import { resolveServicePath } from "./service-path.js";
 
 /**
  * Cross-platform always-on service for the digital-me dashboard.
@@ -32,7 +33,7 @@ export interface DashboardServiceConfig {
   readonly port: number;
   /** Absolute HOME for the service env. */
   readonly home: string;
-  /** PATH for the service env (services start with a minimal PATH). */
+  /** Deterministic service PATH (never the installer's shell PATH); see service-path.ts. */
   readonly pathEnv: string;
   /** macOS log destinations (systemd uses journald, ignores these). */
   readonly stdoutLog: string;
@@ -57,9 +58,7 @@ export function resolveDashboardServiceConfig(
     db: path.join(home, "digital-me", ".data", "dashboard.db"),
     port: Number.isFinite(port) ? port : DASHBOARD_DEFAULT_PORT,
     home,
-    pathEnv:
-      env.PATH ??
-      "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    pathEnv: resolveServicePath(home, env, npmBin),
     stdoutLog: path.join(home, "Library", "Logs", "digital-me-dashboard", "server.log"),
     stderrLog: path.join(home, "Library", "Logs", "digital-me-dashboard", "server.error.log"),
   };

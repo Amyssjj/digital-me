@@ -161,6 +161,42 @@ describe("loadGatewayConfig", () => {
   });
 });
 
+describe("loadGatewayConfig — brain-host precedence", () => {
+  it("uses DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN before anything openclaw", () => {
+    const cfg = loadGatewayConfig({
+      env: {
+        DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke",
+        DIGITAL_ME_BRAIN_TOKEN: "bh-secret",
+        OPENCLAW_GATEWAY_TOKEN: "gw-secret",
+        OPENCLAW_GATEWAY_PORT: "18789",
+      } as NodeJS.ProcessEnv,
+      openclawHome: "/nonexistent/openclaw-home",
+    });
+    expect(cfg).toEqual({ host: "127.0.0.1", port: 18791, token: "bh-secret", url: "http://127.0.0.1:18791/tools/invoke" });
+  });
+
+  it("defaults the port to 80 when the URL has none, and treats an empty URL as unset", () => {
+    const cfg = loadGatewayConfig({
+      env: { DIGITAL_ME_BRAIN_URL: "http://brain.local/tools/invoke", DIGITAL_ME_BRAIN_TOKEN: "t" } as NodeJS.ProcessEnv,
+      openclawHome: "/nonexistent",
+    });
+    expect(cfg.port).toBe(80);
+    expect(cfg.host).toBe("brain.local");
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "", OPENCLAW_GATEWAY_TOKEN: "x" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).not.toThrow();
+  });
+
+  it("refuses a brain URL without a token, and a malformed URL", () => {
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke", OPENCLAW_GATEWAY_TOKEN: "gw" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).toThrow(/DIGITAL_ME_BRAIN_TOKEN is not/);
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "not a url", DIGITAL_ME_BRAIN_TOKEN: "t" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).toThrow(/not a valid URL/);
+  });
+});
+
 describe("resolveDefaultAgentId", () => {
   it("returns the env value when OPENCLAW_AGENT_ID is set", () => {
     expect(

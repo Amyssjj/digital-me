@@ -26,6 +26,7 @@ import type {
   GoalsStore,
   OrchestratorTaskRecord,
   TasksStore,
+  VerifyStep,
 } from "@digital-me/brain-orchestrator";
 import type {
   ExecRunArgs,
@@ -212,6 +213,12 @@ async function dispatchExec(
   // hangs.
   void Promise.resolve()
     .then(() => execRun(execArgs))
+    // `dispatch.verify` (set by the alias resolver: `/bin/test -s handoff.json`)
+    // is the post-condition gate for a run that exited 0. Until 2026-09-20
+    // nothing consumed it, so a worker that exited 0 with an empty handoff
+    // was recorded as completed; now the verify command runs and a
+    // non-expected exit fails the task.
+    .then((result) => (result.success && dispatch.verify ? verifyExecResult(execRun, dispatch.verify, result) : result))
     .then((result) => finalizeExecResult(deps, task, attemptId, result))
     .catch((err) => {
       deps.runtime.log(
@@ -221,6 +228,33 @@ async function dispatchExec(
       finalizeExecFailure(deps, task, attemptId, (err as Error).message);
     });
   return true;
+}
+
+/**
+ * Run a dispatch's `verify` step after a successful exec run. Returns the
+ * original result untouched when the verify command exits with the expected
+ * code (default 0); otherwise a failed copy of it that keeps the run's stdout
+ * (so the operator still sees what the worker produced) and explains which
+ * post-condition was not met.
+ */
+async function verifyExecResult(
+  execRun: (args: ExecRunArgs) => Promise<ExecRunResult>,
+  verify: VerifyStep,
+  result: ExecRunResult,
+): Promise<ExecRunResult> {
+  const expected = verify.expectedExitCode ?? 0;
+  const v = await execRun({ command: verify.command, cwd: verify.cwd, timeoutMs: verify.timeoutMs });
+  const exitCode = v.exitCode ?? (v.success ? 0 : 1);
+  if (!v.timedOut && exitCode === expected) return result;
+  const why = v.timedOut ? "timed out" : `exited ${exitCode} (expected ${expected})`;
+  const stderr = v.stderr.trim() === "" ? "" : `; stderr: ${truncate(v.stderr, 500)}`;
+  return {
+    ...result,
+    success: false,
+    exitCode,
+    timedOut: v.timedOut,
+    error: `verify failed: ${verify.command.join(" ")} ${why}${stderr}`,
+  };
 }
 
 function finalizeExecResult(

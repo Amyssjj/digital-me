@@ -86,6 +86,33 @@ export function loadGatewayConfig(input: {
   openclawHome: string;
 }): GatewayConfig {
   const { env, openclawHome } = input;
+
+  // digital-me brain-host takes precedence over the openclaw gateway when it
+  // is configured: DIGITAL_ME_BRAIN_URL names the /tools/invoke endpoint and
+  // DIGITAL_ME_BRAIN_TOKEN its bearer secret. Both must be set; a URL without
+  // a token is a configuration error, never a silent fallback to openclaw.
+  const brainUrl = nonEmptyEnv(env.DIGITAL_ME_BRAIN_URL);
+  if (brainUrl !== undefined) {
+    const brainToken = nonEmptyEnv(env.DIGITAL_ME_BRAIN_TOKEN);
+    if (brainToken === undefined) {
+      throw new GatewayConfigError(
+        "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — set both to use brain-host, or unset the URL to fall back to the openclaw gateway",
+      );
+    }
+    let parsed: URL;
+    try {
+      parsed = new URL(brainUrl);
+    } catch {
+      throw new GatewayConfigError(`DIGITAL_ME_BRAIN_URL is not a valid URL: ${brainUrl}`);
+    }
+    return {
+      host: parsed.hostname,
+      port: parsePort(parsed.port === "" ? 80 : parsed.port, "DIGITAL_ME_BRAIN_URL port"),
+      token: brainToken,
+      url: brainUrl,
+    };
+  }
+
   const fileShape = readGatewayFile(openclawHome);
 
   // Host: env > default. (File doesn't carry host today; defaults to 127.0.0.1.)
