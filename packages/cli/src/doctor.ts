@@ -100,7 +100,8 @@ export type RuntimeId =
   | "openclaw"
   | "dream-cycle"
   | "dashboard"
-  | "digest";
+  | "digest"
+  | "brain-host";
 
 /** What each runtime expects to find on disk. */
 export const RUNTIME_EXPECTATIONS: Readonly<
@@ -164,6 +165,13 @@ export const RUNTIME_EXPECTATIONS: Readonly<
   // `digital-me install --runtime digest`, the console script in that shared
   // venv marks it as set up.
   digest: ["$HOME/.venvs/dream-cycle/bin/digital-me-digest"],
+  // brain-host: the stable install symlink (service working dir), the bearer
+  // token file the service reads, and the retrieval index it serves from.
+  "brain-host": [
+    "$HOME/.local/share/digital-me/brain-host/bin/brain-host.mjs",
+    "$HOME/digital-me/.data/brain-host.token",
+    "$HOME/digital-me/.data/retrieval.db",
+  ],
 };
 
 export function runDoctor(

@@ -36,6 +36,10 @@
       "tickIntervalMs": {
         "type": "number",
         "description": "Scheduler tick interval (default: 60000 = 1 minute)"
+      },
+      "scheduler": {
+        "type": "boolean",
+        "description": "Run the scheduler tick in this gateway (default true). Set false once another host (digital-me brain-host) owns the tick — exactly one process may tick a brain.db."
       }
     }
   }

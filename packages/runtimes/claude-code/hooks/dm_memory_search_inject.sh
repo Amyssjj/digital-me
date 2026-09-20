@@ -26,9 +26,17 @@ PLEN=${#PROMPT}
 [ "$PLEN" -lt 12 ] && exit 0
 case "$PROMPT" in /*) exit 0 ;; esac
 
-OPENCLAW_CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$HOME/.openclaw/config.json}"
-[ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.clawdbot/openclaw.json"
-TOKEN="$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_CONFIG" 2>/dev/null)"
+# Brain endpoint: digital-me brain-host when DIGITAL_ME_BRAIN_URL is set
+# (token from DIGITAL_ME_BRAIN_TOKEN), otherwise the openclaw gateway.
+if [ -n "${DIGITAL_ME_BRAIN_URL:-}" ]; then
+  BRAIN_URL="$DIGITAL_ME_BRAIN_URL"
+  TOKEN="${DIGITAL_ME_BRAIN_TOKEN:-}"
+else
+  BRAIN_URL="http://localhost:18789/tools/invoke"
+  OPENCLAW_CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$HOME/.openclaw/config.json}"
+  [ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.clawdbot/openclaw.json"
+  TOKEN="$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_CONFIG" 2>/dev/null)"
+fi
 [ -z "$TOKEN" ] && exit 0
 
 # Tunables
@@ -64,7 +72,7 @@ REQ="$(jq -cn --arg q "$QUERY" --arg a "$AGENT_ID" '{tool:"memory_search", agent
 [ -z "$REQ" ] && exit 0
 
 HOOK_TIMEOUT="${DIGITAL_ME_HOOK_TIMEOUT_SECS:-12}"
-RESP="$(curl -sS -m "$HOOK_TIMEOUT" -X POST http://localhost:18789/tools/invoke \
+RESP="$(curl -sS -m "$HOOK_TIMEOUT" -X POST "$BRAIN_URL" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$REQ" 2>/dev/null)"

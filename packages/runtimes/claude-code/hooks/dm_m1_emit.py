@@ -56,6 +56,15 @@ from typing import Any, Dict, List, Optional
 HOME = Path.home()
 DEFAULT_WAL = HOME / ".openclaw" / "data" / "m1_events_claude_code.jsonl"
 DEFAULT_GATEWAY = "http://localhost:18789/tools/invoke"
+
+
+def _resolve_gateway_url() -> str:
+    """brain-host when DIGITAL_ME_BRAIN_URL is set, else the openclaw gateway."""
+    return (
+        os.environ.get("DIGITAL_ME_BRAIN_URL")
+        or os.environ.get("OPENCLAW_GATEWAY_URL")
+        or DEFAULT_GATEWAY
+    )
 DEFAULT_RUNTIME = "claude-code"
 DEFAULT_AGENT_ID = "claude-code"
 DEFAULT_PLATFORM = "claude-code"
@@ -79,6 +88,12 @@ V1_EVENT_TYPES = {
 
 
 def _load_gateway_token() -> Optional[str]:
+    # digital-me brain-host takes precedence when configured (see contracts env
+    # DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN); the gateway URL is
+    # resolved by _resolve_gateway_url() from the same variable.
+    brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
+    if os.environ.get("DIGITAL_ME_BRAIN_URL") and brain_token:
+        return brain_token
     for candidate in (
         os.environ.get("DIGITAL_ME_OPENCLAW_CONFIG"),
         str(HOME / ".openclaw" / "config.json"),
@@ -338,7 +353,7 @@ def main(argv: Optional[List[str]] = None) -> int:
                         choices=[None, "explicit_path", "title_match", "no_applicable", "no_acknowledgement"])
     parser.add_argument("--extra-json", default="{}", help="JSON object of extra fields")
     parser.add_argument("--wal", type=Path, default=DEFAULT_WAL)
-    parser.add_argument("--gateway", default=os.environ.get("OPENCLAW_GATEWAY_URL") or DEFAULT_GATEWAY)
+    parser.add_argument("--gateway", default=_resolve_gateway_url())
     parser.add_argument("--token", default=os.environ.get("OPENCLAW_GATEWAY_TOKEN"))
     parser.add_argument(
         "--skip-if-already-started", action="store_true",

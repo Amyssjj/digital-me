@@ -42,7 +42,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -93,6 +93,13 @@ import {
   isTransientBootstrapError,
   resolveDashboardServiceConfig,
 } from "../dashboard-service.js";
+import {
+  BRAIN_HOST_SERVICE_LABEL,
+  brainHostInvokeUrl,
+  brainHostServiceUnitPath,
+  buildBrainHostServiceUnit,
+  resolveBrainHostServiceConfig,
+} from "../brain-host-service.js";
 import {
   DASHBOARD_COMMAND_USAGE,
   browserOpenCommand,
@@ -151,6 +158,7 @@ const VALID_RUNTIMES: readonly RuntimeId[] = [
   "dream-cycle",
   "dashboard",
   "digest",
+  "brain-host",
 ];
 
 // Canonical venv location for the dream-cycle Python package. Picked to
@@ -1519,6 +1527,9 @@ async function install(
     } else if (r === "digest") {
       const rc = installDigest(home, wikiRoot);
       if (rc !== 0) exit = rc;
+    } else if (r === "brain-host") {
+      const rc = await installBrainHost(home, noService);
+      if (rc !== 0) exit = rc;
     } else if (r === "dashboard") {
       const rc = installDashboard(home, wikiRoot);
       if (rc !== 0) exit = rc;
@@ -1959,6 +1970,10 @@ function printHelp(): void {
       "    Diagnose the environment.",
       "",
       "  digital-me install --runtime <id> [--runtime <id>...] [--no-service]",
+      "    --runtime brain-host links the brain host, writes its token file,",
+      "    builds the retrieval index (GEMINI_API_KEY from $OPENCLAW_HOME/.env)",
+      "    and installs the always-on service. DIGITAL_ME_BRAIN_SCHEDULER=on",
+      "    enables its scheduler tick (only when no other host ticks brain.db).",
       "    Install a specific runtime adapter. For --runtime dashboard, also",
       "    sets up an always-on service (launchd/systemd) so the dashboard",
       "    survives closing the terminal + reboot; --no-service skips that.",
@@ -2293,10 +2308,17 @@ async function serviceCommand(args: readonly string[]): Promise<number> {
     console.error("service: HOME / USERPROFILE not set");
     return 2;
   }
+  if (target === "brain-host") {
+    if (action === "install") return setupBrainHostService(home);
+    if (action === "uninstall" || action === "remove") return removeBrainHostService(home);
+    if (action === "status") return brainHostServiceStatus(home);
+    console.error(`service brain-host: unknown action '${action}'. Use install | uninstall | status.`);
+    return 2;
+  }
   if (target !== "dashboard") {
     console.error(
       `service: unknown target '${target ?? ""}'. ` +
-        `Usage: digital-me service dashboard <install|uninstall|status>`,
+        `Usage: digital-me service <dashboard|brain-host> <install|uninstall|status>`,
     );
     return 2;
   }
@@ -2307,6 +2329,211 @@ async function serviceCommand(args: readonly string[]): Promise<number> {
     `service dashboard: unknown action '${action}'. Use install | uninstall | status.`,
   );
   return 2;
+}
+
+// ─── brain-host: install + always-on service ──────────────────────────────
+
+/**
+ * `digital-me install --runtime brain-host`: link the stable install dir at
+ * the workspace package, build it, make sure the bearer token file exists,
+ * build the retrieval index, and (unless --no-service) install the service.
+ * The scheduler tick follows DIGITAL_ME_BRAIN_SCHEDULER (default off — one
+ * ticker per brain.db).
+ */
+async function installBrainHost(home: string, noService: boolean): Promise<number> {
+  const repoRoot = resolveRepoRoot();
+  if (!repoRoot) {
+    console.log(
+      "[SKIP] brain-host: requires a source checkout (it runs from the repo workspace). " +
+        "Clone https://github.com/Amyssjj/digital-me.git, `pnpm install && pnpm build`, then `pnpm dm install --runtime brain-host`.",
+    );
+    return 0;
+  }
+  const packagePath = path.join(repoRoot, "packages", "services", "brain-host");
+  if (!existsSync(path.join(packagePath, "bin", "brain-host.mjs"))) {
+    console.error(`install brain-host: package not found at ${packagePath}.`);
+    return 2;
+  }
+  const nodeBin = which("node");
+  if (!nodeBin) {
+    console.error("install brain-host: node not on PATH.");
+    return 2;
+  }
+  const cfg = resolveBrainHostServiceConfig(home, process.env, nodeBin);
+
+  mkdirSync(path.dirname(cfg.workingDir), { recursive: true });
+  if (existsSync(cfg.workingDir)) {
+    // Repoint if the symlink targets another checkout (worktree → main, …).
+    const current = spawnSync("readlink", [cfg.workingDir], { encoding: "utf-8" }).stdout.trim();
+    if (current !== packagePath) {
+      rmSync(cfg.workingDir, { recursive: false, force: true });
+    }
+  }
+  if (!existsSync(cfg.workingDir)) {
+    console.log(`install brain-host: linking ${cfg.workingDir} -> ${packagePath}`);
+    const ln = spawnSync("ln", ["-s", packagePath, cfg.workingDir], { stdio: "inherit" });
+    if (ln.status !== 0) return ln.status ?? 1;
+  }
+
+  const pnpmBin = which("pnpm");
+  if (pnpmBin) {
+    console.log("install brain-host: pnpm --filter @digital-me/brain-host... build");
+    const build = spawnSync(pnpmBin, ["--filter", "@digital-me/brain-host...", "build"], { cwd: repoRoot, stdio: "inherit" });
+    if (build.status !== 0) {
+      console.error(`install brain-host: build failed (exit ${build.status ?? "?"}).`);
+      return build.status ?? 1;
+    }
+  }
+
+  if (!existsSync(cfg.tokenFile)) {
+    mkdirSync(path.dirname(cfg.tokenFile), { recursive: true });
+    writeFileSync(cfg.tokenFile, randomBytes(24).toString("hex") + "\n", { encoding: "utf-8", mode: 0o600 });
+    console.log(`install brain-host: wrote bearer token to ${cfg.tokenFile}`);
+  }
+
+  console.log("install brain-host: building the retrieval index ...");
+  const idx = spawnSync(
+    nodeBin,
+    [`--env-file-if-exists=${cfg.envFile}`, path.join(cfg.workingDir, "bin", "brain-host.mjs"), "index"],
+    { stdio: "inherit", env: { ...process.env, DIGITAL_ME_WIKI_ROOT: cfg.wikiRoot } },
+  );
+  if (idx.status !== 0) {
+    console.error(
+      "install brain-host: index build failed (is GEMINI_API_KEY set in " + cfg.envFile + "?). " +
+        "The service will start but memory_search stays unavailable until `brain-host index` succeeds.",
+    );
+  }
+
+  if (noService) {
+    console.log("install brain-host: skipped always-on service (--no-service). Enable later with 'digital-me service brain-host install'.");
+    return 0;
+  }
+  const sc = await setupBrainHostService(home);
+  if (sc !== 0) {
+    console.error("install brain-host: service did not complete; retry with 'digital-me service brain-host install'.");
+  }
+  return sc;
+}
+
+async function pollBrainHost(port: number, totalMs: number): Promise<boolean> {
+  const deadline = Date.now() + totalMs;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/health`);
+      if (res.ok) return true;
+    } catch {
+      // not up yet
+    }
+    await sleepMs(500);
+  }
+  return false;
+}
+
+async function setupBrainHostService(home: string): Promise<number> {
+  const platform = servicePlatform();
+  if (!platform) {
+    console.log(`service brain-host: no supported service manager on '${process.platform}'.`);
+    return 0;
+  }
+  const nodeBin = which("node");
+  if (!nodeBin) {
+    console.error("service brain-host: node not on PATH.");
+    return 2;
+  }
+  const cfg = resolveBrainHostServiceConfig(home, process.env, nodeBin);
+  if (!existsSync(path.join(cfg.workingDir, "bin", "brain-host.mjs"))) {
+    console.error(`service brain-host: install dir missing (${cfg.workingDir}). Run 'digital-me install --runtime brain-host' first.`);
+    return 2;
+  }
+  if (!existsSync(cfg.tokenFile)) {
+    console.error(`service brain-host: token file missing (${cfg.tokenFile}). Run 'digital-me install --runtime brain-host' first.`);
+    return 2;
+  }
+  const unitPath = brainHostServiceUnitPath(home, platform);
+  mkdirSync(path.dirname(unitPath), { recursive: true });
+  mkdirSync(path.dirname(cfg.stdoutLog), { recursive: true });
+  writeFileSync(unitPath, buildBrainHostServiceUnit(cfg, platform), "utf-8");
+  console.log(`service brain-host: wrote ${unitPath} (scheduler ${cfg.scheduler})`);
+
+  if (platform === "darwin") {
+    const domain = `gui/${process.getuid?.() ?? 0}`;
+    const target = `${domain}/${cfg.label}`;
+    spawnSync("launchctl", ["bootout", target], { stdio: "ignore" });
+    await waitForLaunchdGone(target, 10000);
+    let boot = spawnSync("launchctl", ["bootstrap", domain, unitPath], { encoding: "utf-8" });
+    for (let attempt = 0; attempt < 3 && boot.status !== 0 && isTransientBootstrapError(boot.stderr, boot.status); attempt++) {
+      await waitForLaunchdGone(target, 5000);
+      await sleepMs(1500);
+      boot = spawnSync("launchctl", ["bootstrap", domain, unitPath], { encoding: "utf-8" });
+    }
+    if (boot.status !== 0) {
+      console.error(`service brain-host: launchctl bootstrap failed: ${(boot.stderr ?? "").trim()}`);
+      return boot.status ?? 1;
+    }
+    spawnSync("launchctl", ["kickstart", "-k", target], { stdio: "ignore" });
+  } else {
+    spawnSync("systemctl", ["--user", "stop", `${cfg.label}.service`], { stdio: "ignore" });
+    spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "inherit" });
+    const en = spawnSync("systemctl", ["--user", "enable", "--now", `${cfg.label}.service`], { encoding: "utf-8" });
+    if (en.status !== 0) {
+      console.error(`service brain-host: systemctl enable failed: ${en.stderr ?? ""}`.trim());
+      return en.status ?? 1;
+    }
+  }
+
+  process.stdout.write(`service brain-host: verifying http://127.0.0.1:${cfg.port}/health ...`);
+  const ok = await pollBrainHost(cfg.port, 30000);
+  console.log(ok ? " OK" : " (not responding yet)");
+  if (!ok) {
+    const holder = portHolder(cfg.port);
+    console.error(
+      holder
+        ? `service brain-host: port ${cfg.port} is already in use by ${holder}.`
+        : `service brain-host: loaded but not serving on :${cfg.port} yet — check ${platform === "darwin" ? cfg.stderrLog : `journalctl --user -u ${cfg.label}`}.`,
+    );
+    return 1;
+  }
+  console.log(
+    `[OK] brain-host is always-on at ${brainHostInvokeUrl(cfg)} (scheduler ${cfg.scheduler}).\n` +
+      `     Point callers at it with:\n` +
+      `       export DIGITAL_ME_BRAIN_URL=${brainHostInvokeUrl(cfg)}\n` +
+      `       export DIGITAL_ME_BRAIN_TOKEN="$(cat ${cfg.tokenFile})"`,
+  );
+  return 0;
+}
+
+function removeBrainHostService(home: string): number {
+  const platform = servicePlatform();
+  if (!platform) return 0;
+  const unitPath = brainHostServiceUnitPath(home, platform);
+  if (platform === "darwin") {
+    spawnSync("launchctl", ["bootout", `gui/${process.getuid?.() ?? 0}/${BRAIN_HOST_SERVICE_LABEL}`], { stdio: "ignore" });
+  } else {
+    spawnSync("systemctl", ["--user", "disable", "--now", `${BRAIN_HOST_SERVICE_LABEL}.service`], { stdio: "ignore" });
+  }
+  if (existsSync(unitPath)) {
+    rmSync(unitPath);
+    console.log(`service brain-host: removed ${unitPath}`);
+  }
+  if (platform === "linux") spawnSync("systemctl", ["--user", "daemon-reload"], { stdio: "ignore" });
+  console.log("[OK] brain-host service removed.");
+  return 0;
+}
+
+function brainHostServiceStatus(home: string): number {
+  const platform = servicePlatform();
+  if (!platform) {
+    console.log(`service brain-host: no supported service manager on ${process.platform}.`);
+    return 0;
+  }
+  const unitPath = brainHostServiceUnitPath(home, platform);
+  console.log(`unit file: ${existsSync(unitPath) ? unitPath : "(not installed)"}`);
+  const r =
+    platform === "darwin"
+      ? spawnSync("launchctl", ["list", BRAIN_HOST_SERVICE_LABEL], { encoding: "utf-8" })
+      : spawnSync("systemctl", ["--user", "status", `${BRAIN_HOST_SERVICE_LABEL}.service`], { encoding: "utf-8" });
+  console.log((r.stdout || r.stderr || "(not loaded)").trim());
+  return 0;
 }
 
 // ─── deploy: merged-in-git → verified-live ────────────────────────────────

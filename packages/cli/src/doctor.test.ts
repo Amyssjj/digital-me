@@ -24,8 +24,9 @@ function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
 }
 
 describe("RUNTIME_EXPECTATIONS", () => {
-  it("ships paths for all 7 runtimes", () => {
+  it("ships paths for all 8 runtimes", () => {
     expect(Object.keys(RUNTIME_EXPECTATIONS).sort()).toEqual([
+      "brain-host",
       "claude-code",
       "codex",
       "dashboard",
@@ -34,6 +35,10 @@ describe("RUNTIME_EXPECTATIONS", () => {
       "hermes",
       "openclaw",
     ]);
+    // brain-host: stable symlink + token file + retrieval index.
+    expect(RUNTIME_EXPECTATIONS["brain-host"]).toContain(
+      "$HOME/.local/share/digital-me/brain-host/bin/brain-host.mjs",
+    );
     // digest shares the dream-cycle venv — its marker is the console script there.
     expect(RUNTIME_EXPECTATIONS["digest"]).toContain(
       "$HOME/.venvs/dream-cycle/bin/digital-me-digest",

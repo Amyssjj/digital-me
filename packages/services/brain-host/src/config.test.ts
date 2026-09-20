@@ -57,6 +57,21 @@ describe("loadConfig", () => {
     expect(c.host).toBe("127.0.0.1");
   });
 
+  it("reads the token from the token file when the env var is unset", () => {
+    const files: Record<string, string> = { "/h/digital-me/.data/brain-host.token": "  filetok \n" };
+    const read = (p: string): string => {
+      const v = files[p];
+      if (v === undefined) throw new Error("ENOENT");
+      return v;
+    };
+    expect(loadConfig({}, "/h", read).token).toBe("filetok");
+    expect(loadConfig({}, "/h", read).tokenFile).toBe("/h/digital-me/.data/brain-host.token");
+    expect(loadConfig({ DIGITAL_ME_BRAIN_TOKEN: "env" }, "/h", read).token).toBe("env");
+    expect(loadConfig({ DIGITAL_ME_BRAIN_TOKEN_FILE: "~/other" }, "/h", read).token).toBeUndefined();
+    files["/h/empty"] = "\n";
+    expect(loadConfig({ DIGITAL_ME_BRAIN_TOKEN_FILE: "/h/empty" }, "/h", read).token).toBeUndefined();
+  });
+
   it("uses the real home directory by default", () => {
     expect(loadConfig({}).wikiRoot.endsWith("/digital-me")).toBe(true);
   });
