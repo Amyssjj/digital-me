@@ -12,6 +12,7 @@
  */
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 // Default to the IPv4 loopback literal, not "localhost". On Node >=17 the DNS
@@ -81,24 +82,61 @@ function parsePort(value: string | number, source: string): number {
   return n;
 }
 
+/** Default location of the brain-host bearer token (written by `digital-me install --runtime brain-host`, mode 600). */
+export function defaultBrainTokenFile(env: NodeJS.ProcessEnv, home: string): string {
+  const wikiRoot = nonEmptyEnv(env.DIGITAL_ME_WIKI_ROOT) ?? path.join(home, "digital-me");
+  return path.join(wikiRoot, ".data", "brain-host.token");
+}
+
+/**
+ * Resolve the brain-host bearer token: DIGITAL_ME_BRAIN_TOKEN, else the
+ * contents of DIGITAL_ME_BRAIN_TOKEN_FILE (default `<wiki-root>/.data/brain-host.token`).
+ * Reading from a file keeps the secret out of service unit files and MCP
+ * registrations — they carry only the URL and, optionally, the file path.
+ */
+export function resolveBrainToken(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  readFile: (p: string) => string = (p) => fs.readFileSync(p, "utf-8"),
+): { token: string; source: "env" | "file" } | undefined {
+  const fromEnv = nonEmptyEnv(env.DIGITAL_ME_BRAIN_TOKEN);
+  if (fromEnv !== undefined) return { token: fromEnv, source: "env" };
+  const file = nonEmptyEnv(env.DIGITAL_ME_BRAIN_TOKEN_FILE) ?? defaultBrainTokenFile(env, home);
+  let raw: string;
+  try {
+    raw = readFile(file);
+  } catch {
+    return undefined;
+  }
+  const token = raw.trim();
+  return token === "" ? undefined : { token, source: "file" };
+}
+
 export function loadGatewayConfig(input: {
   env: NodeJS.ProcessEnv;
   openclawHome: string;
+  /** HOME for the default token-file path; defaults to os.homedir(). */
+  home?: string;
+  /** Test seam for the token file. */
+  readFile?: (p: string) => string;
 }): GatewayConfig {
   const { env, openclawHome } = input;
 
   // digital-me brain-host takes precedence over the openclaw gateway when it
   // is configured: DIGITAL_ME_BRAIN_URL names the /tools/invoke endpoint and
-  // DIGITAL_ME_BRAIN_TOKEN its bearer secret. Both must be set; a URL without
-  // a token is a configuration error, never a silent fallback to openclaw.
+  // DIGITAL_ME_BRAIN_TOKEN (or DIGITAL_ME_BRAIN_TOKEN_FILE) its bearer secret.
+  // A URL without any resolvable token is a configuration error, never a
+  // silent fallback to openclaw.
   const brainUrl = nonEmptyEnv(env.DIGITAL_ME_BRAIN_URL);
   if (brainUrl !== undefined) {
-    const brainToken = nonEmptyEnv(env.DIGITAL_ME_BRAIN_TOKEN);
-    if (brainToken === undefined) {
+    const resolved = resolveBrainToken(env, input.home ?? os.homedir(), input.readFile);
+    if (resolved === undefined) {
       throw new GatewayConfigError(
-        "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — set both to use brain-host, or unset the URL to fall back to the openclaw gateway",
+        "DIGITAL_ME_BRAIN_URL is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file " +
+          `(default ${defaultBrainTokenFile(env, input.home ?? os.homedir())}), or unset the URL to fall back to the openclaw gateway`,
       );
     }
+    const brainToken = resolved.token;
     let parsed: URL;
     try {
       parsed = new URL(brainUrl);
