@@ -51,6 +51,7 @@ import {
   HOOKS_DIR as CLAUDE_HOOKS_DIR,
   SKILLS_DIR as CLAUDE_SKILLS_DIR,
   buildClaudeHooksManifest,
+  mergeBrainEnvIntoSettings,
   mergeHooksIntoSettings,
 } from "@digital-me/runtime-claude-code";
 import {
@@ -579,11 +580,27 @@ function installClaudeCode(home: string): void {
   // Merge hooks into ~/.claude/settings.json
   const settingsPath = path.join(home, ".claude", "settings.json");
   const existing = existsSync(settingsPath) ? readUserJson(settingsPath) : {};
-  const merged = mergeHooksIntoSettings(existing);
+  let merged = mergeHooksIntoSettings(existing);
+  // brain-host plumbing: once `digital-me install --runtime brain-host` has
+  // minted a bearer token, point the hooks at brain-host through settings.json
+  // `env` (Claude Code exports it to every hook process). Without this the
+  // hooks keep talking to the openclaw gateway after the cutover, silently.
+  // Both DIGITAL_ME_BRAIN_* keys are written together — a URL without a token
+  // is a hard error in every caller, never a fallback.
+  const brainCfg = resolveBrainHostServiceConfig(home, process.env, process.execPath);
+  let brainNote = "";
+  if (existsSync(brainCfg.tokenFile)) {
+    const brainToken = readFileSync(brainCfg.tokenFile, "utf-8").trim();
+    if (brainToken !== "") {
+      const brainUrl = brainHostInvokeUrl(brainCfg);
+      merged = mergeBrainEnvIntoSettings(merged, { url: brainUrl, token: brainToken });
+      brainNote = ` + env DIGITAL_ME_BRAIN_URL=${brainUrl} (token from ${brainCfg.tokenFile})`;
+    }
+  }
   writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
   // Reference the manifest so this gets imported (tree-shake protection):
   void buildClaudeHooksManifest;
-  console.log("[OK] installed claude-code: hooks + skill + settings.json merged");
+  console.log(`[OK] installed claude-code: hooks + skill + settings.json merged${brainNote}`);
   // Register the openclaw-brain MCP server in Claude Code's CLI registry
   installClaudeCodeMcp();
 }

@@ -72,6 +72,27 @@ describe("search", () => {
     expect(res.query).toBe("kanban goals vanished from the board window");
   });
 
+  it("emits `score` on the 0..1 hook-gate scale and orders results by `fusedScore`", async () => {
+    // Regression: `score` used to be the RRF fusion sum (~0.05 max), so every
+    // recall hook (MIN_SCORE 0.4 on `score`) dropped every brain-host hit and
+    // injected nothing. `score` must be the 0..1 relevance the openclaw
+    // gateway emitted; the fusion sum is exposed separately as `fusedScore`.
+    const { store, embedder, cache } = await indexed();
+    const res = await search(store, cache, embedder, "kanban board goals vanish from short windows use all time", { limit: 3 });
+    expect(res.count).toBe(3);
+    const top = res.results[0]!;
+    expect(top.path).toBe("/w/kanban.md");
+    expect(top.score).toBeGreaterThanOrEqual(0.4);
+    expect(top.score).toBeLessThanOrEqual(1);
+    for (const hit of res.results) {
+      expect(hit.score).toBe(hit.vectorScore);
+      expect(hit.fusedScore).toBeGreaterThan(0);
+      expect(hit.fusedScore).toBeLessThan(0.1);
+    }
+    const fused = res.results.map((r) => r.fusedScore);
+    expect(fused).toEqual([...fused].sort((a, b) => b - a));
+  });
+
   it("falls back to title snippet and line 1 for entries without sections, and filters by corpus", async () => {
     const { store, embedder, cache } = await indexed();
     const res = await search(store, cache, embedder, "italic eyebrows decks", { corpus: "tastes" });

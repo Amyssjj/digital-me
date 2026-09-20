@@ -191,10 +191,10 @@ describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
       DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
       OPENCLAW_GATEWAY_TOKEN: "t-gateway",
     });
-    expect(r.status).toBe(0); // exit-code contract: WAL append succeeded
+    expect(r.status).toBe(3); // exit-code contract: WAL written, but brain misconfigured → 3
     expect(seen).toHaveLength(0);
     expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN");
-    expect(r.stdout).toContain("deferred");
+    expect(r.stderr).toContain("kept in WAL only");
     expect(r.walLines).toHaveLength(1);
   });
 

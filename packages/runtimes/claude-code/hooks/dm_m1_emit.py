@@ -37,6 +37,9 @@ Exit codes:
   0  WAL append succeeded (brain POST is best-effort, never blocks 0 exit)
   1  Argument error
   2  WAL write failed (rare — disk full / permission)
+  3  Brain misconfigured: DIGITAL_ME_BRAIN_URL set without DIGITAL_ME_BRAIN_TOKEN.
+     The event is kept in the WAL and NO POST is attempted — never a silent
+     fallback to the openclaw gateway token.
 """
 
 from __future__ import annotations
@@ -56,6 +59,10 @@ from typing import Any, Dict, List, Optional
 HOME = Path.home()
 DEFAULT_WAL = HOME / ".openclaw" / "data" / "m1_events_claude_code.jsonl"
 DEFAULT_GATEWAY = "http://localhost:18789/tools/invoke"
+
+
+class BrainConfigError(RuntimeError):
+    """DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not."""
 
 
 def _resolve_gateway_url() -> str:
@@ -101,19 +108,18 @@ def _load_gateway_token() -> Optional[str]:
     """Bearer token with the same precedence as _resolve_gateway_url().
 
     When DIGITAL_ME_BRAIN_URL is set only DIGITAL_ME_BRAIN_TOKEN is honoured:
-    a URL without a token is a configuration error, so the POST is skipped
-    (the WAL still records the event for backfill) and the problem is
-    reported on stderr — never a silent fallback to an openclaw gateway token
-    that brain-host would reject anyway."""
+    a URL without a token is a configuration error and raises
+    BrainConfigError — main() still appends the event to the WAL (for
+    backfill), skips the POST, reports on stderr and exits 3. Never a silent
+    fallback to an openclaw gateway token that brain-host would reject
+    anyway."""
     if os.environ.get("DIGITAL_ME_BRAIN_URL"):
         brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
         if not brain_token:
-            print(
-                "[m1] DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — "
-                "set both to use brain-host, or unset the URL to fall back to the openclaw gateway",
-                file=sys.stderr,
+            raise BrainConfigError(
+                "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — "
+                "set both to use brain-host, or unset the URL to fall back to the openclaw gateway"
             )
-            return None
         return brain_token
     env_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
     if env_token:
@@ -349,8 +355,73 @@ def run_selftest() -> int:
     (SESSION_START_FLAG_DIR / f"{SESSION_START_FLAG_PREFIX}{sid}").unlink(missing_ok=True)
     print("  ✓ flag file lifecycle")
 
+    print("[selftest] brain endpoint + token precedence")
+    _selftest_token_precedence()
+
     print("[selftest] PASSED")
     return 0
+
+
+_PRECEDENCE_ENV_KEYS = (
+    "DIGITAL_ME_BRAIN_URL",
+    "DIGITAL_ME_BRAIN_TOKEN",
+    "OPENCLAW_GATEWAY_URL",
+    "OPENCLAW_GATEWAY_HOST",
+    "OPENCLAW_GATEWAY_PORT",
+    "OPENCLAW_GATEWAY_TOKEN",
+    "DIGITAL_ME_OPENCLAW_CONFIG",
+)
+
+
+def _selftest_token_precedence() -> None:
+    """Offline: DIGITAL_ME_BRAIN_* wins over an exported gateway token, a
+    brain URL without a token is a hard error (never a fallback), and the
+    gateway env / config-file chain still works when no brain URL is set."""
+    import tempfile
+
+    saved = {k: os.environ.get(k) for k in _PRECEDENCE_ENV_KEYS}
+    try:
+        for k in _PRECEDENCE_ENV_KEYS:
+            os.environ.pop(k, None)
+        with tempfile.TemporaryDirectory() as td:
+            # Isolate the config-file chain from the machine: an explicit
+            # DIGITAL_ME_OPENCLAW_CONFIG is consulted first.
+            cfg_path = Path(td) / "openclaw.json"
+            cfg_path.write_text(json.dumps({"gateway": {"auth": {"token": "file-token"}}}), encoding="utf-8")
+            os.environ["DIGITAL_ME_OPENCLAW_CONFIG"] = str(cfg_path)
+            assert _load_gateway_token() == "file-token"
+            assert _resolve_gateway_url() == DEFAULT_GATEWAY
+            print("  ✓ no env → openclaw config file token + default gateway url")
+
+            os.environ["OPENCLAW_GATEWAY_TOKEN"] = "gateway-token"
+            os.environ["OPENCLAW_GATEWAY_HOST"] = "10.0.0.5"
+            os.environ["OPENCLAW_GATEWAY_PORT"] = "1234"
+            assert _load_gateway_token() == "gateway-token"
+            assert _resolve_gateway_url() == "http://10.0.0.5:1234/tools/invoke"
+            os.environ["OPENCLAW_GATEWAY_URL"] = "http://gw.local/tools/invoke"
+            assert _resolve_gateway_url() == "http://gw.local/tools/invoke"
+            print("  ✓ OPENCLAW_GATEWAY_TOKEN + HOST/PORT (or URL) beat the config file")
+
+            os.environ["DIGITAL_ME_BRAIN_URL"] = "http://127.0.0.1:18791/tools/invoke"
+            os.environ["DIGITAL_ME_BRAIN_TOKEN"] = "brain-token"
+            assert _load_gateway_token() == "brain-token", "brain token must beat OPENCLAW_GATEWAY_TOKEN"
+            assert _resolve_gateway_url() == "http://127.0.0.1:18791/tools/invoke"
+            print("  ✓ DIGITAL_ME_BRAIN_TOKEN beats an exported OPENCLAW_GATEWAY_TOKEN")
+
+            del os.environ["DIGITAL_ME_BRAIN_TOKEN"]
+            try:
+                _load_gateway_token()
+            except BrainConfigError:
+                pass
+            else:
+                raise AssertionError("DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN must not fall back")
+            print("  ✓ brain URL without token is a hard error, never a gateway fallback")
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────
@@ -437,13 +508,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         extra=extra or None,
     )
 
-    token = args.token or _load_gateway_token()
+    token: Optional[str] = args.token
+    config_error: Optional[str] = None
+    if not token:
+        try:
+            token = _load_gateway_token()
+        except BrainConfigError as exc:
+            # Durability first: the event still lands in the WAL so
+            # m1_backfill.py can replay it once the config is fixed. With no
+            # token, emit() skips the POST — never a fallback to openclaw.
+            config_error = str(exc)
     result = emit(event, wal_path=args.wal, gateway_url=args.gateway, token=token)
 
     if not result["wal"]:
         if not args.quiet:
             print(f"[m1] WAL append FAILED for {args.event_type}", file=sys.stderr)
         return 2
+    if config_error is not None:
+        # Always on stderr, even with --quiet: this is a misconfiguration the
+        # operator must see, not chatter.
+        print(f"[m1] {config_error}; {args.event_type} kept in WAL only", file=sys.stderr)
+        return 3
     if not args.quiet:
         brain_status = "ok" if result["brain"] else "deferred (will retry via backfill)"
         print(f"[m1] {args.event_type} event_id={event['event_id'][:60]} wal=ok brain={brain_status}")
