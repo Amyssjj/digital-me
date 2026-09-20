@@ -378,15 +378,50 @@ export interface CodexMcpConfigInputs {
   openclawHome: string;
   /** Agent id to inject into outbound calls when caller doesn't set one. */
   agentId?: string;
+  /**
+   * digital-me brain-host `/tools/invoke` URL. Emitted as DIGITAL_ME_BRAIN_URL
+   * in the proxy's env so the proxy Codex spawns talks to brain-host instead
+   * of the openclaw gateway (brain-mcp-proxy/config.ts honours it). Must be
+   * paired with `brainToken`; Codex does not forward the parent shell env to
+   * MCP servers, so the pair has to live in config.toml.
+   */
+  brainUrl?: string;
+  /** Bearer token for `brainUrl`, emitted as DIGITAL_ME_BRAIN_TOKEN. */
+  brainToken?: string;
 }
+
+const nonEmpty = (value: string | undefined): boolean =>
+  value !== undefined && value !== "";
 
 export function buildCodexMcpConfig(inputs: CodexMcpConfigInputs): string {
   const agentId = inputs.agentId ?? "codex";
+  const { brainUrl, brainToken } = inputs;
+  const hasBrain = nonEmpty(brainUrl);
+  if (hasBrain !== nonEmpty(brainToken)) {
+    // Same rule as the proxy: a URL without a token is a configuration error,
+    // never a silent fallback to the gateway (and vice versa is meaningless).
+    throw new Error(
+      "buildCodexMcpConfig: brainUrl and brainToken must be set together (DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN is a configuration error)",
+    );
+  }
+  const env = [
+    `OPENCLAW_HOME = ${tomlString(inputs.openclawHome)}`,
+    `OPENCLAW_AGENT_ID = ${tomlString(agentId)}`,
+    // Both are non-empty strings here: the guard above rejected every other
+    // combination, so the casts only restate what it established.
+    ...(hasBrain
+      ? [
+          `DIGITAL_ME_BRAIN_URL = ${tomlString(brainUrl as string)}`,
+          `DIGITAL_ME_BRAIN_TOKEN = ${tomlString(brainToken as string)}`,
+        ]
+      : []),
+    `PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"`,
+  ];
   return [
     "[mcp_servers.openclaw-brain]",
     `command = ${tomlString(inputs.nodeBin)}`,
     `args = [${tomlString(inputs.proxyBinPath)}]`,
-    `env = { OPENCLAW_HOME = ${tomlString(inputs.openclawHome)}, OPENCLAW_AGENT_ID = ${tomlString(agentId)}, PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" }`,
+    `env = { ${env.join(", ")} }`,
     "",
   ].join("\n");
 }

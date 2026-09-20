@@ -59,12 +59,22 @@ DEFAULT_GATEWAY = "http://localhost:18789/tools/invoke"
 
 
 def _resolve_gateway_url() -> str:
-    """brain-host when DIGITAL_ME_BRAIN_URL is set, else the openclaw gateway."""
-    return (
-        os.environ.get("DIGITAL_ME_BRAIN_URL")
-        or os.environ.get("OPENCLAW_GATEWAY_URL")
-        or DEFAULT_GATEWAY
-    )
+    """Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts and the
+    inject hook): DIGITAL_ME_BRAIN_URL (digital-me brain-host) >
+    OPENCLAW_GATEWAY_URL > OPENCLAW_GATEWAY_HOST/PORT > the default gateway."""
+    brain_url = os.environ.get("DIGITAL_ME_BRAIN_URL")
+    if brain_url:
+        return brain_url
+    gateway_url = os.environ.get("OPENCLAW_GATEWAY_URL")
+    if gateway_url:
+        return gateway_url
+    host = os.environ.get("OPENCLAW_GATEWAY_HOST")
+    port = os.environ.get("OPENCLAW_GATEWAY_PORT")
+    if host or port:
+        return f"http://{host or 'localhost'}:{port or '18789'}/tools/invoke"
+    return DEFAULT_GATEWAY
+
+
 DEFAULT_RUNTIME = "claude-code"
 DEFAULT_AGENT_ID = "claude-code"
 DEFAULT_PLATFORM = "claude-code"
@@ -88,12 +98,26 @@ V1_EVENT_TYPES = {
 
 
 def _load_gateway_token() -> Optional[str]:
-    # digital-me brain-host takes precedence when configured (see contracts env
-    # DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN); the gateway URL is
-    # resolved by _resolve_gateway_url() from the same variable.
-    brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
-    if os.environ.get("DIGITAL_ME_BRAIN_URL") and brain_token:
+    """Bearer token with the same precedence as _resolve_gateway_url().
+
+    When DIGITAL_ME_BRAIN_URL is set only DIGITAL_ME_BRAIN_TOKEN is honoured:
+    a URL without a token is a configuration error, so the POST is skipped
+    (the WAL still records the event for backfill) and the problem is
+    reported on stderr — never a silent fallback to an openclaw gateway token
+    that brain-host would reject anyway."""
+    if os.environ.get("DIGITAL_ME_BRAIN_URL"):
+        brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
+        if not brain_token:
+            print(
+                "[m1] DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — "
+                "set both to use brain-host, or unset the URL to fall back to the openclaw gateway",
+                file=sys.stderr,
+            )
+            return None
         return brain_token
+    env_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+    if env_token:
+        return env_token
     for candidate in (
         os.environ.get("DIGITAL_ME_OPENCLAW_CONFIG"),
         str(HOME / ".openclaw" / "config.json"),
@@ -353,8 +377,12 @@ def main(argv: Optional[List[str]] = None) -> int:
                         choices=[None, "explicit_path", "title_match", "no_applicable", "no_acknowledgement"])
     parser.add_argument("--extra-json", default="{}", help="JSON object of extra fields")
     parser.add_argument("--wal", type=Path, default=DEFAULT_WAL)
-    parser.add_argument("--gateway", default=_resolve_gateway_url())
-    parser.add_argument("--token", default=os.environ.get("OPENCLAW_GATEWAY_TOKEN"))
+    parser.add_argument("--gateway", default=_resolve_gateway_url(),
+                        help="Brain /tools/invoke URL (default: DIGITAL_ME_BRAIN_URL > "
+                             "OPENCLAW_GATEWAY_URL > OPENCLAW_GATEWAY_HOST/PORT > openclaw gateway)")
+    parser.add_argument("--token", default=None,
+                        help="Bearer token override (default: DIGITAL_ME_BRAIN_TOKEN when "
+                             "DIGITAL_ME_BRAIN_URL is set, else OPENCLAW_GATEWAY_TOKEN, else openclaw.json)")
     parser.add_argument(
         "--skip-if-already-started", action="store_true",
         help="For session_start: exit 0 without emitting if the once-only flag already exists",

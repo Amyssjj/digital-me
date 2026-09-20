@@ -8,10 +8,56 @@ import {
   buildBrainHostLaunchdPlist,
   buildBrainHostServiceUnit,
   buildBrainHostSystemdUnit,
+  resolveBrainCallerEnv,
   resolveBrainHostServiceConfig,
 } from "./brain-host-service.js";
 
 const HOME = "/home/t";
+
+describe("resolveBrainCallerEnv", () => {
+  const cfg = { host: "127.0.0.1", port: 18791, tokenFile: "/home/t/digital-me/.data/brain-host.token" };
+  const noFile = () => undefined;
+
+  it("prefers the installer's own DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN (trimmed)", () => {
+    expect(
+      resolveBrainCallerEnv(
+        { DIGITAL_ME_BRAIN_URL: " http://h:1/tools/invoke ", DIGITAL_ME_BRAIN_TOKEN: " tok\n" },
+        cfg,
+        () => "file-tok",
+      ),
+    ).toEqual({ brainUrl: "http://h:1/tools/invoke", brainToken: "tok" });
+  });
+
+  it("URL without token is a hard error — never a fallback to the token file or the gateway", () => {
+    expect(() =>
+      resolveBrainCallerEnv({ DIGITAL_ME_BRAIN_URL: "http://h:1/tools/invoke" }, cfg, () => "file-tok"),
+    ).toThrow(/DIGITAL_ME_BRAIN_TOKEN/);
+    expect(() =>
+      resolveBrainCallerEnv({ DIGITAL_ME_BRAIN_URL: "http://h:1/tools/invoke", DIGITAL_ME_BRAIN_TOKEN: "  " }, cfg, noFile),
+    ).toThrow(/set both/);
+  });
+
+  it("falls back to the always-on brain-host service when its token file exists", () => {
+    const reads: string[] = [];
+    const out = resolveBrainCallerEnv({}, cfg, (file) => {
+      reads.push(file);
+      return "abc123\n";
+    });
+    expect(reads).toEqual([cfg.tokenFile]);
+    expect(out).toEqual({ brainUrl: "http://127.0.0.1:18791/tools/invoke", brainToken: "abc123" });
+    // A blank URL counts as unset.
+    expect(resolveBrainCallerEnv({ DIGITAL_ME_BRAIN_URL: "  " }, cfg, () => "abc123")).toEqual({
+      brainUrl: "http://127.0.0.1:18791/tools/invoke",
+      brainToken: "abc123",
+    });
+  });
+
+  it("returns undefined (caller stays on the openclaw gateway) when neither env nor token file is available", () => {
+    expect(resolveBrainCallerEnv({}, cfg, noFile)).toBeUndefined();
+    expect(resolveBrainCallerEnv({}, cfg, () => "")).toBeUndefined();
+    expect(resolveBrainCallerEnv({}, cfg, () => " \n")).toBeUndefined();
+  });
+});
 
 describe("resolveBrainHostServiceConfig", () => {
   it("anchors at the stable install symlink with safe defaults and the scheduler OFF", () => {
