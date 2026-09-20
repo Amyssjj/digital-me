@@ -153,7 +153,12 @@ HITS="$(printf '%s' "$HITS_JSON" | jq -c '.[]' | awk 'BEGIN{i=0} {print i "\t" $
   if [ "$rel" != "$path" ]; then
     abs="$WIKI_ROOT_LOCAL/$rel"
     if [ -f "$abs" ]; then
-      mtime=$(stat -f %m "$abs" 2>/dev/null || stat -c %Y "$abs" 2>/dev/null)
+      # GNU stat first: on coreutils "stat -f %m" succeeds with filesystem info,
+      # so a BSD-first fallback never fires and the arithmetic below dies. BSD
+      # stat rejects -c, so this order works on both. Keep numeric results only.
+      # NOTE: no case/esac here - bash 3.2 mis-parses its ")" inside "$( )".
+      mtime=$(stat -c %Y "$abs" 2>/dev/null || stat -f %m "$abs" 2>/dev/null)
+      [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=""
       if [ -n "$mtime" ]; then
         age_days=$(( (NOW_EPOCH - mtime) / 86400 ))
         if [ "$age_days" -gt "$FRESH_DAYS_THRESHOLD" ]; then
