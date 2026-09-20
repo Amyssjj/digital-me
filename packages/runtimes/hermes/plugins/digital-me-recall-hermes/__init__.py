@@ -15,8 +15,11 @@ Hooks registered:
                     capturing surfaced/acted paths for this session.
 
 Design notes:
-  - MCP calls to openclaw-brain go via direct HTTP to the gateway
-    (mirrors dm_memory_search_inject.sh). No PluginLlm needed.
+  - MCP calls to openclaw-brain go via direct HTTP to the brain endpoint
+    (mirrors dm_memory_search_inject.sh). No PluginLlm needed. The
+    endpoint is digital-me brain-host when DIGITAL_ME_BRAIN_URL +
+    DIGITAL_ME_BRAIN_TOKEN are set in the Hermes process environment,
+    otherwise the openclaw gateway (see _resolve_gateway_url).
   - All I/O is best-effort; any exception is swallowed inside the hook
     so a flaky gateway can never break the agent's turn.
   - Per-session state lives in module-level dicts keyed by session_id.
@@ -42,19 +45,59 @@ logger = logging.getLogger(__name__)
 
 # ── Tunables (kept in sync with CC hook + OpenClaw plugin) ────────────────
 
-MIN_SCORE = 0.4              # drop memory_search hits below this score
+MIN_SCORE = 0.4              # drop memory_search hits below this score (cosine scale)
 TOP1_BODY_CHARS = 2000       # cap on inlined top-1 entry full body
 SEARCH_LIMIT = 6             # request more than needed so hygiene leaves usable hits
 SURFACED_PER_TURN_CAP = 3    # max hits surfaced per turn after filtering
 QUERY_PREVIEW_CHARS = 400    # truncate user_message for the search query
 HOOK_RECALL_MARKER = "<recalled-knowledge>"
 
+
+def _hit_score(hit: Dict[str, Any]) -> float:
+    """Cosine-scale score used for the MIN_SCORE gate, the injected
+    `score=NN/100` display and the M1 knowledge_surfaced entries.
+
+    The openclaw gateway's `score` is cosine-like (0..1, typically 0.4-0.7
+    for a real hit). digital-me brain-host's `score` is reciprocal-rank
+    fused (`weight / (60 + rank)`, so <= ~0.05 even for the best hit) and
+    would fail MIN_SCORE 100% of the time; its `vectorScore` is the cosine
+    similarity and is the comparable number. max() keeps the gateway gate
+    no stricter than before (the gateway also emits a `vectorScore`, and
+    its fused `score` is never above it)."""
+    s = hit.get("score")
+    v = hit.get("vectorScore")
+    score = float(s) if isinstance(s, (int, float)) else 0.0
+    if isinstance(v, (int, float)):
+        return max(score, float(v))
+    return score
+
+
 # ── Auth + paths ──────────────────────────────────────────────────────────
 
 HOME = Path.home()
 WIKI_ROOT = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or HOME / "digital-me") / "wiki"
 APP_RATE_LOG = HOME / ".openclaw" / "data" / "application_rate_hermes.log"
-GATEWAY_URL = "http://localhost:18789/tools/invoke"
+
+# Brain endpoint precedence (mirrors transport/brain-mcp-proxy config.ts and
+# the claude-code dm_memory_search_inject.sh / dm_m1_emit.py hooks):
+#   1. DIGITAL_ME_BRAIN_URL (+ DIGITAL_ME_BRAIN_TOKEN, both required)  → brain-host
+#   2. OPENCLAW_GATEWAY_URL, or OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT
+#   3. the openclaw gateway on localhost:18789
+DEFAULT_GATEWAY_URL = "http://localhost:18789/tools/invoke"
+
+
+def _resolve_gateway_url() -> str:
+    url = os.environ.get("DIGITAL_ME_BRAIN_URL") or os.environ.get("OPENCLAW_GATEWAY_URL")
+    if url:
+        return url
+    host = os.environ.get("OPENCLAW_GATEWAY_HOST")
+    port = os.environ.get("OPENCLAW_GATEWAY_PORT")
+    if host or port:
+        return f"http://{host or 'localhost'}:{port or '18789'}/tools/invoke"
+    return DEFAULT_GATEWAY_URL
+
+
+GATEWAY_URL = _resolve_gateway_url()
 
 # ── Self-contained M1 writer tunables (2026-05-26) ─────────────────────────
 #
@@ -85,11 +128,43 @@ PERIODIC_FLUSH_SEC = _env_int("DIGITAL_ME_HERMES_FLUSH_SEC", 5 * 60)
 STALE_SESSION_SEC = _env_int("DIGITAL_ME_HERMES_STALE_SEC", 24 * 60 * 60)
 
 
+_BRAIN_TOKEN_MISSING_LOGGED = False
+
+
 def _load_gateway_token() -> Optional[str]:
-    """Read auth token from the same paths the Claude Code hook uses."""
+    """Resolve the bearer token for GATEWAY_URL.
+
+    Precedence mirrors _resolve_gateway_url(): when DIGITAL_ME_BRAIN_URL is
+    set the token MUST come from DIGITAL_ME_BRAIN_TOKEN — the openclaw
+    gateway's token authenticates a different server, so it is never used
+    as a fallback (that would be a silent 401 against brain-host). A URL
+    without a token is a configuration error: it is logged at ERROR and
+    recall stays disabled. Raising here would take the whole Hermes plugin
+    loader down, which the plugin's fail-open contract forbids.
+
+    Otherwise OPENCLAW_GATEWAY_TOKEN wins, then the same openclaw config
+    files the Claude Code hooks read.
+    """
+    global _BRAIN_TOKEN_MISSING_LOGGED
+    if os.environ.get("DIGITAL_ME_BRAIN_URL"):
+        brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
+        if brain_token:
+            return brain_token
+        if not _BRAIN_TOKEN_MISSING_LOGGED:
+            _BRAIN_TOKEN_MISSING_LOGGED = True
+            logger.error(
+                "digital-me-recall-hermes: DIGITAL_ME_BRAIN_URL is set but "
+                "DIGITAL_ME_BRAIN_TOKEN is not — recall disabled. Set both to "
+                "use brain-host, or unset the URL to fall back to the openclaw gateway.",
+            )
+        return None
+    env_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
+    if env_token:
+        return env_token
     for candidate in (
         os.environ.get("DIGITAL_ME_OPENCLAW_CONFIG"),
         str(HOME / ".openclaw" / "config.json"),
+        str(HOME / ".openclaw" / "openclaw.json"),
         str(HOME / ".clawdbot" / "openclaw.json"),
     ):
         if not candidate:
@@ -220,11 +295,21 @@ def _invoke_gateway(tool: str, args: Dict[str, Any], timeout: float = 4.0) -> Op
 
 
 def _normalize_hit_path(raw: str) -> Optional[str]:
-    """Reduce the brain's path encoding to a wiki-relative form."""
+    """Reduce the brain's path encoding to a wiki-relative form.
+
+    The gateway returns wiki paths relative to its memory dir
+    (`../../../<data-repo>/wiki/<domain>/<slug>.md`); brain-host returns absolute
+    paths under the data repo for both `wiki/` and `tastes/` entries. Wiki
+    entries normalise to `<domain>/<slug>.md`; taste leaves keep their
+    `tastes/` prefix so the M1 path classifier (dashboard intake +
+    m1_cutover_verify) files them under the tastes tree instead of
+    dropping them as unclassifiable absolute paths."""
     if not raw:
         return None
     if "/wiki/" in raw:
         return raw.split("/wiki/", 1)[1]
+    if "/tastes/" in raw:
+        return "tastes/" + raw.split("/tastes/", 1)[1]
     if raw.startswith("memory/"):
         # Per-agent memory paths — keep as-is so dedup against tool calls works
         return raw
@@ -234,10 +319,12 @@ def _normalize_hit_path(raw: str) -> Optional[str]:
 
 
 def _read_wiki_body(rel_path: str, max_chars: int = TOP1_BODY_CHARS) -> Optional[str]:
-    """Read the body of a wiki entry, strip frontmatter, truncate."""
+    """Read the body of a wiki entry (or taste leaf), strip frontmatter, truncate."""
     if not rel_path or rel_path.startswith("memory/"):
         return None
-    abs_path = WIKI_ROOT / rel_path
+    # `tastes/...` sits beside `wiki/` in the data repo, not under it.
+    root = WIKI_ROOT.parent if rel_path.startswith("tastes/") else WIKI_ROOT
+    abs_path = root / rel_path
     if not abs_path.is_file():
         return None
     try:
@@ -501,7 +588,7 @@ def _format_injection(hits: List[Dict[str, Any]]) -> str:
     ]
     for i, hit in enumerate(hits):
         path = hit.get("path", "")
-        score_int = int((hit.get("score") or 0) * 100)
+        score_int = int(_hit_score(hit) * 100)
         snippet = (hit.get("snippet") or "").replace("\n", " ")[:240]
         lines.append(f"- {path} (score={score_int}/100)")
         if i == 0:
@@ -671,7 +758,7 @@ def _on_pre_llm_call(
         seen_this_session = _SESSION_SURFACED[session_id]
         filtered: List[Dict[str, Any]] = []
         for h in raw_hits:
-            score = h.get("score") or 0
+            score = _hit_score(h)
             path = h.get("path")
             if not path or score < MIN_SCORE:
                 continue
@@ -712,7 +799,7 @@ def _on_pre_llm_call(
                 surfaced_for_event.append({
                     "path": norm,
                     "title": h.get("title") or "",
-                    "score": h.get("score"),
+                    "score": _hit_score(h),
                     "source": "memory_search",
                 })
             _SESSION_LAST_SURFACED[session_id] = surfaced_for_event

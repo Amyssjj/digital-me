@@ -168,6 +168,29 @@ describe("digital-me-recall-hermes plugin shipping", () => {
     expect(src).toContain('"surface": "hermes"');
   });
 
+  it("__init__.py reaches digital-me brain-host via the shared env contract", () => {
+    // 2026-09-20: the plugin hardcoded the openclaw gateway URL and read the
+    // token only from openclaw config files, so DIGITAL_ME_BRAIN_URL /
+    // DIGITAL_ME_BRAIN_TOKEN (contracts env.ts, brain-mcp-proxy config.ts,
+    // claude-code hooks) never reached Hermes. brain-host's `score` is also
+    // RRF-fused (<= ~0.05), so the cosine-scale MIN_SCORE gate must read
+    // `vectorScore` — see _hit_score. Source-grep pins, like the M1 log ones
+    // above; the behaviour itself is covered by test_gateway_resolve.py.
+    const src = readFileSync(
+      `${RECALL_PLUGIN_SRC_DIR}/__init__.py`,
+      "utf8",
+    );
+    expect(src).toContain("DIGITAL_ME_BRAIN_URL");
+    expect(src).toContain("DIGITAL_ME_BRAIN_TOKEN");
+    expect(src).toContain("OPENCLAW_GATEWAY_TOKEN");
+    expect(src).toContain("_resolve_gateway_url");
+    expect(src).toContain("_hit_score");
+    expect(src).toContain('"vectorScore"');
+    // The python tests ship beside the plugin and are wired into CI.
+    expect(existsSync(`${RECALL_PLUGIN_SRC_DIR}/test_gateway_resolve.py`)).toBe(true);
+    expect(existsSync(`${RECALL_PLUGIN_SRC_DIR}/test_parse_ack.py`)).toBe(true);
+  });
+
   it("__init__.py is self-contained for M1 application_rate (periodic flush + atexit)", () => {
     // Regression guard (2026-05-26): Hermes' `on_session_end` doesn't
     // fire reliably for daemon-style runtimes (Discord bot, long-lived
