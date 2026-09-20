@@ -1,15 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // Mock the brain client so getKanbanData reads from a controllable board.
+// The mock receives brainBoard's options so tests can assert the window the
+// dashboard asks the brain for.
 const brainBoardMock = vi.fn();
 vi.mock("./brain-client.mc.js", () => ({
-  brainBoard: () => brainBoardMock(),
+  brainBoard: (opts: unknown) => brainBoardMock(opts),
   brainTracesQuery: vi.fn(),
   brainWorkflowList: vi.fn(),
   brainWikiStatus: vi.fn(),
 }));
 
-import { getKanbanData } from "./db.js";
+import { getKanbanData, getLayerHealth } from "./db.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -74,5 +76,35 @@ describe("getKanbanData date-range scoping", () => {
     expect(res.stats.goals.total).toBe(2);
     expect(res.stats.goals.byStatus.pending).toBe(1);
     expect(res.stats.goals.byStatus.running).toBe(1);
+  });
+});
+
+describe("board window forwarded to the brain", () => {
+  beforeEach(() => brainBoardMock.mockReset());
+
+  it("getKanbanData({days: 3}) asks the brain for a 3-day board (brainBoard derives since = now - 3d)", async () => {
+    brainBoardMock.mockResolvedValue({ goals: [] });
+    await getKanbanData({ days: 3 });
+    expect(brainBoardMock).toHaveBeenCalledTimes(1);
+    expect(brainBoardMock).toHaveBeenCalledWith({ days: 3 });
+  });
+
+  it("getKanbanData without days leaves the window to brainBoard's default", async () => {
+    brainBoardMock.mockResolvedValue({ goals: [] });
+    await getKanbanData({});
+    expect(brainBoardMock).toHaveBeenCalledWith({ days: undefined });
+  });
+
+  it("getLayerHealth needs only open goals and asks for a zero-day window", async () => {
+    brainBoardMock.mockResolvedValue({
+      goals: [
+        { ...goal("layer", "active", 1), type: "evergreen" },
+        { ...goal("proj", "running", 1), parent_goal_id: "layer" },
+      ],
+    });
+    const res = await getLayerHealth();
+    expect(brainBoardMock).toHaveBeenCalledWith({ days: 0 });
+    expect(res.layers).toHaveLength(1);
+    expect(res.layers[0].openProjects).toBe(1);
   });
 });

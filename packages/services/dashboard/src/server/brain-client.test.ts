@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createBrainClient } from "./brain-client.js";
+import { BOARD_WINDOW_MAX_DAYS, clampBoardDays, createBrainClient } from "./brain-client.js";
 import type { MinimalMcpClient } from "./brain-client.js";
 
 function fakeClient(
@@ -353,5 +353,141 @@ describe("createBrainClient — cache TTLs", () => {
     await client.wikiStatus();
     await client.wikiStatus();
     expect(handler).toHaveBeenCalledOnce();
+  });
+});
+
+describe("createBrainClient — reconnect after the transport closes", () => {
+  it("drops the client when onclose fires and reconnects via the factory on the next call", async () => {
+    const first = fakeClient({ tasks: async () => ({ goals: [{ id: "g1", name: "one" }] }) });
+    const second = fakeClient({ tasks: async () => ({ goals: [{ id: "g2", name: "two" }] }) });
+    const factory = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const warn = vi.fn();
+    const client = createBrainClient({ clientFactory: factory, warn });
+
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+
+    // The SDK fires Protocol.onclose when the stdio child exits or a message
+    // overflows the read buffer.
+    first.onclose!();
+    expect(client.isConnected()).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("connection closed"));
+
+    const out = await client.board();
+    expect(factory).toHaveBeenCalledTimes(2);
+    expect(out.goals).toEqual([{ id: "g2", name: "two" }]);
+    expect(client.isConnected()).toBe(true);
+  });
+
+  it("ignores a late onclose from a superseded client", async () => {
+    const first = fakeClient({});
+    const second = fakeClient({});
+    const factory = vi.fn().mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    const client = createBrainClient({ clientFactory: factory });
+
+    await client.connect();
+    first.onclose!();
+    await client.connect();
+    expect(client.isConnected()).toBe(true);
+
+    first.onclose!(); // stale — must not discard `second`
+    expect(client.isConnected()).toBe(true);
+    await client.connect();
+    expect(factory).toHaveBeenCalledTimes(2);
+  });
+
+  it("reports transport errors through warn without dropping the connection", async () => {
+    const fake = fakeClient({});
+    const warn = vi.fn();
+    const client = createBrainClient({ clientFactory: async () => fake, warn });
+    await client.connect();
+    fake.onerror!(new Error("ReadBuffer exceeded maximum size of 10485760 bytes"));
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("ReadBuffer exceeded"));
+    expect(client.isConnected()).toBe(true);
+  });
+
+  it("works without a warn sink", async () => {
+    const fake = fakeClient({});
+    const client = createBrainClient({ clientFactory: async () => fake });
+    await client.connect();
+    fake.onerror!(new Error("x"));
+    fake.onclose!();
+    expect(client.isConnected()).toBe(false);
+  });
+});
+
+describe("createBrainClient — board window", () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  function boardArgs(handler: ReturnType<typeof vi.fn>): Record<string, unknown> {
+    return handler.mock.calls[0]![0] as Record<string, unknown>;
+  }
+
+  it("board() defaults to the 7-day window and forwards since (no limit)", async () => {
+    const handler = vi.fn(async () => ({ goals: [] }));
+    const client = createBrainClient({ clientFactory: async () => fakeClient({ tasks: handler }) });
+    const before = Date.now();
+    await client.board();
+    const after = Date.now();
+    const args = boardArgs(handler);
+    expect(args.action).toBe("board");
+    expect(args.format).toBe("json");
+    expect(args.since as number).toBeGreaterThanOrEqual(before - 7 * DAY);
+    expect(args.since as number).toBeLessThanOrEqual(after - 7 * DAY);
+    expect("limit" in args).toBe(false);
+  });
+
+  it("board({days: 3}) forwards since = now - 3d", async () => {
+    const handler = vi.fn(async () => ({ goals: [] }));
+    const client = createBrainClient({ clientFactory: async () => fakeClient({ tasks: handler }) });
+    const before = Date.now();
+    await client.board({ days: 3 });
+    const after = Date.now();
+    const since = boardArgs(handler).since as number;
+    expect(since).toBeGreaterThanOrEqual(before - 3 * DAY);
+    expect(since).toBeLessThanOrEqual(after - 3 * DAY);
+  });
+
+  it("board({days: 30}) is clamped to the 7-day maximum (never widens the single-message payload)", async () => {
+    const handler = vi.fn(async () => ({ goals: [] }));
+    const client = createBrainClient({ clientFactory: async () => fakeClient({ tasks: handler }) });
+    const before = Date.now();
+    await client.board({ days: 30 });
+    expect(boardArgs(handler).since as number).toBeGreaterThanOrEqual(
+      before - BOARD_WINDOW_MAX_DAYS * DAY,
+    );
+  });
+
+  it("board({limit}) forwards limit alongside since", async () => {
+    const handler = vi.fn(async () => ({ goals: [] }));
+    const client = createBrainClient({ clientFactory: async () => fakeClient({ tasks: handler }) });
+    await client.board({ days: 1, limit: 25 });
+    expect(boardArgs(handler).limit).toBe(25);
+    expect(typeof boardArgs(handler).since).toBe("number");
+  });
+
+  it("caches per window/limit — a different window is a separate fetch", async () => {
+    const handler = vi.fn(async () => ({ goals: [] }));
+    const client = createBrainClient({ clientFactory: async () => fakeClient({ tasks: handler }) });
+    await client.board({ days: 7 });
+    await client.board(); // same resolved window → cached
+    expect(handler).toHaveBeenCalledOnce();
+    await client.board({ days: 1 });
+    expect(handler).toHaveBeenCalledTimes(2);
+    await client.board({ days: 1, limit: 10 });
+    expect(handler).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe("clampBoardDays", () => {
+  it("defaults and caps at BOARD_WINDOW_MAX_DAYS, never widens on bad input", () => {
+    expect(BOARD_WINDOW_MAX_DAYS).toBe(7);
+    expect(clampBoardDays(undefined)).toBe(7);
+    expect(clampBoardDays(Number.NaN)).toBe(7);
+    expect(clampBoardDays(Number.POSITIVE_INFINITY)).toBe(7);
+    expect(clampBoardDays(30)).toBe(7);
+    expect(clampBoardDays(3)).toBe(3);
+    expect(clampBoardDays(0)).toBe(0);
+    expect(clampBoardDays(-4)).toBe(0);
   });
 });

@@ -11,10 +11,11 @@
  *     so consumers can have multiple instances (e.g. tests) without
  *     module-scope leaks
  *   - returns a Result-shaped error from `init()` instead of console.error
+ *   - drops the connection when the underlying transport closes, so the
+ *     next call reconnects instead of failing forever with "Not connected"
  *
- * The default factory (used by `defaultClientFactory`) reads command +
- * args from @digital-me/contracts so the brain-mcp-proxy binary location
- * is config-driven. Live wiring is done in server/index.ts.
+ * The spawn contract for the default (stdio proxy) client lives in
+ * proxy-spawn.ts; live wiring is done in brain-client.mc.ts / server.ts.
  */
 
 import { TtlCache } from "./cache.js";
@@ -27,8 +28,15 @@ export type CallToolRequest = {
   readonly arguments: Record<string, unknown>;
 };
 
+/**
+ * The slice of @modelcontextprotocol/sdk's Client we use. `onclose` /
+ * `onerror` are the SDK's Protocol hooks — assignable slots, fired when the
+ * transport closes (child exit, read-buffer overflow) or errors.
+ */
 export type MinimalMcpClient = {
   callTool: (req: CallToolRequest) => Promise<unknown>;
+  onclose?: () => void;
+  onerror?: (error: Error) => void;
 };
 
 export type MinimalMcpClientFactory = () => Promise<MinimalMcpClient>;
@@ -57,6 +65,13 @@ export type BoardResult = {
   stats?: Record<string, unknown>;
 };
 
+export type BoardOpts = {
+  /** Look-back window (days) for terminal goals; see clampBoardDays. */
+  days?: number;
+  /** Optional cap on goals returned (most recently updated first). */
+  limit?: number;
+};
+
 export type TracesQueryOpts = {
   agentId?: string;
   goalId?: string;
@@ -83,6 +98,30 @@ const SCHEDULE_TTL_MS = 30_000;
 const TRACES_TTL_MS = 15_000;
 const WIKI_TTL_MS = 60_000;
 
+// ── Board window ───────────────────────────────────────────────────────────
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Largest look-back window (days) the dashboard asks the brain for, and the
+ * default when a caller gives none. It equals the brain's own default board
+ * window: `tasks {action:"board", format:"json"}` returns the whole window as
+ * ONE MCP message (~55 MB per 7 days of every-minute workflow goals), so the
+ * range selector may narrow the fetch but must never widen it — a 30-day or
+ * "all time" preset would ship hundreds of MB through a stdio pipe and
+ * re-create the transport overflow this module guards against. Wider views
+ * need a paginated/aggregated brain API, not a bigger single message.
+ */
+export const BOARD_WINDOW_MAX_DAYS = 7;
+
+/** Resolve a caller's `days` into the window actually requested: default and
+ *  ceiling are BOARD_WINDOW_MAX_DAYS; negative or non-finite input (e.g. a
+ *  NaN from a malformed query string) never widens the window. */
+export function clampBoardDays(days: number | undefined): number {
+  if (days === undefined || !Number.isFinite(days)) return BOARD_WINDOW_MAX_DAYS;
+  return Math.min(Math.max(days, 0), BOARD_WINDOW_MAX_DAYS);
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────
 
 function asArray<T>(value: unknown): T[] {
@@ -105,7 +144,7 @@ export type BrainClient = {
   connect(): Promise<MinimalMcpClient>;
   init(): Promise<InitResult>;
   isConnected(): boolean;
-  board(): Promise<BoardResult>;
+  board(opts?: BoardOpts): Promise<BoardResult>;
   taskStatus(taskId: string): Promise<BrainTask | null>;
   workflowList(): Promise<BrainWorkflowTemplate[]>;
   scheduleList(): Promise<Array<Record<string, unknown>>>;
@@ -116,6 +155,8 @@ export type BrainClient = {
 
 export function createBrainClient(deps: {
   clientFactory: MinimalMcpClientFactory;
+  /** Optional sink for connection-lifecycle warnings (close / error). */
+  warn?: (message: string) => void;
 }): BrainClient {
   const cache = new TtlCache(DEFAULT_TTL_MS);
   let client: MinimalMcpClient | null = null;
@@ -129,6 +170,18 @@ export function createBrainClient(deps: {
     connectPromise = promise;
     try {
       const c = await promise;
+      // Recovery path: when the transport closes (child exit, read-buffer
+      // overflow) drop the singleton so the next call reconnects. Guarded so
+      // a late close from a superseded client can never discard a newer one.
+      c.onclose = () => {
+        if (client === c) {
+          client = null;
+          deps.warn?.("[brain-client] connection closed; will reconnect on next call");
+        }
+      };
+      c.onerror = (err) => {
+        deps.warn?.(`[brain-client] transport error: ${err.message}`);
+      };
       client = c;
       connectPromise = null;
       return c;
@@ -156,14 +209,18 @@ export function createBrainClient(deps: {
     return extractToolResult(raw);
   }
 
-  async function board(): Promise<BoardResult> {
-    const key = "board";
+  async function board(opts: BoardOpts = {}): Promise<BoardResult> {
+    const days = clampBoardDays(opts.days);
+    const key = `board:${days}:${opts.limit ?? "all"}`;
     const cached = cache.get<BoardResult>(key);
     if (cached !== null) return cached;
-    const raw = (await callTool("tasks", {
+    const args: Record<string, unknown> = {
       action: "board",
       format: "json",
-    })) as Record<string, unknown>;
+      since: Date.now() - days * DAY_MS,
+    };
+    if (opts.limit !== undefined) args.limit = opts.limit;
+    const raw = (await callTool("tasks", args)) as Record<string, unknown>;
     const result: BoardResult = {
       goals: asArray<BrainGoal>(raw?.goals),
       stats: (raw?.stats as Record<string, unknown> | undefined) ?? undefined,
