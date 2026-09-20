@@ -20,6 +20,20 @@ brain.db; while the openclaw `digital-me-brain` plugin still ticks, leave this
 off or schedules double-fire. Dispatch in Phase 2 is exec-only: `spawn` tasks
 are left `ready` and logged, never failed.
 
+**Spawn-step schedules.** Because dispatch is exec-only, an *enabled* schedule
+whose workflow has a `spawn` step can never complete here: its run sits `ready`
+until the stall watchdog fails it. The mount lints for those at startup (one
+`warn` per schedule) and lists them on `/health` as
+`orchestrator.spawnSchedules`; the list refreshes every tick. Convert the step
+to `dispatch: {mode: "exec", agentId: "<cli_exec_aliases key>"}` or disable the
+schedule (`tasks` action `schedule_disable`) until Phase 4 cli-resume dispatch.
+
+**Exec post-condition.** When an alias resolves a task, the dispatch carries a
+`verify` step (`/bin/test -s <artifact-dir>/handoff.json`). The dispatcher runs
+it after a run that exited 0; a non-expected exit (or a verify timeout) fails
+the task with `verify failed: …` and keeps the run's stdout in the attempt, so
+a worker that exits 0 without a handoff is no longer recorded as completed.
+
 ## What the retriever indexes
 
 `~/digital-me/wiki/**/*.md` and `~/digital-me/tastes/**/*.md`. Nothing else:
@@ -75,8 +89,16 @@ POST /tools/invoke   Authorization: Bearer <token>
 → { "ok": true, "result": { "content": [{ "type": "text", "text": "<json>" }], "details": { "results": [...], "provider", "model", "count" } } }
 → { "ok": false, "error": { "type": "search_unavailable" | "invalid_request" | "unknown_tool" | …, "message" } }
 
-GET /health → { ok, version, provenance, lastIndexAt, entries, sections, byCorpus }
+GET /health → { ok, version, provenance, lastIndexAt, entries, sections, byCorpus, orchestrator }
 ```
+
+`/health` under load: it is served on the same single event loop as
+`/tools/invoke`, so one heavy synchronous tool call — today `tasks
+action=board` without `since`/`limit` on a large brain.db (~7 s observed on
+2026-09-20) — delays every concurrent request, `/health` included, for its
+duration. Probes should allow a 10 s timeout and treat a slow answer as "busy",
+not "down"; callers should bound board reads (`since`, `limit`,
+`format: "json"`). Moving heavy reads off the loop is a follow-up.
 
 Hits carry `path`, `relPath`, `title`, `corpus`, `startLine`, `endLine`,
 `score`, `vectorScore`, `textScore`, `snippet`, `source: "memory"`, `citation`.

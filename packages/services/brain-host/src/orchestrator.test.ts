@@ -192,4 +192,59 @@ describe("Orchestrator", () => {
     const orch = new Orchestrator({ db, wikiRoot: dir, log: () => {}, stallThresholdMs: 1000 });
     expect(orch.tools.size).toBeGreaterThan(0);
   });
+
+  it("lints enabled schedules with spawn steps: warns at startup, lists them on status, and the tick leaves their tasks ready", async () => {
+    let now = 1_700_000_000_000;
+    const { orch, logs, db } = make({
+      now: () => now,
+      execRun: async () => ({ success: true, exitCode: 0, timedOut: false, stdout: "", stderr: "" }),
+    });
+    const importWf = (id: string, stepKey: string, dispatch: Record<string, unknown>) =>
+      orch.execute("tasks", {
+        action: "workflow_import",
+        workflowJson: JSON.stringify({
+          id, name: id, description: "d", variables: [],
+          steps: [{ stepKey, name: stepKey, promptTemplate: "go", blockedByKeys: [], dispatch }],
+        }),
+      });
+    expect((await importWf("wf_spawn", "agent", { mode: "spawn", agentId: "claude-code-cli" }))!.isError).toBeUndefined();
+    expect((await importWf("wf_exec", "run", { mode: "exec", command: ["true"] }))!.isError).toBeUndefined();
+    const add = (templateId: string, scheduleName: string) =>
+      orch.execute("tasks", { action: "schedule_add", templateId, cronExpr: "0 4 * * *", scheduleName });
+    expect((await add("wf_spawn", "roadmap"))!.isError).toBeUndefined();
+    expect((await add("wf_exec", "exec-only"))!.isError).toBeUndefined();
+    expect((await add("wf_spawn", "roadmap-off"))!.isError).toBeUndefined();
+    const offId = (db.prepare("SELECT id FROM schedules WHERE name = ?").get("roadmap-off") as { id: string }).id;
+    expect((await orch.execute("tasks", { action: "schedule_disable", scheduleId: offId }))!.isError).toBeUndefined();
+
+    // The constructor linted an empty db; the explicit lint finds exactly the enabled spawn schedule.
+    expect(logs.filter((l) => l.includes("has spawn step(s)"))).toHaveLength(0);
+    const findings = orch.lintSpawnSchedules();
+    expect(findings).toEqual([{ scheduleId: expect.any(String), scheduleName: "roadmap", workflowId: "wf_spawn", stepKeys: ["agent"] }]);
+    expect(logs.filter((l) => l.startsWith('warn: schedule "roadmap"') && l.includes("schedule_disable"))).toHaveLength(1);
+    expect(orch.status().spawnSchedules).toEqual(findings);
+
+    // A fresh mount over the same brain.db warns at startup and exposes the finding on status (/health).
+    const logs2: string[] = [];
+    const orch2 = new Orchestrator({
+      db, wikiRoot: dir, log: (l, m) => logs2.push(`${l}: ${m}`), stallThresholdMs: 60_000, exists: () => false, readFile: () => "", now: () => now,
+    });
+    expect(logs2.filter((l) => l.startsWith('warn: schedule "roadmap"') && l.includes("wf_spawn"))).toHaveLength(1);
+    expect(orch2.status().spawnSchedules).toEqual(findings);
+
+    // Past the next fire: both enabled schedules instantiate; the exec task completes, the spawn task is left ready.
+    now += 2 * 86_400_000;
+    const tick = await orch.tick();
+    expect(tick.instantiated).toBe(2);
+    await new Promise((res) => setTimeout(res, 20));
+    const rows = db.prepare("SELECT name, status FROM tasks").all() as { name: string; status: string }[];
+    expect(Object.fromEntries(rows.map((r) => [r.name, r.status]))).toEqual({ agent: "ready", run: "completed" });
+    expect(logs.some((l) => l.includes('spawn task "agent" left ready'))).toBe(true);
+    expect(orch.status().spawnSchedules).toEqual(findings);
+
+    // Disabling the schedule clears the finding on the next tick without a restart.
+    expect((await orch.execute("tasks", { action: "schedule_disable", scheduleId: findings[0]!.scheduleId }))!.isError).toBeUndefined();
+    await orch.tick();
+    expect(orch.status().spawnSchedules).toEqual([]);
+  });
 });
