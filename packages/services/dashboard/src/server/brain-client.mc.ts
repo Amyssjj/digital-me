@@ -10,7 +10,8 @@
 import { createRequire } from "node:module";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-import { MAX_RESULT_BYTES_ENV } from "@digital-me/brain-mcp-proxy";
+import { proxyTransportParams } from "./proxy-spawn.js";
+import { clampBoardDays } from "./brain-client.js";
 
 // ── In-process TTL Cache ──────��───────────────────────────────────
 
@@ -53,40 +54,15 @@ async function getClient(): Promise<Client> {
   if (connectPromise) return connectPromise;
 
   connectPromise = (async () => {
-    // Resolve the brain-mcp-proxy script path. Order (most-specific first):
-    //   1. $BRAIN_PROXY_PATH env var — power-user override (e.g. running
-    //      against a forked proxy build).
-    //   2. Node module resolution against @digital-me/brain-mcp-proxy.
-    //      This is the zero-config path: the dashboard package declares
-    //      brain-mcp-proxy as a workspace dep, so pnpm install wires up
-    //      the symlink and createRequire().resolve() finds the bin
-    //      regardless of where the dashboard is launched from.
-    //   3. Bare "brain-mcp-proxy.mjs" on $PATH — last-resort fallback for
-    //      installs where the workspace symlink isn't reachable.
-    let proxyPath: string;
-    if (process.env.BRAIN_PROXY_PATH) {
-      proxyPath = process.env.BRAIN_PROXY_PATH;
-    } else {
-      try {
-        const require = createRequire(import.meta.url);
-        proxyPath = require.resolve("@digital-me/brain-mcp-proxy/bin/brain-mcp-proxy.mjs");
-      } catch {
-        proxyPath = "brain-mcp-proxy.mjs";
-      }
-    }
-    const nodeBin = process.env.NODE_BIN || "node";
-    const transport = new StdioClientTransport({
-      command: nodeBin,
-      args: [proxyPath],
-      // Disable the proxy's oversize-result guard for this spawn: the
-      // dashboard is the one consumer that legitimately reads the full
-      // board JSON (tens of MB — Kanban stats, workflow run counts), and
-      // the SDK client handles it fine. Agent-facing spawns keep the cap.
-      env: {
-        ...process.env,
-        [MAX_RESULT_BYTES_ENV]: "0",
-      } as Record<string, string>,
-    });
+    // Spawn contract (script path, node binary, env, read-buffer cap) lives
+    // in proxy-spawn.ts so it is unit-tested. The child inherits this env and
+    // applies brain-mcp-proxy's backend precedence itself:
+    // DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN → OPENCLAW_GATEWAY_* →
+    // openclaw.json.
+    const require = createRequire(import.meta.url);
+    const transport = new StdioClientTransport(
+      proxyTransportParams({ env: process.env, resolve: (spec) => require.resolve(spec) }),
+    );
 
     const c = new Client(
       { name: "digital-me-dashboard", version: "2.0.0" },
@@ -94,6 +70,24 @@ async function getClient(): Promise<Client> {
     );
 
     await c.connect(transport);
+    // Recovery path: the proxy child can die (SIGTERM, a crash, or — before
+    // proxy-spawn.ts raised maxBufferSize — a single stdout message over the
+    // SDK's 10 MB default, which closes the transport). Without this reset
+    // the singleton kept pointing at a closed transport and every brain
+    // route answered "Not connected" until the dashboard process itself was
+    // restarted. Guarded so a late close from an older client can never
+    // discard a newer connection (client is only ever set while
+    // connectPromise is null, so both resets below are safe).
+    c.onclose = () => {
+      if (client === c) {
+        client = null;
+        connectPromise = null;
+        console.warn("[brain-client] proxy connection closed; will respawn on next call");
+      }
+    };
+    c.onerror = (err) => {
+      console.error("[brain-client] proxy transport error:", err.message);
+    };
     client = c;
     connectPromise = null;
     console.log("[brain-client] Connected to openclaw-brain MCP server");
@@ -218,6 +212,12 @@ export interface BrainTrace {
   attributes?: string | Record<string, unknown> | null;
   events?: string | Array<unknown> | null;
   data?: unknown;
+  // traces_query row shape (brain-host and the openclaw gateway alike): the
+  // proxy's trace-writer stores {id, agent_id, kind, payload, duration_ms, t}
+  // and the tool serialises it camelCased.
+  id?: string;
+  t?: number;
+  payload?: unknown;
 }
 
 export interface BrainWorkflowTemplate {
@@ -262,12 +262,35 @@ export interface BrainWikiStatus {
 
 // ── Public API: Tasks ─────────────────────────────────────────────
 
-export async function brainBoard(): Promise<{ goals: BrainGoal[]; stats?: Record<string, unknown> }> {
-  const cacheKey = "brain:board";
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Options for brainBoard(). */
+export interface BrainBoardOpts {
+  /** Look-back window (days) for terminal — completed/failed/cancelled —
+   *  goals; open goals are always included by the brain. Clamped by
+   *  clampBoardDays() to the brain's own 7-day maximum: the dashboard's
+   *  range selector may narrow the fetch but never widen it, because the
+   *  board arrives as ONE MCP message (~55 MB per 7 days). Default 7. */
+  days?: number;
+  /** Optional cap on goals returned (most recently updated first). */
+  limit?: number;
+}
+
+export async function brainBoard(
+  opts: BrainBoardOpts = {},
+): Promise<{ goals: BrainGoal[]; stats?: Record<string, unknown> }> {
+  const days = clampBoardDays(opts.days);
+  const cacheKey = `brain:board:${days}:${opts.limit ?? "all"}`;
   const cached = getCached<{ goals: BrainGoal[]; stats?: Record<string, unknown> }>(cacheKey);
   if (cached) return cached;
 
-  const raw = (await callTool("tasks", { action: "board", format: "json" })) as Record<string, unknown>;
+  const args: Record<string, unknown> = {
+    action: "board",
+    format: "json",
+    since: Date.now() - days * DAY_MS,
+  };
+  if (opts.limit !== undefined) args.limit = opts.limit;
+  const raw = (await callTool("tasks", args)) as Record<string, unknown>;
   const result = {
     goals: Array.isArray(raw?.goals) ? (raw.goals as BrainGoal[]) : [],
     stats: (raw?.stats as Record<string, unknown>) ?? undefined,

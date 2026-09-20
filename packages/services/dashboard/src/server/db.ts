@@ -60,18 +60,31 @@ export interface TraceGroup {
   spans: TraceSpan[];
 }
 
+/** The id a traces_query row is grouped by: span-style trace_id/traceId when
+ *  a producer emits one, else the flat row id the proxy's trace-writer assigns. */
+function traceIdOf(t: BrainTrace): string {
+  return t.trace_id ?? t.traceId ?? t.id ?? "";
+}
+
 function adaptBrainTrace(t: BrainTrace): TraceSpan {
+  // traces_query rows (brain-host and the openclaw gateway alike) are flat
+  // {id, agentId, kind, payload, t, durationMs} records, not spans: the row
+  // id serves as both trace and span id, `t` (epoch ms) as start_time,
+  // `kind` as the span name and `payload` as attributes. Span-shaped fields
+  // still win when a producer emits them.
+  const epoch = t.timestamp ?? t.t;
+  const attributes = t.attributes ?? t.payload ?? null;
   return {
-    span_id: t.span_id ?? t.spanId ?? "",
-    trace_id: t.trace_id ?? t.traceId ?? "",
+    span_id: t.span_id ?? t.spanId ?? t.id ?? "",
+    trace_id: traceIdOf(t),
     parent_span_id: t.parent_span_id ?? t.parentSpanId ?? null,
-    name: t.name ?? "",
+    name: t.name ?? t.kind ?? "",
     service: t.service ?? t.agent_id ?? t.agentId ?? "",
     status: t.status ?? "unknown",
-    start_time: t.start_time ?? t.startTime ?? (t.timestamp ? new Date(t.timestamp).toISOString() : ""),
+    start_time: t.start_time ?? t.startTime ?? (epoch ? new Date(epoch).toISOString() : ""),
     end_time: t.end_time ?? t.endTime ?? null,
     duration_ms: t.duration_ms ?? t.durationMs ?? null,
-    attributes: typeof t.attributes === "string" ? t.attributes : (t.attributes ? JSON.stringify(t.attributes) : null),
+    attributes: typeof attributes === "string" ? attributes : (attributes ? JSON.stringify(attributes) : null),
     events: typeof t.events === "string" ? t.events : (t.events ? JSON.stringify(t.events) : null),
   };
 }
@@ -133,7 +146,7 @@ export async function getTraceById(traceId: string): Promise<TraceGroup | null> 
   const result = await brainTracesQuery({ limit: 500 });
 
   const spans: TraceSpan[] = result.traces
-    .filter((t) => (t.trace_id ?? t.traceId) === traceId)
+    .filter((t) => traceIdOf(t) === traceId)
     .map(adaptBrainTrace);
 
   if (spans.length === 0) return null;
@@ -240,7 +253,11 @@ export interface KanbanResponse {
 // ── Layer Health — via brain API ──
 // Evergreen goals + open project-goal counts.
 export async function getLayerHealth() {
-  const board = await brainBoard();
+  // Only open goals matter here (evergreens + pending/running projects under
+  // them), and the brain includes open goals regardless of the board window
+  // — so ask for a zero-day window and skip the terminal-goal bulk (~10k
+  // completed goals per 7 days) entirely.
+  const board = await brainBoard({ days: 0 });
   const evergreens = board.goals.filter(
     (g) => g.type === "evergreen" && g.status !== "retired",
   );
@@ -281,7 +298,9 @@ export async function getKanbanData(opts: {
   order?: string;
   days?: number;
 }): Promise<KanbanResponse> {
-  const board = await brainBoard();
+  // Forward the range selector as the brain-side window so a narrow range
+  // fetches a narrow board (brainBoard clamps it to the brain's 7-day max).
+  const board = await brainBoard({ days: opts.days });
 
   const limit = Math.min(opts.limit ?? 50, 200);
   const offset = opts.offset ?? 0;
