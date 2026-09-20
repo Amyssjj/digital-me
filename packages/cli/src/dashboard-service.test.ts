@@ -33,6 +33,30 @@ describe("resolveDashboardServiceConfig", () => {
     // invalid → falls back to default
     expect(resolveDashboardServiceConfig("/h", { PORT: "abc" }, NPM).port).toBe(3458);
   });
+
+  it("builds a deterministic PATH: npm's dir first, system dirs, then ~/.local/bin + ~/Library/pnpm (pnpm for `npm run start`)", () => {
+    expect(resolveDashboardServiceConfig("/home/u", {}, NPM).pathEnv).toBe(
+      "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/home/u/.local/bin:/home/u/Library/pnpm",
+    );
+    const nvm = resolveDashboardServiceConfig("/home/u", {}, "/home/u/.nvm/versions/node/v22.0.0/bin/npm").pathEnv;
+    expect(nvm.startsWith("/home/u/.nvm/versions/node/v22.0.0/bin:/opt/homebrew/bin:")).toBe(true);
+    // npm in a default dir → deduped, not listed twice
+    const dedup = resolveDashboardServiceConfig("/home/u", {}, "/usr/local/bin/npm").pathEnv.split(":");
+    expect(dedup[0]).toBe("/usr/local/bin");
+    expect(dedup.filter((d) => d === "/usr/local/bin")).toHaveLength(1);
+  });
+
+  it("ignores the ambient PATH (installer shell / agent session) and honors only DIGITAL_ME_SERVICE_PATH", () => {
+    const ambient = { PATH: "/tmp/claude-plugins/x/bin:/tmp/claude-plugins/y/bin:/opt/homebrew/bin:/usr/bin" };
+    const cfg = resolveDashboardServiceConfig("/home/u", ambient, NPM);
+    expect(cfg.pathEnv).not.toContain("claude-plugins");
+    expect(cfg.pathEnv).toBe(resolveDashboardServiceConfig("/home/u", {}, NPM).pathEnv);
+    expect(buildLaunchdPlist(cfg)).not.toContain("claude-plugins");
+    expect(buildSystemdUserUnit(cfg)).toContain(`Environment=PATH=${cfg.pathEnv}`);
+    const over = resolveDashboardServiceConfig("/home/u", { ...ambient, DIGITAL_ME_SERVICE_PATH: "/svc/bin:/usr/bin" }, NPM);
+    expect(over.pathEnv).toBe("/svc/bin:/usr/bin");
+    expect(buildLaunchdPlist(over)).toContain("<key>PATH</key><string>/svc/bin:/usr/bin</string>");
+  });
 });
 
 describe("buildLaunchdPlist (macOS)", () => {

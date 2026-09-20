@@ -24,8 +24,21 @@ describe("resolveBrainHostServiceConfig", () => {
     expect(cfg.brainDb).toBe("/home/t/.openclaw/data/brain.db");
     expect(cfg.envFile).toBe("/home/t/.openclaw/.env");
     expect(cfg.scheduler).toBe("off");
-    expect(cfg.pathEnv).toContain("/usr/bin");
+    expect(cfg.pathEnv).toBe(
+      "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/home/t/.local/bin:/home/t/Library/pnpm",
+    );
     expect(cfg.label).toBe(BRAIN_HOST_SERVICE_LABEL);
+  });
+
+  it("builds PATH deterministically: node's dir first, ambient PATH ignored, only DIGITAL_ME_SERVICE_PATH overrides", () => {
+    const ambient = { PATH: "/tmp/claude-plugins/x/bin:/tmp/claude-plugins/y/bin:/usr/bin" };
+    const cfg = resolveBrainHostServiceConfig(HOME, ambient, "/nix/bin/node");
+    expect(cfg.pathEnv.startsWith("/nix/bin:/opt/homebrew/bin:")).toBe(true);
+    expect(cfg.pathEnv).not.toContain("claude-plugins");
+    // a node inside a default dir is not listed twice
+    expect(resolveBrainHostServiceConfig(HOME, ambient, "/usr/bin/node").pathEnv.split(":").filter((d) => d === "/usr/bin")).toHaveLength(1);
+    expect(resolveBrainHostServiceConfig(HOME, { ...ambient, DIGITAL_ME_SERVICE_PATH: "/only/this" }, "/nix/bin/node").pathEnv).toBe("/only/this");
+    expect(buildBrainHostLaunchdPlist(cfg)).toContain(`<key>PATH</key><string>${cfg.pathEnv}</string>`);
   });
 
   it("honours env overrides and the explicit scheduler option", () => {
@@ -37,10 +50,10 @@ describe("resolveBrainHostServiceConfig", () => {
       DIGITAL_ME_BRAIN_DB: "/db/brain.db",
       DIGITAL_ME_ENV_FILE: "/secrets/.env",
       DIGITAL_ME_BRAIN_SCHEDULER: "on",
-      PATH: "/bin",
+      DIGITAL_ME_SERVICE_PATH: "/svc/bin:/bin",
     };
     const cfg = resolveBrainHostServiceConfig(HOME, env, "/usr/bin/node");
-    expect(cfg).toMatchObject({ wikiRoot: "/w", port: 9000, host: "0.0.0.0", brainDb: "/db/brain.db", envFile: "/secrets/.env", scheduler: "on", pathEnv: "/bin" });
+    expect(cfg).toMatchObject({ wikiRoot: "/w", port: 9000, host: "0.0.0.0", brainDb: "/db/brain.db", envFile: "/secrets/.env", scheduler: "on", pathEnv: "/svc/bin:/bin" });
     expect(cfg.tokenFile).toBe("/w/.data/brain-host.token");
     expect(resolveBrainHostServiceConfig(HOME, env, "/usr/bin/node", { scheduler: "off" }).scheduler).toBe("off");
     expect(resolveBrainHostServiceConfig(HOME, { DIGITAL_ME_BRAIN_PORT: "nope" }, "/usr/bin/node").port).toBe(BRAIN_HOST_DEFAULT_PORT);

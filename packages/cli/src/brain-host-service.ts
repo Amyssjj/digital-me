@@ -1,4 +1,5 @@
 import path from "node:path";
+import { resolveServicePath } from "./service-path.js";
 
 /**
  * Always-on service for the digital-me brain-host (retriever + orchestrator
@@ -33,6 +34,7 @@ export interface BrainHostServiceConfig {
   readonly brainDb: string;
   readonly scheduler: "on" | "off";
   readonly home: string;
+  /** Deterministic service PATH (never the installer's shell PATH); see service-path.ts. */
   readonly pathEnv: string;
   readonly stdoutLog: string;
   readonly stderrLog: string;
@@ -61,9 +63,7 @@ export function resolveBrainHostServiceConfig(
     brainDb: env.DIGITAL_ME_BRAIN_DB ?? path.join(openclawHome, "data", "brain.db"),
     scheduler: options.scheduler ?? (env.DIGITAL_ME_BRAIN_SCHEDULER?.toLowerCase() === "on" ? "on" : "off"),
     home,
-    pathEnv:
-      env.PATH ??
-      "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin",
+    pathEnv: resolveServicePath(home, env, nodeBin),
     stdoutLog: path.join(home, "Library", "Logs", "digital-me-brain-host", "server.log"),
     stderrLog: path.join(home, "Library", "Logs", "digital-me-brain-host", "server.error.log"),
   };
