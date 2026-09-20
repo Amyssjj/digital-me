@@ -829,7 +829,8 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
     console.error(
       `install dream-cycle: workflow import returned exit ${wfResult.status ?? "?"}. ` +
         `The venv is ready, but workflows aren't imported. ` +
-        `Common causes: openclaw gateway not running, or auth token missing in ~/.openclaw/openclaw.json. ` +
+        `Common causes: the brain endpoint is unreachable — with brain-host, set DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN; ` +
+        `with the openclaw gateway, it is not running or the auth token is missing in ~/.openclaw/openclaw.json. ` +
         `Re-run later with: ${venvPython} -m dream_cycle.install_workflows`,
     );
     // Non-zero exit but don't return — we still want to print the
