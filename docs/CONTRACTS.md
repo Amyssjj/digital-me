@@ -20,6 +20,8 @@ A required variable has no default — the package errors at startup if it's not
 | `OPENCLAW_GATEWAY_HOST` | no | `127.0.0.1` | openclaw | `transport/brain-mcp-proxy` |
 | `OPENCLAW_GATEWAY_PORT` | no | `18789` | openclaw | `transport/brain-mcp-proxy` |
 | `OPENCLAW_GATEWAY_TOKEN` | no | (read from `$OPENCLAW_HOME/openclaw.json`) | openclaw | `transport/brain-mcp-proxy` |
+| `DIGITAL_ME_BRAIN_URL` | no | (unset — callers use the openclaw gateway) | brain-host | `transport/brain-mcp-proxy`, `runtimes/claude-code` hooks, `runtimes/hermes` recall plugin + `m1_backfill.py`. The brain-host `/tools/invoke` endpoint (e.g. `http://127.0.0.1:18791/tools/invoke`); when set it takes precedence over every `OPENCLAW_GATEWAY_*` value and **`DIGITAL_ME_BRAIN_TOKEN` must be set too** — a URL without a token is a configuration error, never a silent fallback to the gateway token. |
+| `DIGITAL_ME_BRAIN_TOKEN` | no | — | brain-host | same consumers as `DIGITAL_ME_BRAIN_URL`. Bearer token for brain-host (`digital-me install --runtime brain-host` writes it to `~/digital-me/.data/brain-host.token`). |
 | `BRAIN_PROXY_PATH` | no | `$(which digital-me-brain-mcp-proxy)` | this repo | runtime adapters |
 | `ORCHESTRATOR_DB_PATH` | no | `$OPENCLAW_DATA_DIR/orchestrator.db` | brain-orchestrator | **deprecated** — registry entry with no live consumer; the live orchestrator store is `$OPENCLAW_DATA_DIR/brain.db` |
 | `OPENCLAW_BRAIN_DB` | no | `~/.openclaw/data/brain.db` | brain-orchestrator | `services/dashboard` intake ETL |
