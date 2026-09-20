@@ -26,16 +26,37 @@ PLEN=${#PROMPT}
 [ "$PLEN" -lt 12 ] && exit 0
 case "$PROMPT" in /*) exit 0 ;; esac
 
-# Brain endpoint: digital-me brain-host when DIGITAL_ME_BRAIN_URL is set
-# (token from DIGITAL_ME_BRAIN_TOKEN), otherwise the openclaw gateway.
+# Brain endpoint precedence (mirrors brain-mcp-proxy config.ts and dm_m1_emit.py):
+#   1. DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN — the digital-me brain-host.
+#      Both are required together: a URL without a token is a configuration
+#      error and NEVER falls back to the openclaw gateway. It is reported on
+#      stderr and the hook exits 0 (a UserPromptSubmit hook must fail open, not
+#      block the prompt) — so the failure is loud in the hook log, not silent.
+#   2. OPENCLAW_GATEWAY_URL, or OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT,
+#      with OPENCLAW_GATEWAY_TOKEN.
+#   3. gateway.auth.token from the openclaw config files.
 if [ -n "${DIGITAL_ME_BRAIN_URL:-}" ]; then
   BRAIN_URL="$DIGITAL_ME_BRAIN_URL"
   TOKEN="${DIGITAL_ME_BRAIN_TOKEN:-}"
+  if [ -z "$TOKEN" ]; then
+    echo "dm_memory_search_inject: DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — set both to use brain-host, or unset the URL to fall back to the openclaw gateway (no recall injected)" >&2
+    exit 0
+  fi
 else
-  BRAIN_URL="http://localhost:18789/tools/invoke"
-  OPENCLAW_CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$HOME/.openclaw/config.json}"
-  [ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.clawdbot/openclaw.json"
-  TOKEN="$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_CONFIG" 2>/dev/null)"
+  GW_HOST="${OPENCLAW_GATEWAY_HOST:-localhost}"
+  GW_PORT="${OPENCLAW_GATEWAY_PORT:-18789}"
+  BRAIN_URL="${OPENCLAW_GATEWAY_URL:-http://${GW_HOST}:${GW_PORT}/tools/invoke}"
+  TOKEN="${OPENCLAW_GATEWAY_TOKEN:-}"
+  if [ -z "$TOKEN" ]; then
+    for OPENCLAW_CONFIG in "${DIGITAL_ME_OPENCLAW_CONFIG:-}" \
+        "$HOME/.openclaw/config.json" \
+        "$HOME/.openclaw/openclaw.json" \
+        "$HOME/.clawdbot/openclaw.json"; do
+      [ -n "$OPENCLAW_CONFIG" ] && [ -f "$OPENCLAW_CONFIG" ] || continue
+      TOKEN="$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_CONFIG" 2>/dev/null)"
+      [ -n "$TOKEN" ] && break
+    done
+  fi
 fi
 [ -z "$TOKEN" ] && exit 0
 
@@ -88,12 +109,17 @@ if [ -n "$SEEN_FILE" ] && [ -f "$SEEN_FILE" ]; then
   SEEN_PATHS="$(cat "$SEEN_FILE")"
 fi
 
-# Filter and shape via jq. score_int = floor(score*100). dedup against SEEN_PATHS.
+# Filter and shape via jq. score_int = floor(relevance*100). dedup against SEEN_PATHS.
 # Note: RESULTS_RAW is already-parsed-text-of-JSON; jq parses it directly on stdin,
 # so we DON'T call fromjson (which would only apply to a string-typed input).
+# Relevance is backend-neutral: brain-host hits carry `vectorScore` (cosine,
+# 0..1) next to `score`; the openclaw gateway only sends `score` on the same
+# 0..1 scale. Prefer vectorScore so the gate never depends on which backend
+# answered (an older brain-host put the ~0.05 RRF sum in `score`, which
+# silently dropped every hit here).
 HITS_JSON="$(printf '%s' "$RESULTS_RAW" | jq -c --arg seen "$SEEN_PATHS" --argjson min_score "$MIN_SCORE" '
   .results // []
-  | map(. + {score_int: ((.score // 0) * 100 | floor)})
+  | map(. + {score_int: ((((.vectorScore // .score) // 0) * 100) | floor)})
   | map(select(.score_int >= $min_score))
   | (($seen | split("\n") | map(select(length > 0))) as $seenset
      | map(select(.path as $p | $seenset | index($p) | not)))

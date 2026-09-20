@@ -8,6 +8,7 @@ import {
   SKILL_NAMES,
   SKILLS_DIR,
   buildClaudeHooksManifest,
+  mergeBrainEnvIntoSettings,
   mergeHooksIntoSettings,
 } from "./installer.js";
 
@@ -160,5 +161,50 @@ describe("mergeHooksIntoSettings", () => {
       const events = (merged.hooks as Record<string, unknown[]>)[event]!;
       expect(events).toHaveLength(1);
     }
+  });
+});
+
+describe("mergeBrainEnvIntoSettings", () => {
+  const brain = { url: "http://127.0.0.1:18791/tools/invoke", token: "brain-secret" };
+  const expectedEnv = {
+    DIGITAL_ME_BRAIN_URL: brain.url,
+    DIGITAL_ME_BRAIN_TOKEN: brain.token,
+  };
+
+  it("writes both DIGITAL_ME_BRAIN_* keys into a fresh env block, keeping other settings", () => {
+    const merged = mergeBrainEnvIntoSettings({ model: "opus-4-7" }, brain);
+    expect(merged.model).toBe("opus-4-7");
+    expect(merged.env).toEqual(expectedEnv);
+  });
+
+  it("preserves the user's other env entries and overwrites stale brain values", () => {
+    const merged = mergeBrainEnvIntoSettings(
+      { env: { FOO: "bar", DIGITAL_ME_BRAIN_TOKEN: "rotated-away" } },
+      brain,
+    );
+    expect(merged.env).toEqual({ FOO: "bar", ...expectedEnv });
+  });
+
+  it("replaces a malformed env (null / array) instead of spreading it", () => {
+    expect(mergeBrainEnvIntoSettings({ env: null }, brain).env).toEqual(expectedEnv);
+    expect(mergeBrainEnvIntoSettings({ env: ["x"] }, brain).env).toEqual(expectedEnv);
+  });
+
+  it("is idempotent and composes with the hooks merge", () => {
+    const once = mergeBrainEnvIntoSettings(mergeHooksIntoSettings({}), brain);
+    const twice = mergeBrainEnvIntoSettings(mergeHooksIntoSettings(once), brain);
+    expect(twice).toEqual(once);
+    expect(Object.keys(once.hooks as Record<string, unknown>).sort()).toEqual([
+      "PreToolUse",
+      "Stop",
+      "UserPromptSubmit",
+    ]);
+  });
+
+  it("refuses half a contract: a URL without a token, or a token without a URL", () => {
+    // Mirrors the callers (brain-mcp-proxy config.ts, dm_memory_search_inject.sh,
+    // dm_m1_emit.py): URL without token is a hard error, never a gateway fallback.
+    expect(() => mergeBrainEnvIntoSettings({}, { url: brain.url, token: "" })).toThrow(/both/);
+    expect(() => mergeBrainEnvIntoSettings({}, { url: "   ", token: brain.token })).toThrow(/both/);
   });
 });

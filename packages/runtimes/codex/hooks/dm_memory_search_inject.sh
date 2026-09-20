@@ -79,10 +79,15 @@ if [ -n "$SEEN_FILE" ] && [ -f "$SEEN_FILE" ]; then
   SEEN_PATHS="$(cat "$SEEN_FILE")"
 fi
 
-# Filter and shape via jq. score_int = floor(score*100). dedup against SEEN_PATHS.
+# Filter and shape via jq. score_int = floor(relevance*100). dedup against SEEN_PATHS.
+# Relevance is backend-neutral: brain-host hits carry `vectorScore` (cosine,
+# 0..1) next to `score`; the openclaw gateway only sends `score` on the same
+# 0..1 scale. Prefer vectorScore so the gate never depends on which backend
+# answered (an older brain-host put the ~0.05 RRF sum in `score`, which
+# silently dropped every hit here).
 HITS_JSON="$(printf '%s' "$RESULTS_RAW" | jq -c --arg seen "$SEEN_PATHS" --argjson min_score "$MIN_SCORE" '
   .results // []
-  | map(. + {score_int: ((.score // 0) * 100 | floor)})
+  | map(. + {score_int: ((((.vectorScore // .score) // 0) * 100) | floor)})
   | map(select(.score_int >= $min_score))
   | (($seen | split("\n") | map(select(length > 0))) as $seenset
      | map(select(.path as $p | $seenset | index($p) | not)))

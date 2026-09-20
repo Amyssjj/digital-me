@@ -79,7 +79,27 @@ GET /health → { ok, version, provenance, lastIndexAt, entries, sections, byCor
 ```
 
 Hits carry `path`, `relPath`, `title`, `corpus`, `startLine`, `endLine`,
-`score`, `vectorScore`, `textScore`, `snippet`, `source: "memory"`, `citation`.
+`score`, `fusedScore`, `vectorScore`, `textScore`, `snippet`, `source: "memory"`,
+`citation`.
+
+**Score contract.** `score` is a 0..1 relevance — the best cosine similarity of
+the entry (or its best section) against the query, identical to `vectorScore`.
+It is the scale the openclaw gateway emitted and the one every recall consumer
+gates on (the Claude Code / Codex / Hermes hooks and the proxy's top-1 inliner
+all drop hits below 0.4). Results are *ordered* by `fusedScore`, the
+reciprocal-rank-fusion sum (three rankings weighted 1.0 / 0.8 / 0.8 with k=60,
+so ~0.05 at most); it is exposed for diagnostics and must never be gated on.
+
+## Pointing callers at brain-host
+
+Every caller resolves its endpoint the same way: `DIGITAL_ME_BRAIN_URL` +
+`DIGITAL_ME_BRAIN_TOKEN` (both required together — a URL without a token is a
+configuration error, never a silent fallback), then
+`OPENCLAW_GATEWAY_HOST` / `OPENCLAW_GATEWAY_PORT` / `OPENCLAW_GATEWAY_TOKEN`,
+then `gateway.auth.token` from `openclaw.json`. `digital-me install --runtime
+claude-code` writes the two `DIGITAL_ME_BRAIN_*` variables into
+`~/.claude/settings.json` `env` once the brain-host token file exists, so the
+hooks reach brain-host without a shell export.
 
 ## Quality gate
 

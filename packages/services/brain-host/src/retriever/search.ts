@@ -5,6 +5,13 @@
  *
  * Output shape matches what the recall plugin, the proxy normalizers and the
  * dashboard already consume from openclaw's memory_search.
+ *
+ * Score contract: `score` is a 0..1 relevance (the best cosine similarity of
+ * the entry or its best section against the query) — the same scale the
+ * openclaw gateway emitted and the one every recall hook gates on
+ * (MIN_SCORE 0.4). Results are ORDERED by `fusedScore`, the reciprocal-rank
+ * fusion sum (~0.05 max), which is exposed for diagnostics only; gating on it
+ * would drop every hit.
  */
 
 import type { Embedder } from "./embedder.js";
@@ -20,7 +27,10 @@ export type SearchHit = {
   readonly corpus: string;
   readonly startLine: number;
   readonly endLine: number;
+  /** 0..1 relevance (== vectorScore); what recall hooks gate on. */
   readonly score: number;
+  /** Reciprocal-rank-fusion sum the results are ordered by (~0.05 max). */
+  readonly fusedScore: number;
   readonly vectorScore: number;
   readonly textScore: number;
   readonly snippet: string;
@@ -140,6 +150,7 @@ export async function search(
     const startLine = section?.startLine ?? 1;
     const endLine = section?.endLine ?? 1;
     const snippet = (section ? `${section.heading}: ${section.text}` : entry.title).slice(0, SNIPPET_CHARS);
+    const vectorScore = round(Math.max(vecByPath.get(path)!, best?.score ?? 0));
     results.push({
       path,
       relPath: entry.relPath,
@@ -147,8 +158,9 @@ export async function search(
       corpus: entry.corpus,
       startLine,
       endLine,
-      score: round(fusedScore),
-      vectorScore: round(Math.max(vecByPath.get(path)!, best?.score ?? 0)),
+      score: vectorScore,
+      fusedScore: round(fusedScore),
+      vectorScore,
       textScore: ftsPos.has(path) ? round(1 / (1 + ftsPos.get(path)!)) : 0,
       snippet,
       source: "memory",

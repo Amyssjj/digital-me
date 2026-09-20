@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # ── Tunables (kept in sync with CC hook + OpenClaw plugin) ────────────────
 
-MIN_SCORE = 0.4              # drop memory_search hits below this score
+MIN_SCORE = 0.4              # drop hits below this 0..1 relevance (see _hit_relevance)
 TOP1_BODY_CHARS = 2000       # cap on inlined top-1 entry full body
 SEARCH_LIMIT = 6             # request more than needed so hygiene leaves usable hits
 SURFACED_PER_TURN_CAP = 3    # max hits surfaced per turn after filtering
@@ -489,6 +489,23 @@ def _parse_ack(
 # ── Hook B — pre_llm_call: per-turn recall injection ──────────────────────
 
 
+def _hit_relevance(hit: Dict[str, Any]) -> float:
+    """0..1 relevance of a memory_search hit, backend-neutral.
+
+    brain-host hits carry `vectorScore` (cosine, 0..1) next to `score`; the
+    openclaw gateway only sends `score` on the same 0..1 scale. Prefer
+    `vectorScore` so the MIN_SCORE gate never depends on which backend
+    answered (an older brain-host put the ~0.05 RRF fusion sum in `score`,
+    which silently dropped every hit). Anything non-numeric counts as 0."""
+    value = hit.get("vectorScore")
+    if value is None:
+        value = hit.get("score")
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def _format_injection(hits: List[Dict[str, Any]]) -> str:
     """Render filtered hits into the <recalled-knowledge> block (mirrors
     Claude Code hook output)."""
@@ -501,7 +518,7 @@ def _format_injection(hits: List[Dict[str, Any]]) -> str:
     ]
     for i, hit in enumerate(hits):
         path = hit.get("path", "")
-        score_int = int((hit.get("score") or 0) * 100)
+        score_int = int(_hit_relevance(hit) * 100)
         snippet = (hit.get("snippet") or "").replace("\n", " ")[:240]
         lines.append(f"- {path} (score={score_int}/100)")
         if i == 0:
@@ -671,7 +688,7 @@ def _on_pre_llm_call(
         seen_this_session = _SESSION_SURFACED[session_id]
         filtered: List[Dict[str, Any]] = []
         for h in raw_hits:
-            score = h.get("score") or 0
+            score = _hit_relevance(h)
             path = h.get("path")
             if not path or score < MIN_SCORE:
                 continue
