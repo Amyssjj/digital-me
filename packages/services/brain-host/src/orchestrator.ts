@@ -7,7 +7,11 @@
  *
  * Dispatch in Phase 2 is exec-only. Spawn tasks are left `ready` (returns
  * false) so nothing double-dispatches while openclaw still owns the spawn
- * path; the cli-resume dispatcher replaces it in Phase 4.
+ * path; the cli-resume dispatcher replaces it in Phase 4. Because of that, an
+ * ENABLED schedule whose workflow has a spawn step can never complete under
+ * brain-host (its run sits `ready` until the stall watchdog fails it), so the
+ * mount lints for those at startup, warns per schedule, and lists them on
+ * /health as `orchestrator.spawnSchedules`.
  *
  * The scheduler tick is OFF unless explicitly enabled: exactly one process
  * may tick a brain.db at a time, or schedules double-fire.
@@ -45,8 +49,10 @@ import {
   type Dispatcher,
   type MCPToolResult,
   type SchedulerRuntime,
+  type SchedulesStore,
   type TickResult,
   type WorkflowInstantiateResult,
+  type WorkflowsStore,
 } from "@digital-me/brain-orchestrator";
 import { createOpenClawAliasResolver, createOpenClawDispatcher, type CliAliasConfig } from "@digital-me/runtime-openclaw";
 import * as YAML from "yaml";
@@ -102,6 +108,32 @@ export function openBrainDb(dbPath: string, open: OpenBrainDb): DatabaseSync {
   return db;
 }
 
+/** An enabled schedule brain-host cannot complete: its workflow has spawn step(s). */
+export type SpawnScheduleFinding = {
+  readonly scheduleId: string;
+  readonly scheduleName: string;
+  readonly workflowId: string;
+  readonly stepKeys: readonly string[];
+};
+
+/**
+ * Enabled schedules whose workflow_step_templates contain `mode: "spawn"`.
+ * Pure read; the caller decides whether to log.
+ */
+export function findSpawnSchedules(schedules: SchedulesStore, workflows: WorkflowsStore): SpawnScheduleFinding[] {
+  const out: SpawnScheduleFinding[] = [];
+  for (const s of schedules.listAll()) {
+    if (!s.enabled) continue;
+    const stepKeys = workflows
+      .listSteps(s.workflowId)
+      .filter((step) => step.dispatch.mode === "spawn")
+      .map((step) => step.stepKey);
+    if (stepKeys.length === 0) continue;
+    out.push({ scheduleId: s.id, scheduleName: s.name, workflowId: s.workflowId, stepKeys });
+  }
+  return out;
+}
+
 export function loadCliExecAliases(
   wikiRoot: string,
   log: Logger,
@@ -129,6 +161,7 @@ export class Orchestrator {
   private ticks = 0;
   private lastTick: TickResult | null = null;
   private lastTickError: string | null = null;
+  private spawnSchedules: readonly SpawnScheduleFinding[] = [];
 
   constructor(opts: OrchestratorOptions) {
     this.log = opts.log;
@@ -182,6 +215,26 @@ export class Orchestrator {
     };
     this.deps = deps;
     this.tools = new Map(buildBrainOrchestratorTools(deps).map((t) => [t.name, t]));
+    this.lintSpawnSchedules();
+  }
+
+  /**
+   * Startup lint: warn once per enabled schedule that brain-host cannot
+   * complete because its workflow has spawn step(s). Re-runnable; the tick
+   * refreshes the list silently so /health stays current after an operator
+   * disables or converts a schedule.
+   */
+  lintSpawnSchedules(): readonly SpawnScheduleFinding[] {
+    this.spawnSchedules = findSpawnSchedules(this.deps.schedules, this.deps.workflows);
+    for (const f of this.spawnSchedules) {
+      this.log(
+        "warn",
+        `schedule "${f.scheduleName}" (${f.scheduleId}) is enabled but workflow ${f.workflowId} has spawn step(s) ${f.stepKeys.join(", ")}: ` +
+          `brain-host dispatches exec only, so every run will sit ready until the stall watchdog fails it. ` +
+          `Convert the step to exec + a cli_exec_aliases agentId, or disable the schedule (tasks action=schedule_disable) until Phase 4 cli-resume dispatch.`,
+      );
+    }
+    return this.spawnSchedules;
   }
 
   /** Execute one orchestrator tool by name. Undefined when the tool is not ours. */
@@ -235,6 +288,7 @@ export class Orchestrator {
     this.ticks++;
     this.lastTick = result;
     this.lastTickError = null;
+    this.spawnSchedules = findSpawnSchedules(this.deps.schedules, this.deps.workflows);
     return result;
   }
 
@@ -264,6 +318,7 @@ export class Orchestrator {
       ticks: this.ticks,
       lastTick: this.lastTick,
       lastTickError: this.lastTickError,
+      spawnSchedules: this.spawnSchedules,
     };
   }
 }
