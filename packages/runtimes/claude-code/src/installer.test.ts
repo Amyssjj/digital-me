@@ -165,24 +165,26 @@ describe("mergeHooksIntoSettings", () => {
 });
 
 describe("mergeBrainEnvIntoSettings", () => {
-  const brain = { url: "http://127.0.0.1:18791/tools/invoke", token: "brain-secret" };
+  const brain = { url: "http://127.0.0.1:18791/tools/invoke", tokenFile: "/home/t/digital-me/.data/brain-host.token" };
   const expectedEnv = {
     DIGITAL_ME_BRAIN_URL: brain.url,
-    DIGITAL_ME_BRAIN_TOKEN: brain.token,
+    DIGITAL_ME_BRAIN_TOKEN_FILE: brain.tokenFile,
   };
 
-  it("writes both DIGITAL_ME_BRAIN_* keys into a fresh env block, keeping other settings", () => {
+  it("writes DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE (never the secret) into a fresh env block, keeping other settings", () => {
     const merged = mergeBrainEnvIntoSettings({ model: "opus-4-7" }, brain);
     expect(merged.model).toBe("opus-4-7");
     expect(merged.env).toEqual(expectedEnv);
+    expect(Object.keys(merged.env as object)).not.toContain("DIGITAL_ME_BRAIN_TOKEN");
   });
 
-  it("preserves the user's other env entries and overwrites stale brain values", () => {
-    const merged = mergeBrainEnvIntoSettings(
-      { env: { FOO: "bar", DIGITAL_ME_BRAIN_TOKEN: "rotated-away" } },
-      brain,
-    );
+  it("preserves the user's other env entries, overwrites stale brain values and REMOVES a previously written DIGITAL_ME_BRAIN_TOKEN", () => {
+    const input = { env: { FOO: "bar", DIGITAL_ME_BRAIN_TOKEN: "old-secret", DIGITAL_ME_BRAIN_URL: "http://stale/tools/invoke" } };
+    const merged = mergeBrainEnvIntoSettings(input, brain);
     expect(merged.env).toEqual({ FOO: "bar", ...expectedEnv });
+    expect(JSON.stringify(merged)).not.toContain("old-secret");
+    // Pure: the caller's object is untouched.
+    expect(input.env.DIGITAL_ME_BRAIN_TOKEN).toBe("old-secret");
   });
 
   it("replaces a malformed env (null / array) instead of spreading it", () => {
@@ -201,10 +203,10 @@ describe("mergeBrainEnvIntoSettings", () => {
     ]);
   });
 
-  it("refuses half a contract: a URL without a token, or a token without a URL", () => {
+  it("refuses half a contract: a URL without a token file, or a token file without a URL", () => {
     // Mirrors the callers (brain-mcp-proxy config.ts, dm_memory_search_inject.sh,
-    // dm_m1_emit.py): URL without token is a hard error, never a gateway fallback.
-    expect(() => mergeBrainEnvIntoSettings({}, { url: brain.url, token: "" })).toThrow(/both/);
-    expect(() => mergeBrainEnvIntoSettings({}, { url: "   ", token: brain.token })).toThrow(/both/);
+    // dm_m1_emit.py): URL with no resolvable token is a hard error, never a gateway fallback.
+    expect(() => mergeBrainEnvIntoSettings({}, { url: brain.url, tokenFile: "" })).toThrow(/both/);
+    expect(() => mergeBrainEnvIntoSettings({}, { url: "   ", tokenFile: brain.tokenFile })).toThrow(/both/);
   });
 });

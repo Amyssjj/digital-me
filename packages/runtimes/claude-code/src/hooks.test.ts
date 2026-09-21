@@ -260,14 +260,33 @@ describe.skipIf(missingTools.length > 0)("hook scripts against a brain-host stub
     expect(seen.map((s) => s.body.tool)).toEqual(["memory_search"]);
   });
 
-  it("fails open but loudly when DIGITAL_ME_BRAIN_URL is set without a token — no gateway fallback", async () => {
+  it("fails open but loudly when DIGITAL_ME_BRAIN_URL is set with no resolvable token — no gateway fallback", async () => {
     const sid = newSession();
     searchPayload = gatewayPayload;
+    // HOME + DIGITAL_ME_WIKI_ROOT are the sandbox, so the default token file
+    // (<wiki-root>/.data/brain-host.token) does not exist either.
     const r = await runInject(sid, { DIGITAL_ME_BRAIN_URL: brainUrl, OPENCLAW_GATEWAY_TOKEN: GATEWAY_TOKEN });
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
-    expect(r.stderr).toMatch(/DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not/);
+    expect(r.stderr).toMatch(/DIGITAL_ME_BRAIN_URL is set but no token was found/);
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE");
+    expect(r.stderr).toContain(path.join(tmp, ".data", "brain-host.token"));
     expect(seen).toEqual([]);
+  });
+
+  it("reads the brain token from the default <DIGITAL_ME_WIKI_ROOT>/.data/brain-host.token file when the env var is unset", async () => {
+    const sid = newSession();
+    const entryPath = path.join(tmp, "wiki", "dashboard", "kanban.md");
+    searchPayload = brainHostPayload(entryPath, { score: 0.78, vectorScore: 0.78, fusedScore: 0.042 });
+    fs.mkdirSync(path.join(tmp, ".data"), { recursive: true });
+    fs.writeFileSync(path.join(tmp, ".data", "brain-host.token"), `${BRAIN_TOKEN}\n`);
+    // The exported gateway token must still lose to the token file.
+    const r = await runInject(sid, { DIGITAL_ME_BRAIN_URL: brainUrl, OPENCLAW_GATEWAY_TOKEN: GATEWAY_TOKEN });
+    expect(r.status).toBe(0);
+    const ctx = (JSON.parse(r.stdout) as HookOutput).hookSpecificOutput.additionalContext;
+    expect(ctx).toContain(`- ${entryPath} (score=78/100`);
+    expect(seen.map((s) => s.body.tool)).toEqual(["memory_search", "m1_event_record", "m1_event_record"]);
+    expect(seen.every((s) => s.auth === `Bearer ${BRAIN_TOKEN}`)).toBe(true);
   });
 
   it("falls back to OPENCLAW_GATEWAY_HOST/PORT/TOKEN when no brain URL is set", async () => {
@@ -312,7 +331,7 @@ describe.skipIf(missingTools.length > 0)("hook scripts against a brain-host stub
     expect(fs.readFileSync(wal, "utf8").trim().split("\n")).toHaveLength(1);
   });
 
-  it("dm_m1_emit.py keeps the event in the WAL, posts nothing and exits 3 when the brain URL has no token", async () => {
+  it("dm_m1_emit.py keeps the event in the WAL, posts nothing and exits 3 when the brain URL has no resolvable token", async () => {
     const sid = newSession();
     const wal = path.join(tmp, "wal.jsonl");
     const r = await runEmitter(
@@ -320,10 +339,25 @@ describe.skipIf(missingTools.length > 0)("hook scripts against a brain-host stub
       { DIGITAL_ME_BRAIN_URL: brainUrl, OPENCLAW_GATEWAY_TOKEN: GATEWAY_TOKEN },
     );
     expect(r.status).toBe(3);
-    expect(r.stderr).toMatch(/DIGITAL_ME_BRAIN_TOKEN is not/);
+    expect(r.stderr).toMatch(/DIGITAL_ME_BRAIN_URL is set but no token was found/);
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE");
     expect(r.stderr).toContain("kept in WAL only");
     expect(seen).toEqual([]);
     expect(fs.readFileSync(wal, "utf8").trim().split("\n")).toHaveLength(1);
+  });
+
+  it("dm_m1_emit.py reads the brain token from DIGITAL_ME_BRAIN_TOKEN_FILE", async () => {
+    const sid = newSession();
+    const wal = path.join(tmp, "wal.jsonl");
+    const tokenFile = path.join(tmp, "custom.token");
+    fs.writeFileSync(tokenFile, `  ${BRAIN_TOKEN}\n`);
+    const r = await runEmitter(
+      ["session_end", "--session-id", sid, "--wal", wal, "--quiet"],
+      { DIGITAL_ME_BRAIN_URL: brainUrl, DIGITAL_ME_BRAIN_TOKEN_FILE: tokenFile, OPENCLAW_GATEWAY_TOKEN: GATEWAY_TOKEN },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.auth).toBe(`Bearer ${BRAIN_TOKEN}`);
   });
 
   it("dm_m1_emit.py lets only an explicit --token override the env precedence", async () => {

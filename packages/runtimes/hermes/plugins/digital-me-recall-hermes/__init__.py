@@ -17,9 +17,10 @@ Hooks registered:
 Design notes:
   - MCP calls to openclaw-brain go via direct HTTP to the brain endpoint
     (mirrors dm_memory_search_inject.sh). No PluginLlm needed. The
-    endpoint is digital-me brain-host when DIGITAL_ME_BRAIN_URL +
-    DIGITAL_ME_BRAIN_TOKEN are set in the Hermes process environment,
-    otherwise the openclaw gateway (see _resolve_gateway_url).
+    endpoint is digital-me brain-host when DIGITAL_ME_BRAIN_URL is set in
+    the Hermes process environment (token from DIGITAL_ME_BRAIN_TOKEN, else
+    DIGITAL_ME_BRAIN_TOKEN_FILE, else the default token file), otherwise
+    the openclaw gateway (see _resolve_gateway_url).
   - All I/O is best-effort; any exception is swallowed inside the hook
     so a flaky gateway can never break the agent's turn.
   - Per-session state lives in module-level dicts keyed by session_id.
@@ -80,10 +81,34 @@ APP_RATE_LOG = HOME / ".openclaw" / "data" / "application_rate_hermes.log"
 
 # Brain endpoint precedence (mirrors transport/brain-mcp-proxy config.ts and
 # the claude-code dm_memory_search_inject.sh / dm_m1_emit.py hooks):
-#   1. DIGITAL_ME_BRAIN_URL (+ DIGITAL_ME_BRAIN_TOKEN, both required)  → brain-host
+#   1. DIGITAL_ME_BRAIN_URL → brain-host. Token: DIGITAL_ME_BRAIN_TOKEN when
+#      non-empty, else the trimmed contents of DIGITAL_ME_BRAIN_TOKEN_FILE,
+#      else of <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token.
 #   2. OPENCLAW_GATEWAY_URL, or OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT
 #   3. the openclaw gateway on localhost:18789
 DEFAULT_GATEWAY_URL = "http://localhost:18789/tools/invoke"
+
+
+def _default_brain_token_file() -> Path:
+    """The mode-600 file `digital-me install --runtime brain-host` writes;
+    mirrors brain-mcp-proxy/config.ts `defaultBrainTokenFile`. Read at call
+    time (not module load) so DIGITAL_ME_WIKI_ROOT set after import counts."""
+    wiki_root = os.environ.get("DIGITAL_ME_WIKI_ROOT") or str(HOME / "digital-me")
+    return Path(wiki_root) / ".data" / "brain-host.token"
+
+
+def _brain_token_file() -> Path:
+    """DIGITAL_ME_BRAIN_TOKEN_FILE when non-empty, else the default file."""
+    return Path(os.environ.get("DIGITAL_ME_BRAIN_TOKEN_FILE") or _default_brain_token_file())
+
+
+def _read_brain_token_file(path: Path) -> Optional[str]:
+    """Trimmed file contents; None when missing, unreadable or blank."""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return token or None
 
 
 def _resolve_gateway_url() -> str:
@@ -135,10 +160,12 @@ def _load_gateway_token() -> Optional[str]:
     """Resolve the bearer token for GATEWAY_URL.
 
     Precedence mirrors _resolve_gateway_url(): when DIGITAL_ME_BRAIN_URL is
-    set the token MUST come from DIGITAL_ME_BRAIN_TOKEN — the openclaw
-    gateway's token authenticates a different server, so it is never used
-    as a fallback (that would be a silent 401 against brain-host). A URL
-    without a token is a configuration error: it is logged at ERROR and
+    set the token is DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed
+    contents of DIGITAL_ME_BRAIN_TOKEN_FILE, else of the default token file
+    (an empty or unreadable file is "no token"). The openclaw gateway's
+    token authenticates a different server, so it is never used as a
+    fallback (that would be a silent 401 against brain-host). A URL with no
+    resolvable token is a configuration error: it is logged at ERROR and
     recall stays disabled. Raising here would take the whole Hermes plugin
     loader down, which the plugin's fail-open contract forbids.
 
@@ -150,12 +177,18 @@ def _load_gateway_token() -> Optional[str]:
         brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
         if brain_token:
             return brain_token
+        token_file = _brain_token_file()
+        file_token = _read_brain_token_file(token_file)
+        if file_token:
+            return file_token
         if not _BRAIN_TOKEN_MISSING_LOGGED:
             _BRAIN_TOKEN_MISSING_LOGGED = True
             logger.error(
-                "digital-me-recall-hermes: DIGITAL_ME_BRAIN_URL is set but "
-                "DIGITAL_ME_BRAIN_TOKEN is not — recall disabled. Set both to "
-                "use brain-host, or unset the URL to fall back to the openclaw gateway.",
+                "digital-me-recall-hermes: DIGITAL_ME_BRAIN_URL is set but no token "
+                "was found — recall disabled. Set DIGITAL_ME_BRAIN_TOKEN, or point "
+                "DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in %s), "
+                "or unset the URL to fall back to the openclaw gateway.",
+                token_file,
             )
         return None
     env_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")

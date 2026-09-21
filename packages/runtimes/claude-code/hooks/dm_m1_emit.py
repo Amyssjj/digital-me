@@ -37,9 +37,10 @@ Exit codes:
   0  WAL append succeeded (brain POST is best-effort, never blocks 0 exit)
   1  Argument error
   2  WAL write failed (rare — disk full / permission)
-  3  Brain misconfigured: DIGITAL_ME_BRAIN_URL set without DIGITAL_ME_BRAIN_TOKEN.
-     The event is kept in the WAL and NO POST is attempted — never a silent
-     fallback to the openclaw gateway token.
+  3  Brain misconfigured: DIGITAL_ME_BRAIN_URL set but no token resolves from
+     DIGITAL_ME_BRAIN_TOKEN, DIGITAL_ME_BRAIN_TOKEN_FILE or the default token
+     file. The event is kept in the WAL and NO POST is attempted — never a
+     silent fallback to the openclaw gateway token.
 """
 
 from __future__ import annotations
@@ -62,7 +63,30 @@ DEFAULT_GATEWAY = "http://localhost:18789/tools/invoke"
 
 
 class BrainConfigError(RuntimeError):
-    """DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not."""
+    """DIGITAL_ME_BRAIN_URL is set but no token resolves (env var, token file
+    or default token file)."""
+
+
+def _default_brain_token_file() -> Path:
+    """`<DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token` — the
+    mode-600 file `digital-me install --runtime brain-host` writes. Mirrors
+    brain-mcp-proxy/config.ts `defaultBrainTokenFile`."""
+    wiki_root = os.environ.get("DIGITAL_ME_WIKI_ROOT") or str(HOME / "digital-me")
+    return Path(wiki_root) / ".data" / "brain-host.token"
+
+
+def _brain_token_file() -> Path:
+    """DIGITAL_ME_BRAIN_TOKEN_FILE when non-empty, else the default file."""
+    return Path(os.environ.get("DIGITAL_ME_BRAIN_TOKEN_FILE") or _default_brain_token_file())
+
+
+def _read_brain_token_file(path: Path) -> Optional[str]:
+    """Trimmed file contents; None when missing, unreadable or blank."""
+    try:
+        token = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    return token or None
 
 
 def _resolve_gateway_url() -> str:
@@ -107,20 +131,27 @@ V1_EVENT_TYPES = {
 def _load_gateway_token() -> Optional[str]:
     """Bearer token with the same precedence as _resolve_gateway_url().
 
-    When DIGITAL_ME_BRAIN_URL is set only DIGITAL_ME_BRAIN_TOKEN is honoured:
-    a URL without a token is a configuration error and raises
-    BrainConfigError — main() still appends the event to the WAL (for
+    When DIGITAL_ME_BRAIN_URL is set the token is DIGITAL_ME_BRAIN_TOKEN
+    when non-empty, else the trimmed contents of DIGITAL_ME_BRAIN_TOKEN_FILE,
+    else of the default token file (an empty or unreadable file is "no
+    token"). A URL with no resolvable token is a configuration error and
+    raises BrainConfigError — main() still appends the event to the WAL (for
     backfill), skips the POST, reports on stderr and exits 3. Never a silent
     fallback to an openclaw gateway token that brain-host would reject
     anyway."""
     if os.environ.get("DIGITAL_ME_BRAIN_URL"):
         brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
-        if not brain_token:
-            raise BrainConfigError(
-                "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — "
-                "set both to use brain-host, or unset the URL to fall back to the openclaw gateway"
-            )
-        return brain_token
+        if brain_token:
+            return brain_token
+        token_file = _brain_token_file()
+        file_token = _read_brain_token_file(token_file)
+        if file_token:
+            return file_token
+        raise BrainConfigError(
+            "DIGITAL_ME_BRAIN_URL is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, "
+            f"or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in {token_file}), "
+            "or unset the URL to fall back to the openclaw gateway"
+        )
     env_token = os.environ.get("OPENCLAW_GATEWAY_TOKEN")
     if env_token:
         return env_token
@@ -365,6 +396,8 @@ def run_selftest() -> int:
 _PRECEDENCE_ENV_KEYS = (
     "DIGITAL_ME_BRAIN_URL",
     "DIGITAL_ME_BRAIN_TOKEN",
+    "DIGITAL_ME_BRAIN_TOKEN_FILE",
+    "DIGITAL_ME_WIKI_ROOT",
     "OPENCLAW_GATEWAY_URL",
     "OPENCLAW_GATEWAY_HOST",
     "OPENCLAW_GATEWAY_PORT",
@@ -374,9 +407,11 @@ _PRECEDENCE_ENV_KEYS = (
 
 
 def _selftest_token_precedence() -> None:
-    """Offline: DIGITAL_ME_BRAIN_* wins over an exported gateway token, a
-    brain URL without a token is a hard error (never a fallback), and the
-    gateway env / config-file chain still works when no brain URL is set."""
+    """Offline: DIGITAL_ME_BRAIN_* wins over an exported gateway token, the
+    token may come from DIGITAL_ME_BRAIN_TOKEN_FILE or the default token
+    file, a brain URL with no resolvable token is a hard error (never a
+    fallback), and the gateway env / config-file chain still works when no
+    brain URL is set."""
     import tempfile
 
     saved = {k: os.environ.get(k) for k in _PRECEDENCE_ENV_KEYS}
@@ -385,10 +420,13 @@ def _selftest_token_precedence() -> None:
             os.environ.pop(k, None)
         with tempfile.TemporaryDirectory() as td:
             # Isolate the config-file chain from the machine: an explicit
-            # DIGITAL_ME_OPENCLAW_CONFIG is consulted first.
+            # DIGITAL_ME_OPENCLAW_CONFIG is consulted first, and the default
+            # brain token file lives under a scratch wiki root (the real
+            # ~/digital-me/.data/brain-host.token may exist on this host).
             cfg_path = Path(td) / "openclaw.json"
             cfg_path.write_text(json.dumps({"gateway": {"auth": {"token": "file-token"}}}), encoding="utf-8")
             os.environ["DIGITAL_ME_OPENCLAW_CONFIG"] = str(cfg_path)
+            os.environ["DIGITAL_ME_WIKI_ROOT"] = td
             assert _load_gateway_token() == "file-token"
             assert _resolve_gateway_url() == DEFAULT_GATEWAY
             print("  ✓ no env → openclaw config file token + default gateway url")
@@ -411,11 +449,45 @@ def _selftest_token_precedence() -> None:
             del os.environ["DIGITAL_ME_BRAIN_TOKEN"]
             try:
                 _load_gateway_token()
+            except BrainConfigError as exc:
+                assert "DIGITAL_ME_BRAIN_TOKEN_FILE" in str(exc) and "DIGITAL_ME_BRAIN_TOKEN," in str(exc), exc
+            else:
+                raise AssertionError("DIGITAL_ME_BRAIN_URL without any token must not fall back")
+            print("  ✓ brain URL without token is a hard error naming both token vars, never a gateway fallback")
+
+            default_file = Path(td) / ".data" / "brain-host.token"
+            default_file.parent.mkdir(parents=True)
+            default_file.write_text("  default-file-token\n", encoding="utf-8")
+            assert _brain_token_file() == default_file
+            assert _load_gateway_token() == "default-file-token", "default token file must be read and trimmed"
+            print("  ✓ token read from the default <wiki-root>/.data/brain-host.token")
+
+            explicit_file = Path(td) / "elsewhere.token"
+            explicit_file.write_text("explicit-file-token\n", encoding="utf-8")
+            os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(explicit_file)
+            assert _load_gateway_token() == "explicit-file-token", "DIGITAL_ME_BRAIN_TOKEN_FILE must beat the default file"
+            print("  ✓ DIGITAL_ME_BRAIN_TOKEN_FILE beats the default file")
+
+            os.environ["DIGITAL_ME_BRAIN_TOKEN"] = "env-token"
+            assert _load_gateway_token() == "env-token", "DIGITAL_ME_BRAIN_TOKEN must beat every file"
+            del os.environ["DIGITAL_ME_BRAIN_TOKEN"]
+            print("  ✓ DIGITAL_ME_BRAIN_TOKEN beats the token file")
+
+            explicit_file.write_text("   \n", encoding="utf-8")
+            try:
+                _load_gateway_token()
+            except BrainConfigError as exc:
+                assert str(explicit_file) in str(exc), exc
+            else:
+                raise AssertionError("a blank token file must count as no token")
+            os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(Path(td) / "missing.token")
+            try:
+                _load_gateway_token()
             except BrainConfigError:
                 pass
             else:
-                raise AssertionError("DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN must not fall back")
-            print("  ✓ brain URL without token is a hard error, never a gateway fallback")
+                raise AssertionError("a missing token file must count as no token")
+            print("  ✓ blank or missing token file is a hard error, never a gateway fallback")
     finally:
         for k, v in saved.items():
             if v is None:
@@ -452,8 +524,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="Brain /tools/invoke URL (default: DIGITAL_ME_BRAIN_URL > "
                              "OPENCLAW_GATEWAY_URL > OPENCLAW_GATEWAY_HOST/PORT > openclaw gateway)")
     parser.add_argument("--token", default=None,
-                        help="Bearer token override (default: DIGITAL_ME_BRAIN_TOKEN when "
-                             "DIGITAL_ME_BRAIN_URL is set, else OPENCLAW_GATEWAY_TOKEN, else openclaw.json)")
+                        help="Bearer token override (default: DIGITAL_ME_BRAIN_TOKEN, else the "
+                             "DIGITAL_ME_BRAIN_TOKEN_FILE / default token file when DIGITAL_ME_BRAIN_URL "
+                             "is set; else OPENCLAW_GATEWAY_TOKEN, else openclaw.json)")
     parser.add_argument(
         "--skip-if-already-started", action="store_true",
         help="For session_start: exit 0 without emitting if the once-only flag already exists",

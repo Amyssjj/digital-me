@@ -167,22 +167,34 @@ export function brainHostInvokeUrl(cfg: Pick<BrainHostServiceConfig, "host" | "p
   return `http://${cfg.host}:${cfg.port}/tools/invoke`;
 }
 
-interface BrainCallerEnv {
+export interface BrainCallerEnv {
+  /** The brain-host `/tools/invoke` URL (DIGITAL_ME_BRAIN_URL). */
   readonly brainUrl: string;
-  readonly brainToken: string;
+  /**
+   * Path of the file holding the bearer token (DIGITAL_ME_BRAIN_TOKEN_FILE).
+   * Registrations carry the PATH, never the secret: every caller reads the
+   * file itself (brain-mcp-proxy config.ts, the hooks, the Python clients).
+   */
+  readonly brainTokenFile: string;
 }
 
 /**
- * The DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN pair a caller registration
- * should carry (e.g. the `env` table of the codex `[mcp_servers.openclaw-brain]`
- * stanza) so the proxy that caller spawns talks to brain-host, not the
- * openclaw gateway. Registrations need the pair baked in because MCP hosts do
- * not forward the installer's shell environment.
+ * The DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN_FILE pair a caller
+ * registration should carry (settings.json `env`, the codex
+ * `[mcp_servers.openclaw-brain]` env table, `hermes mcp add --env`) so the
+ * proxy or hook that caller spawns talks to brain-host, not the openclaw
+ * gateway. Registrations need the pair baked in because MCP hosts do not
+ * forward the installer's shell environment.
  *
  * Precedence mirrors brain-mcp-proxy/config.ts: the installer's own
- * DIGITAL_ME_BRAIN_URL/TOKEN first (URL without token is a hard error, never a
- * silent fallback), else the always-on brain-host service when its token file
- * exists, else `undefined` — the caller stays on the openclaw gateway.
+ * DIGITAL_ME_BRAIN_URL first, with the token file at DIGITAL_ME_BRAIN_TOKEN_FILE
+ * (else the default `<wiki-root>/.data/brain-host.token`) — a URL whose token
+ * file is missing, unreadable or blank is a hard error, never a silent
+ * fallback; else the always-on brain-host service when its token file exists;
+ * else `undefined` — the caller stays on the openclaw gateway.
+ *
+ * DIGITAL_ME_BRAIN_TOKEN in the installer's env is deliberately NOT persisted:
+ * a registration must not carry the secret, so the token has to be on disk.
  */
 export function resolveBrainCallerEnv(
   env: Readonly<Record<string, string | undefined>>,
@@ -191,15 +203,17 @@ export function resolveBrainCallerEnv(
 ): BrainCallerEnv | undefined {
   const url = (env.DIGITAL_ME_BRAIN_URL ?? "").trim();
   if (url !== "") {
-    const token = (env.DIGITAL_ME_BRAIN_TOKEN ?? "").trim();
-    if (token === "") {
+    const tokenFile = (env.DIGITAL_ME_BRAIN_TOKEN_FILE ?? "").trim() || cfg.tokenFile;
+    if ((readTokenFile(tokenFile) ?? "").trim() === "") {
       throw new Error(
-        "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — set both to use brain-host, or unset the URL to fall back to the openclaw gateway",
+        `DIGITAL_ME_BRAIN_URL is set but no readable token file was found (looked in ${tokenFile}) — ` +
+          "registrations carry DIGITAL_ME_BRAIN_TOKEN_FILE (a path), never DIGITAL_ME_BRAIN_TOKEN (the secret): " +
+          "write the token to that file or point DIGITAL_ME_BRAIN_TOKEN_FILE at one, or unset the URL to fall back to the openclaw gateway",
       );
     }
-    return { brainUrl: url, brainToken: token };
+    return { brainUrl: url, brainTokenFile: tokenFile };
   }
   const fileToken = (readTokenFile(cfg.tokenFile) ?? "").trim();
   if (fileToken === "") return undefined;
-  return { brainUrl: brainHostInvokeUrl(cfg), brainToken: fileToken };
+  return { brainUrl: brainHostInvokeUrl(cfg), brainTokenFile: cfg.tokenFile };
 }

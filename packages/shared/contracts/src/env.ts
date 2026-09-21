@@ -85,7 +85,7 @@ const REGISTRY = {
   DIGITAL_ME_BRAIN_URL: {
     default: null,
     description:
-      "digital-me brain-host /tools/invoke endpoint (e.g. http://127.0.0.1:18791/tools/invoke). When set, every brain caller uses it instead of the openclaw gateway; DIGITAL_ME_BRAIN_TOKEN must be set too.",
+      "digital-me brain-host /tools/invoke endpoint (e.g. http://127.0.0.1:18791/tools/invoke). When set, every brain caller uses it instead of the openclaw gateway; the bearer token must resolve from DIGITAL_ME_BRAIN_TOKEN, DIGITAL_ME_BRAIN_TOKEN_FILE or the default token file (a URL with no token is a hard error, never a gateway fallback).",
     required: false,
   },
   DIGITAL_ME_BRAIN_TOKEN: {

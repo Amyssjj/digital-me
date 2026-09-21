@@ -21,7 +21,8 @@ export {
   SECTION_END,
   SOUL_MD_TEMPLATE,
   TEMPLATES_DIR,
+  buildHermesMcpEnv,
   mergeSoulMd,
 } from "./installer.js";
-export type { RecallPluginFile } from "./installer.js";
+export type { HermesMcpEnvInputs, RecallPluginFile } from "./installer.js";
 export { TRANSCRIPT_SOURCE } from "./manifest.js";

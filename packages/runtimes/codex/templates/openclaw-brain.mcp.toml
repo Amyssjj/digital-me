@@ -10,15 +10,22 @@
 # Backend selection lives in the `env` table because Codex does NOT forward
 # the parent shell's environment to MCP servers. Precedence inside the proxy
 # (brain-mcp-proxy/config.ts):
-#   1. DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN — the digital-me
-#      brain-host (recommended). Both are required together: a URL without a
-#      token is a configuration error, never a silent fallback.
+#   1. DIGITAL_ME_BRAIN_URL — the digital-me brain-host (recommended). Its
+#      bearer token is read from DIGITAL_ME_BRAIN_TOKEN_FILE (default
+#      <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token, the
+#      mode-600 file `digital-me install --runtime brain-host` writes), or
+#      from DIGITAL_ME_BRAIN_TOKEN when you really must inline it. A URL with
+#      no resolvable token is a configuration error, never a silent fallback.
 #   2. OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT / OPENCLAW_GATEWAY_TOKEN.
 #   3. $OPENCLAW_HOME/openclaw.json (gateway.auth.token).
 # Omit both DIGITAL_ME_BRAIN_* keys to stay on the openclaw gateway.
-# The token is a secret: keep config.toml user-readable only.
+# Prefer the FILE path: config.toml then never carries the secret itself.
+#
+# Codex hooks (~/.codex/hooks.json) run in the shell env, not the MCP env, so
+# `digital-me install --runtime codex` also sets the same two variables in
+# `[shell_environment_policy.set]` (merged into your existing table).
 
 [mcp_servers.openclaw-brain]
 command = "digital-me-brain-proxy"
 args = []
-env = { OPENCLAW_AGENT_ID = "codex", DIGITAL_ME_BRAIN_URL = "http://127.0.0.1:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN = "<contents of ~/digital-me/.data/brain-host.token>" }
+env = { OPENCLAW_AGENT_ID = "codex", DIGITAL_ME_BRAIN_URL = "http://127.0.0.1:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN_FILE = "/home/<you>/digital-me/.data/brain-host.token" }

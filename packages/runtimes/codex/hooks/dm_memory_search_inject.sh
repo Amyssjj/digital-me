@@ -31,10 +31,15 @@ case "$PROMPT" in /*) exit 0 ;; esac
 
 # Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts, dm_m1_emit.py
 # and the Claude Code inject hook):
-#   1. DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN — the digital-me brain-host.
-#      Both are required together: a URL without a token is a configuration
-#      error, so the hook reports it on stderr and exits (fail-open, no
-#      request) rather than silently falling back to the openclaw gateway.
+#   1. DIGITAL_ME_BRAIN_URL — the digital-me brain-host. Its bearer token is
+#      DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed contents of
+#      DIGITAL_ME_BRAIN_TOKEN_FILE, else of the default token file
+#      <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token (the
+#      mode-600 file `digital-me install --runtime brain-host` writes). An
+#      empty or unreadable file is "no token". A URL with no resolvable token
+#      is a configuration error, so the hook reports it on stderr and exits
+#      (fail-open, no request) rather than silently falling back to the
+#      openclaw gateway.
 #   2. OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT / OPENCLAW_GATEWAY_TOKEN.
 #   3. The openclaw config file (gateway.auth.token) on the default port.
 #
@@ -48,8 +53,18 @@ case "$PROMPT" in /*) exit 0 ;; esac
 if [ -n "${DIGITAL_ME_BRAIN_URL:-}" ]; then
   BRAIN_URL="$DIGITAL_ME_BRAIN_URL"
   TOKEN="${DIGITAL_ME_BRAIN_TOKEN:-}"
+  TOKEN_FILE="${DIGITAL_ME_BRAIN_TOKEN_FILE:-${DIGITAL_ME_WIKI_ROOT:-$HOME/digital-me}/.data/brain-host.token}"
   if [ -z "$TOKEN" ]; then
-    echo "dm_memory_search_inject: DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — set both to use brain-host, or unset the URL to fall back to the openclaw gateway" >&2
+    # Env token wins; otherwise the token file. "$( )" drops trailing
+    # newlines, the two expansions trim any remaining whitespace (bash 3.2
+    # safe, no subprocess). A missing, unreadable or blank file leaves TOKEN
+    # empty, which is the hard error below — never a gateway fallback.
+    TOKEN="$(cat "$TOKEN_FILE" 2>/dev/null)"
+    TOKEN="${TOKEN#"${TOKEN%%[![:space:]]*}"}"
+    TOKEN="${TOKEN%"${TOKEN##*[![:space:]]}"}"
+  fi
+  if [ -z "$TOKEN" ]; then
+    echo "dm_memory_search_inject: DIGITAL_ME_BRAIN_URL is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in $TOKEN_FILE), or unset the URL to fall back to the openclaw gateway" >&2
     exit 0
   fi
   SCORE_FIELD="vectorScore"
