@@ -5,8 +5,43 @@ import {
   SECTION_END,
   SOUL_MD_TEMPLATE,
   TEMPLATES_DIR,
+  buildHermesMcpEnv,
   mergeSoulMd,
 } from "./installer.js";
+
+describe("buildHermesMcpEnv", () => {
+  const openclawHome = "/home/t/.openclaw";
+  const brain = {
+    brainUrl: "http://127.0.0.1:18791/tools/invoke",
+    brainTokenFile: "/home/t/digital-me/.data/brain-host.token",
+  };
+
+  it("without brain-host: OPENCLAW_HOME + the hermes attribution id only (proxy stays on the openclaw gateway)", () => {
+    expect(buildHermesMcpEnv({ openclawHome })).toEqual([
+      `OPENCLAW_HOME=${openclawHome}`,
+      "OPENCLAW_AGENT_ID=hermes",
+    ]);
+    expect(buildHermesMcpEnv({ openclawHome, agentId: "hermes-lab" })[1]).toBe("OPENCLAW_AGENT_ID=hermes-lab");
+  });
+
+  it("with brain-host: adds DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE (the path), never DIGITAL_ME_BRAIN_TOKEN", () => {
+    const env = buildHermesMcpEnv({ openclawHome, brain });
+    expect(env).toEqual([
+      `OPENCLAW_HOME=${openclawHome}`,
+      "OPENCLAW_AGENT_ID=hermes",
+      `DIGITAL_ME_BRAIN_URL=${brain.brainUrl}`,
+      `DIGITAL_ME_BRAIN_TOKEN_FILE=${brain.brainTokenFile}`,
+    ]);
+    expect(env.some((kv) => kv.startsWith("DIGITAL_ME_BRAIN_TOKEN="))).toBe(false);
+  });
+
+  it("refuses half a contract: a URL without a token file, or a token file without a URL", () => {
+    expect(() => buildHermesMcpEnv({ openclawHome, brain: { ...brain, brainTokenFile: " " } })).toThrow(
+      /DIGITAL_ME_BRAIN_TOKEN_FILE/,
+    );
+    expect(() => buildHermesMcpEnv({ openclawHome, brain: { ...brain, brainUrl: "" } })).toThrow(/set together/);
+  });
+});
 
 describe("paths", () => {
   it("TEMPLATES_DIR sits under PACKAGE_ROOT", () => {
@@ -166,6 +201,29 @@ describe("digital-me-recall-hermes plugin shipping", () => {
     // ~/.openclaw/data/application_rate_openclaw.log: one JSON object per session.
     expect(src).toContain("application_rate_hermes.log");
     expect(src).toContain('"surface": "hermes"');
+  });
+
+  it("__init__.py reaches digital-me brain-host via the shared env contract", () => {
+    // 2026-09-20: the plugin hardcoded the openclaw gateway URL and read the
+    // token only from openclaw config files, so DIGITAL_ME_BRAIN_URL /
+    // DIGITAL_ME_BRAIN_TOKEN (contracts env.ts, brain-mcp-proxy config.ts,
+    // claude-code hooks) never reached Hermes. brain-host's `score` is also
+    // RRF-fused (<= ~0.05), so the cosine-scale MIN_SCORE gate must read
+    // `vectorScore` — see _hit_score. Source-grep pins, like the M1 log ones
+    // above; the behaviour itself is covered by test_gateway_resolve.py.
+    const src = readFileSync(
+      `${RECALL_PLUGIN_SRC_DIR}/__init__.py`,
+      "utf8",
+    );
+    expect(src).toContain("DIGITAL_ME_BRAIN_URL");
+    expect(src).toContain("DIGITAL_ME_BRAIN_TOKEN");
+    expect(src).toContain("OPENCLAW_GATEWAY_TOKEN");
+    expect(src).toContain("_resolve_gateway_url");
+    expect(src).toContain("_hit_score");
+    expect(src).toContain('"vectorScore"');
+    // The python tests ship beside the plugin and are wired into CI.
+    expect(existsSync(`${RECALL_PLUGIN_SRC_DIR}/test_gateway_resolve.py`)).toBe(true);
+    expect(existsSync(`${RECALL_PLUGIN_SRC_DIR}/test_parse_ack.py`)).toBe(true);
   });
 
   it("__init__.py is self-contained for M1 application_rate (periodic flush + atexit)", () => {

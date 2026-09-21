@@ -27,6 +27,15 @@
 #   2. RUNTIME  — the gateway log carries a host block diagnostic, or the
 #                 plugin's own boot self-check reported conversation_hooks=BLOCKED.
 #
+# The config signal needs a JSON5 parser (openclaw.json may carry comments,
+# trailing commas, unquoted keys). Parser availability is a property of the
+# HOST, not of the grant: when neither node+json5 nor python3+pyjson5 can be
+# resolved the config signal is SKIPPED with a warn and the gate leans on the
+# runtime signal, which is what actually proves the hooks registered. It never
+# fails a config it could not read — that false-red (json5 lives un-hoisted in
+# pnpm's store, so a bare `require('json5')` from an arbitrary cwd failed on a
+# config that DID carry the grant, 2026-09-20) is exactly what this rule fixes.
+#
 # Exit 0 = no hooks blocked. Exit 1 = at least one signal fired.
 # Read-only: no writes, no network, no LLM.
 
@@ -34,6 +43,10 @@ set -uo pipefail
 
 OPENCLAW_HOME="${OPENCLAW_HOME:-$HOME/.openclaw}"
 CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$OPENCLAW_HOME/openclaw.json}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Where the json5 package is looked up (the repo checkout this script ships
+# in, by default). Override when the gate runs from an installed copy.
+REPO_ROOT="${DIGITAL_ME_REPO_ROOT:-$SCRIPT_DIR/..}"
 
 # Resolve the log the RUNNING gateway writes to — not the first path that
 # happens to exist. `$OPENCLAW_HOME/logs/gateway.log` is a real file on this
@@ -65,7 +78,81 @@ GATEWAY_LOG="$(resolve_gateway_log)"
 PLUGINS=("digital-me-recall")
 
 fail=0
+config_unverified=0
+runtime_checked=0
 note() { printf '  %s\n' "$1"; }
+
+# Verdict for one plugin's grant, printed on stdout:
+#   yes | no          a parser read the file; the grant is / is not there
+#   unparsed <why>    a parser exists but the file did not parse
+#   noparser          neither node+json5 nor python3+pyjson5 is resolvable
+# Only `no` is a config FAIL.
+config_grant() {
+  local cfg="$1" id="$2" verdict=""
+  if command -v node >/dev/null 2>&1; then
+    verdict=$(node - "$cfg" "$id" "$REPO_ROOT" 2>/dev/null <<'JS'
+const fs = require('fs');
+const path = require('path');
+const [cfgPath, id, repoRoot] = process.argv.slice(2);
+
+// json5 is a dependency of packages/cli, which pnpm keeps un-hoisted under
+// node_modules/.pnpm — so resolve it the way that package would, then fall
+// back to scanning the store, then to whatever the cwd can see.
+function loadJson5() {
+  const roots = [repoRoot, path.join(repoRoot, 'packages', 'cli'), process.cwd()];
+  for (const r of roots) {
+    try { return require(require.resolve('json5', { paths: [r] })); } catch {}
+  }
+  for (const r of roots) {
+    const store = path.join(r, 'node_modules', '.pnpm');
+    let names = [];
+    try { names = fs.readdirSync(store); } catch { continue; }
+    for (const n of names) {
+      if (!n.startsWith('json5@')) continue;
+      try { return require(path.join(store, n, 'node_modules', 'json5')); } catch {}
+    }
+  }
+  return null;
+}
+
+const JSON5 = loadJson5();
+if (!JSON5) { console.log('noparser'); process.exit(0); }
+let cfg;
+try {
+  cfg = JSON5.parse(fs.readFileSync(cfgPath, 'utf8'));
+} catch (e) {
+  console.log('unparsed ' + String(e && e.message ? e.message : e).split('\n')[0]);
+  process.exit(0);
+}
+const entries = (cfg && cfg.plugins && cfg.plugins.entries) || {};
+const entry = entries[id] || {};
+console.log((entry.hooks || {}).allowConversationAccess === true ? 'yes' : 'no');
+JS
+) || verdict=""
+  fi
+
+  if [[ -z "$verdict" || "$verdict" == "noparser" ]] && command -v python3 >/dev/null 2>&1; then
+    verdict=$(python3 - "$cfg" "$id" 2>/dev/null <<'PY'
+import sys
+try:
+    import pyjson5
+except ImportError:
+    print("noparser")
+    raise SystemExit(0)
+try:
+    with open(sys.argv[1]) as fh:
+        cfg = pyjson5.load(fh)
+except Exception as e:  # any parse failure is "unparsed", never a FAIL
+    why = str(e).splitlines()[0] if str(e) else "parse error"
+    print("unparsed " + why)
+    raise SystemExit(0)
+entry = (((cfg or {}).get("plugins") or {}).get("entries") or {}).get(sys.argv[2]) or {}
+print("yes" if (entry.get("hooks") or {}).get("allowConversationAccess") is True else "no")
+PY
+) || verdict=""
+  fi
+  printf '%s\n' "${verdict:-noparser}"
+}
 
 # ── 1. Config: is the grant present? ────────────────────────────────────
 if [[ ! -f "$CONFIG" ]]; then
@@ -74,54 +161,22 @@ if [[ ! -f "$CONFIG" ]]; then
 fi
 
 for id in "${PLUGINS[@]}"; do
-  # openclaw parses its config as JSON5 (comments, trailing commas, unquoted keys).
-  # Try Node + json5 package first (avoids URL-eating regex), then pyjson5.
-  granted=""
-  if command -v node >/dev/null 2>&1; then
-    granted=$(node - "$CONFIG" "$id" 2>/dev/null <<'JS'
-const fs = require('fs');
-try {
-  const JSON5 = require('json5');
-  const cfg = JSON5.parse(fs.readFileSync(process.argv[2], 'utf8'));
-  const entry = (cfg.plugins?.entries || {})[process.argv[3]] || {};
-  const allow = (entry.hooks || {}).allowConversationAccess === true;
-  console.log(allow ? 'yes' : 'no');
-} catch (e) {
-  console.error('FAIL: JSON5 parse error:', e.message);
-  process.exit(1);
-}
-JS
-) || granted=""
-  fi
-  
-  if [[ -z "$granted" ]]; then
-    granted=$(python3 - "$CONFIG" "$id" <<'PY'
-import sys
-try:
-    import pyjson5
-    cfg = pyjson5.load(open(sys.argv[1]))
-except ImportError:
-    print("FAIL: openclaw.json is JSON5 (comments/trailing-commas/unquoted-keys).", file=sys.stderr)
-    print("      Install pyjson5:  pip install pyjson5", file=sys.stderr)
-    print("      (or ensure 'node' + json5 package are on PATH)", file=sys.stderr)
-    raise SystemExit(1)
-except Exception as e:
-    print(f"FAIL: config parse error: {e}", file=sys.stderr)
-    raise SystemExit(1)
-
-entry = (cfg.get("plugins") or {}).get("entries", {}).get(sys.argv[2]) or {}
-granted = (entry.get("hooks") or {}).get("allowConversationAccess") is True
-print("yes" if granted else "no")
-PY
-)
-  fi
-  
-  case "$granted" in
+  verdict="$(config_grant "$CONFIG" "$id")"
+  case "$verdict" in
     yes) note "ok      $id: allowConversationAccess=true" ;;
-    *)
+    no)
       note "FAIL    $id: plugins.entries.$id.hooks.allowConversationAccess is not true"
       note "        openclaw will silently drop its before_prompt_build / agent_end hooks."
       fail=1
+      ;;
+    unparsed*)
+      note "warn    $id: could not parse $CONFIG (${verdict#unparsed }) — config signal skipped, relying on the runtime signal"
+      config_unverified=1
+      ;;
+    *)
+      note "warn    $id: no JSON5 parser resolvable (node+json5 under $REPO_ROOT, or python3+pyjson5) — config signal skipped, relying on the runtime signal"
+      note "        restore it with: pnpm install (repo root) or pip install pyjson5"
+      config_unverified=1
       ;;
   esac
 done
@@ -139,8 +194,10 @@ if [[ -n "$GATEWAY_LOG" && -f "$GATEWAY_LOG" ]]; then
     if grep -q "conversation_hooks=BLOCKED" <<<"$last_reg"; then
       note "FAIL    recall self-check reported conversation_hooks=BLOCKED at boot"
       fail=1
+      runtime_checked=1
     elif grep -q "conversation_hooks=granted" <<<"$last_reg"; then
       note "ok      recall self-check reported conversation_hooks=granted"
+      runtime_checked=1
     fi
   fi
 
@@ -168,6 +225,7 @@ if [[ -n "$GATEWAY_LOG" && -f "$GATEWAY_LOG" ]]; then
     grep -o "typed hook \"[a-z_]*\" blocked because non-bundled[^\"]*" <<<"$last_boot_txt" \
       | tail -3 | sed 's/^/          /'
     fail=1
+    runtime_checked=1
   fi
 else
   note "warn    no gateway log at $GATEWAY_LOG — runtime signal not checked"
@@ -176,6 +234,13 @@ fi
 if [[ "$fail" -ne 0 ]]; then
   echo "FAIL openclaw-hooks: at least one conversation hook is (or will be) dropped."
   exit 1
+fi
+if [[ "$config_unverified" -ne 0 && "$runtime_checked" -eq 0 ]]; then
+  # Neither signal could be read. Not a FAIL (nothing says a hook is dropped)
+  # but say so loudly: a blind gate must never look like a green one.
+  note "warn    UNVERIFIED: neither the config grant nor the recall self-check could be read on this host"
+  echo "OK openclaw-hooks: no dropped conversation hooks detected (UNVERIFIED — see warns above)."
+  exit 0
 fi
 echo "OK openclaw-hooks: no dropped conversation hooks detected."
 exit 0

@@ -76,6 +76,13 @@ export type AliasResolverOptions = {
    * the orchestrator gateway.
    */
   readonly nodeBinary?: string;
+  /**
+   * Working directory for the worker when neither the task's exec dispatch
+   * nor the goal's worktree supplies a cwd. Falls back to `process.cwd()`
+   * when unset, as before — which under a launchd-run brain-host is the
+   * package directory, not a place a CLI worker should read the wiki from.
+   */
+  readonly defaultCwd?: string;
 };
 
 const MODULE_ROOT = path.resolve(
@@ -140,6 +147,7 @@ export function createOpenClawAliasResolver(
     const cwd =
       (ctx.originalDispatch.mode === "exec" && ctx.originalDispatch.cwd) ||
       ctx.cwd ||
+      opts.defaultCwd ||
       process.cwd();
 
     const spec = {

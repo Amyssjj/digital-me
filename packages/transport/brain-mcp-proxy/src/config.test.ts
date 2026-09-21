@@ -5,7 +5,9 @@ import path from "node:path";
 import {
   DEFAULT_GATEWAY_AGENT_ID,
   GatewayConfigError,
+  defaultBrainTokenFile,
   loadGatewayConfig,
+  resolveBrainToken,
   resolveDefaultAgentId,
   resolveGatewayAgentId,
 } from "./config.js";
@@ -158,6 +160,74 @@ describe("loadGatewayConfig", () => {
         expect((e as Error).message).toContain("gateway.port");
       }
     }
+  });
+});
+
+describe("loadGatewayConfig — brain-host precedence", () => {
+  it("uses DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN before anything openclaw", () => {
+    const cfg = loadGatewayConfig({
+      env: {
+        DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke",
+        DIGITAL_ME_BRAIN_TOKEN: "bh-secret",
+        OPENCLAW_GATEWAY_TOKEN: "gw-secret",
+        OPENCLAW_GATEWAY_PORT: "18789",
+      } as NodeJS.ProcessEnv,
+      openclawHome: "/nonexistent/openclaw-home",
+    });
+    expect(cfg).toEqual({ host: "127.0.0.1", port: 18791, token: "bh-secret", url: "http://127.0.0.1:18791/tools/invoke" });
+  });
+
+  it("defaults the port to 80 when the URL has none, and treats an empty URL as unset", () => {
+    const cfg = loadGatewayConfig({
+      env: { DIGITAL_ME_BRAIN_URL: "http://brain.local/tools/invoke", DIGITAL_ME_BRAIN_TOKEN: "t" } as NodeJS.ProcessEnv,
+      openclawHome: "/nonexistent",
+    });
+    expect(cfg.port).toBe(80);
+    expect(cfg.host).toBe("brain.local");
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "", OPENCLAW_GATEWAY_TOKEN: "x" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).not.toThrow();
+  });
+
+  it("reads the token from DIGITAL_ME_BRAIN_TOKEN_FILE, defaulting to <wiki-root>/.data/brain-host.token", () => {
+    const files: Record<string, string> = {
+      "/h/digital-me/.data/brain-host.token": "  file-secret\n",
+      "/w/.data/brain-host.token": "wiki-root-secret",
+      "/explicit.token": "explicit-secret",
+      "/empty.token": "\n",
+    };
+    const readFile = (p: string): string => {
+      if (!(p in files)) throw new Error("ENOENT");
+      return files[p]!;
+    };
+    const base = { DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke" };
+    expect(loadGatewayConfig({ env: base as NodeJS.ProcessEnv, openclawHome: "/nonexistent", home: "/h", readFile }).token).toBe("file-secret");
+    expect(loadGatewayConfig({ env: { ...base, DIGITAL_ME_WIKI_ROOT: "/w" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent", home: "/h", readFile }).token).toBe("wiki-root-secret");
+    expect(loadGatewayConfig({ env: { ...base, DIGITAL_ME_BRAIN_TOKEN_FILE: "/explicit.token" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent", home: "/h", readFile }).token).toBe("explicit-secret");
+    // env token still wins over the file
+    expect(loadGatewayConfig({ env: { ...base, DIGITAL_ME_BRAIN_TOKEN: "env-secret" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent", home: "/h", readFile }).token).toBe("env-secret");
+    // an empty file is "no token"
+    expect(() =>
+      loadGatewayConfig({ env: { ...base, DIGITAL_ME_BRAIN_TOKEN_FILE: "/empty.token" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent", home: "/h", readFile }),
+    ).toThrow(/no token was found/);
+    expect(resolveBrainToken({ DIGITAL_ME_BRAIN_TOKEN: "x" } as NodeJS.ProcessEnv, "/h", readFile)).toEqual({ token: "x", source: "env" });
+    expect(resolveBrainToken({ DIGITAL_ME_BRAIN_TOKEN_FILE: "/explicit.token" } as NodeJS.ProcessEnv, "/h", readFile)).toEqual({ token: "explicit-secret", source: "file" });
+    expect(defaultBrainTokenFile({} as NodeJS.ProcessEnv, "/h")).toBe("/h/digital-me/.data/brain-host.token");
+  });
+
+  it("uses the real home directory and filesystem by default (missing default file → error)", () => {
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke", DIGITAL_ME_WIKI_ROOT: "/nonexistent/wiki-root" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).toThrow(/no token was found/);
+  });
+
+  it("refuses a brain URL without a token, and a malformed URL", () => {
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke", OPENCLAW_GATEWAY_TOKEN: "gw", DIGITAL_ME_WIKI_ROOT: "/nonexistent/wiki-root" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).toThrow(/no token was found/);
+    expect(() =>
+      loadGatewayConfig({ env: { DIGITAL_ME_BRAIN_URL: "not a url", DIGITAL_ME_BRAIN_TOKEN: "t" } as NodeJS.ProcessEnv, openclawHome: "/nonexistent" }),
+    ).toThrow(/not a valid URL/);
   });
 });
 

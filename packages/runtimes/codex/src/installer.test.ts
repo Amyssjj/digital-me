@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   CODEX_MD_TEMPLATE,
@@ -7,13 +8,18 @@ import {
   PACKAGE_ROOT,
   SECTION_BEGIN,
   SECTION_END,
+  SHELL_ENV_POLICY_HEADER,
+  SHELL_ENV_POLICY_SET_HEADER,
   TEMPLATES_DIR,
+  brainHookEnv,
   buildCodexHooksManifest,
   buildCodexMcpConfig,
   inlineKeysOf,
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  mergeShellEnvPolicySet,
+  splitInlineTable,
   stripDuplicatedSubTables,
 } from "./installer.js";
 
@@ -87,6 +93,288 @@ describe("buildCodexMcpConfig", () => {
       agentId: "codex\b\f",
     });
     expect(toml).toContain(`OPENCLAW_AGENT_ID = "codex\\b\\f"`);
+  });
+
+  // Codex does not forward the installer's shell env to MCP servers, so the
+  // brain-host contract (DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE,
+  // which brain-mcp-proxy/config.ts honours) has to be baked into the stanza.
+  const BRAIN_URL = "http://127.0.0.1:18791/tools/invoke";
+  const TOKEN_FILE = "/home/test/digital-me/.data/brain-host.token";
+  /** `DIGITAL_ME_BRAIN_TOKEN = ` as a key (TOKEN_FILE contains TOKEN as a substring). */
+  const SECRET_KEY = /DIGITAL_ME_BRAIN_TOKEN\s*=/;
+
+  it("emits DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE (the path, never the secret) inside the inline env table", () => {
+    const toml = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainTokenFile: TOKEN_FILE });
+    const envLine = toml.split("\n").find((l) => l.startsWith("env = {"))!;
+    expect(envLine).toContain(`DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}"`);
+    expect(envLine).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "${TOKEN_FILE}"`);
+    expect(envLine).not.toMatch(SECRET_KEY);
+    expect(envLine).toContain(`OPENCLAW_HOME = "${inputs.openclawHome}"`);
+    expect(envLine).toContain(`OPENCLAW_AGENT_ID = "codex"`);
+    expect(envLine).toContain("PATH = ");
+    // One inline table, still 4 keys + trailing newline: no env sub-table.
+    expect(toml).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(toml.split("\n")).toHaveLength(5);
+    expect(inlineKeysOf(toml)).toEqual(["command", "args", "env"]);
+  });
+
+  it("omits the brain keys when neither is provided (the openclaw gateway stays the backend)", () => {
+    expect(buildCodexMcpConfig(inputs)).not.toContain("DIGITAL_ME_BRAIN");
+    expect(
+      buildCodexMcpConfig({ ...inputs, brainUrl: "", brainTokenFile: "" }),
+    ).not.toContain("DIGITAL_ME_BRAIN");
+  });
+
+  it("rejects a brain URL without a token file (and a token file without a URL) — never a silent gateway fallback", () => {
+    expect(() => buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL })).toThrow(
+      /DIGITAL_ME_BRAIN_TOKEN_FILE/,
+    );
+    expect(() => buildCodexMcpConfig({ ...inputs, brainTokenFile: TOKEN_FILE })).toThrow(
+      /set together/,
+    );
+    expect(() =>
+      buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainTokenFile: "" }),
+    ).toThrow(/set together/);
+  });
+
+  it("brain keys are replaced, not duplicated, on a re-install merge", () => {
+    const v1 = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainTokenFile: "/old/brain.token" });
+    const v2 = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainTokenFile: TOKEN_FILE });
+    const merged = mergeMcpServer(mergeMcpServer("", v1), v2);
+    expect(merged).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "${TOKEN_FILE}"`);
+    expect(merged).not.toContain("/old/brain.token");
+    expect(merged.match(/DIGITAL_ME_BRAIN_URL/g)).toHaveLength(1);
+  });
+
+  it("re-install REMOVES a DIGITAL_ME_BRAIN_TOKEN an earlier installer wrote — inline or as an env sub-table", () => {
+    // Pre-token-file installer output: the secret inline in the env table.
+    const legacyInline = [
+      "[mcp_servers.openclaw-brain]",
+      `command = "${inputs.nodeBin}"`,
+      `args = ["${inputs.proxyBinPath}"]`,
+      `env = { OPENCLAW_HOME = "${inputs.openclawHome}", DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}", DIGITAL_ME_BRAIN_TOKEN = "old-secret" }`,
+      "",
+      "[other]",
+      "q = true",
+      "",
+    ].join("\n");
+    const fresh = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainTokenFile: TOKEN_FILE });
+    const merged = mergeMcpServer(legacyInline, fresh);
+    expect(merged).not.toMatch(SECRET_KEY);
+    expect(merged).not.toContain("old-secret");
+    expect(merged).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "${TOKEN_FILE}"`);
+    expect(merged).toContain("[other]\nq = true");
+
+    // Codex's own rewrite spelling: env as a sub-table.
+    const legacySubTable = [
+      "[mcp_servers.openclaw-brain]",
+      `command = "${inputs.nodeBin}"`,
+      "",
+      "[mcp_servers.openclaw-brain.env]",
+      `DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}"`,
+      'DIGITAL_ME_BRAIN_TOKEN = "old-secret"',
+      "",
+    ].join("\n");
+    const merged2 = mergeMcpServer(legacySubTable, fresh);
+    expect(merged2).not.toContain("old-secret");
+    expect(merged2).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(merged2).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "${TOKEN_FILE}"`);
+  });
+
+  it("escapes the token file path like every other TOML value", () => {
+    const toml = buildCodexMcpConfig({ ...inputs, brainUrl: BRAIN_URL, brainTokenFile: 'C:\\a"b\\brain.token' });
+    expect(toml).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "C:\\\\a\\"b\\\\brain.token"`);
+  });
+
+  it("the hand-install template documents the env table with URL + TOKEN_FILE and no inline secret", () => {
+    const tpl = readFileSync(MCP_TOML_TEMPLATE, "utf-8");
+    expect(inlineKeysOf(tpl)).toEqual(["command", "args", "env"]);
+    expect(tpl).toContain("DIGITAL_ME_BRAIN_URL");
+    expect(tpl).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE = ");
+    expect(tpl).not.toMatch(SECRET_KEY);
+    expect(tpl).toContain(SHELL_ENV_POLICY_SET_HEADER);
+  });
+});
+
+describe("brainHookEnv", () => {
+  const brain = { brainUrl: "http://127.0.0.1:18791/tools/invoke", brainTokenFile: "/home/test/digital-me/.data/brain-host.token" };
+
+  it("is exactly the URL + token FILE pair the hooks read", () => {
+    expect(brainHookEnv(brain)).toEqual({
+      DIGITAL_ME_BRAIN_URL: brain.brainUrl,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: brain.brainTokenFile,
+    });
+  });
+
+  it("refuses half a contract", () => {
+    expect(() => brainHookEnv({ ...brain, brainTokenFile: "  " })).toThrow(/set together/);
+    expect(() => brainHookEnv({ ...brain, brainUrl: "" })).toThrow(/DIGITAL_ME_BRAIN_TOKEN_FILE/);
+  });
+});
+
+describe("splitInlineTable", () => {
+  it("splits on top-level commas only, respecting quotes, escapes and nesting", () => {
+    expect(splitInlineTable(' A = "1", B = "x, y", C = \'p, q\' ')).toEqual([" A = \"1\"", ' B = "x, y"', " C = 'p, q' "]);
+    expect(splitInlineTable('A = "esc \\" quote, still", B = "2"')).toEqual(['A = "esc \\" quote, still"', ' B = "2"']);
+    expect(splitInlineTable('A = ["x", "y"], B = { c = "1", d = "2" }')).toEqual(['A = ["x", "y"]', ' B = { c = "1", d = "2" }']);
+  });
+
+  it("handles an empty table, a trailing comma and a dangling backslash", () => {
+    expect(splitInlineTable("")).toEqual([]);
+    expect(splitInlineTable("   ")).toEqual([]);
+    expect(splitInlineTable('A = "1", ')).toEqual(['A = "1"']);
+    expect(splitInlineTable('A = "1\\')).toEqual(['A = "1\\']);
+  });
+});
+
+describe("mergeShellEnvPolicySet", () => {
+  const vars = {
+    DIGITAL_ME_BRAIN_URL: "http://127.0.0.1:18791/tools/invoke",
+    DIGITAL_ME_BRAIN_TOKEN_FILE: "/home/test/digital-me/.data/brain-host.token",
+  };
+  const URL_LINE = `DIGITAL_ME_BRAIN_URL = "${vars.DIGITAL_ME_BRAIN_URL}"`;
+  const FILE_LINE = `DIGITAL_ME_BRAIN_TOKEN_FILE = "${vars.DIGITAL_ME_BRAIN_TOKEN_FILE}"`;
+
+  it("returns the input untouched when there is nothing to set", () => {
+    expect(mergeShellEnvPolicySet("[x]\na = 1\n", {})).toBe("[x]\na = 1\n");
+  });
+
+  it("appends a fresh [shell_environment_policy.set] table when the file has no shell_environment_policy at all", () => {
+    expect(mergeShellEnvPolicySet("", vars)).toBe(`${SHELL_ENV_POLICY_SET_HEADER}\n${URL_LINE}\n${FILE_LINE}\n`);
+    const withNl = mergeShellEnvPolicySet('[mcp_servers.x]\ncommand = "x"\n', vars);
+    expect(withNl).toBe(`[mcp_servers.x]\ncommand = "x"\n\n${SHELL_ENV_POLICY_SET_HEADER}\n${URL_LINE}\n${FILE_LINE}\n`);
+    const withoutNl = mergeShellEnvPolicySet('[mcp_servers.x]\ncommand = "x"', vars);
+    expect(withoutNl).toBe(`[mcp_servers.x]\ncommand = "x"\n\n${SHELL_ENV_POLICY_SET_HEADER}\n${URL_LINE}\n${FILE_LINE}\n`);
+  });
+
+  it("merges into an existing [shell_environment_policy.set] sub-table: rewrites our keys in place, keeps theirs, appends what is missing before the trailing blank line", () => {
+    const existing = [
+      "[shell_environment_policy.set]",
+      'CI = "1"',
+      'DIGITAL_ME_BRAIN_URL = "http://stale:1/tools/invoke" # old',
+      "# a comment line",
+      "",
+      "[mcp_servers.x]",
+      'command = "x"',
+      "",
+    ].join("\n");
+    const out = mergeShellEnvPolicySet(existing, vars);
+    expect(out).toBe(
+      [
+        "[shell_environment_policy.set]",
+        'CI = "1"',
+        URL_LINE,
+        "# a comment line",
+        FILE_LINE,
+        "",
+        "[mcp_servers.x]",
+        'command = "x"',
+        "",
+      ].join("\n"),
+    );
+    // Idempotent.
+    expect(mergeShellEnvPolicySet(out, vars)).toBe(out);
+  });
+
+  it("merges into a sub-table that ends the file (no trailing blank, no next header)", () => {
+    const out = mergeShellEnvPolicySet('[shell_environment_policy.set]\nCI = "1"', vars);
+    expect(out).toBe(`[shell_environment_policy.set]\nCI = "1"\n${URL_LINE}\n${FILE_LINE}`);
+  });
+
+  it("merges into an inline `set = { ... }` table under [shell_environment_policy] instead of adding a duplicate definition", () => {
+    const existing = [
+      "[shell_environment_policy]",
+      'inherit = "core"',
+      'set = { CI = "1", DIGITAL_ME_BRAIN_URL = "http://stale:1/tools/invoke", NOTE = "a, b" } # keep me',
+      "",
+      "[mcp_servers.x]",
+      'command = "x"',
+      "",
+    ].join("\n");
+    const out = mergeShellEnvPolicySet(existing, vars);
+    expect(out.split("\n")[2]).toBe(`set = { CI = "1", ${URL_LINE}, NOTE = "a, b", ${FILE_LINE} } # keep me`);
+    expect(out).not.toContain(SHELL_ENV_POLICY_SET_HEADER);
+    expect(mergeShellEnvPolicySet(out, vars)).toBe(out);
+    // An empty inline table and one without a comment.
+    expect(mergeShellEnvPolicySet("[shell_environment_policy]\nset = {}\n", vars)).toBe(
+      `[shell_environment_policy]\nset = { ${URL_LINE}, ${FILE_LINE} }\n`,
+    );
+  });
+
+  it("refuses a multi-line inline `set = {` table rather than risk a duplicate definition", () => {
+    const existing = '[shell_environment_policy]\nset = {\n  CI = "1",\n}\n';
+    expect(() => mergeShellEnvPolicySet(existing, vars)).toThrow(/multi-line/);
+  });
+
+  it("merges into dotted `set.KEY` spellings under [shell_environment_policy]", () => {
+    const existing = [
+      "[shell_environment_policy]",
+      'set.CI = "1"',
+      'set.DIGITAL_ME_BRAIN_URL = "http://stale:1/tools/invoke"',
+      'exclude = ["AWS_*"]',
+      "",
+      "[other]",
+      "q = true",
+      "",
+    ].join("\n");
+    const out = mergeShellEnvPolicySet(existing, vars);
+    expect(out).toBe(
+      [
+        "[shell_environment_policy]",
+        'set.CI = "1"',
+        `set.${URL_LINE}`,
+        'exclude = ["AWS_*"]',
+        `set.${FILE_LINE}`,
+        "",
+        "[other]",
+        "q = true",
+        "",
+      ].join("\n"),
+    );
+    expect(mergeShellEnvPolicySet(out, vars)).toBe(out);
+  });
+
+  it("adds the sub-table right after a [shell_environment_policy] that has no `set` yet", () => {
+    const existing = [
+      "[shell_environment_policy]",
+      'inherit = "core"',
+      "",
+      "",
+      "[other]",
+      "q = true",
+      "",
+    ].join("\n");
+    const out = mergeShellEnvPolicySet(existing, vars);
+    expect(out).toBe(
+      [
+        "[shell_environment_policy]",
+        'inherit = "core"',
+        "",
+        SHELL_ENV_POLICY_SET_HEADER,
+        URL_LINE,
+        FILE_LINE,
+        "",
+        "[other]",
+        "q = true",
+        "",
+      ].join("\n"),
+    );
+    expect(mergeShellEnvPolicySet(out, vars)).toBe(out);
+    // Parent at EOF (with and without a trailing newline).
+    expect(mergeShellEnvPolicySet(`${SHELL_ENV_POLICY_HEADER}\ninherit = "core"\n`, vars)).toBe(
+      `${SHELL_ENV_POLICY_HEADER}\ninherit = "core"\n\n${SHELL_ENV_POLICY_SET_HEADER}\n${URL_LINE}\n${FILE_LINE}\n`,
+    );
+    expect(mergeShellEnvPolicySet(`${SHELL_ENV_POLICY_HEADER}\ninherit = "core"`, vars)).toBe(
+      `${SHELL_ENV_POLICY_HEADER}\ninherit = "core"\n\n${SHELL_ENV_POLICY_SET_HEADER}\n${URL_LINE}\n${FILE_LINE}\n`,
+    );
+  });
+
+  it("prefers an explicit sub-table even when it precedes the parent, and escapes values like every other TOML string", () => {
+    const existing = `${SHELL_ENV_POLICY_SET_HEADER}\nCI = "1"\n\n${SHELL_ENV_POLICY_HEADER}\ninherit = "core"\n`;
+    const out = mergeShellEnvPolicySet(existing, { DIGITAL_ME_BRAIN_TOKEN_FILE: 'C:\\x"y' });
+    expect(out).toBe(
+      `${SHELL_ENV_POLICY_SET_HEADER}\nCI = "1"\nDIGITAL_ME_BRAIN_TOKEN_FILE = "C:\\\\x\\"y"\n\n${SHELL_ENV_POLICY_HEADER}\ninherit = "core"\n`,
+    );
   });
 });
 

@@ -29,14 +29,61 @@ PLEN=${#PROMPT}
 [ "$PLEN" -lt 12 ] && exit 0
 case "$PROMPT" in /*) exit 0 ;; esac
 
-OPENCLAW_CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$HOME/.openclaw/config.json}"
-[ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
-[ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.clawdbot/openclaw.json"
-TOKEN="$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_CONFIG" 2>/dev/null)"
+# Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts, dm_m1_emit.py
+# and the Claude Code inject hook):
+#   1. DIGITAL_ME_BRAIN_URL — the digital-me brain-host. Its bearer token is
+#      DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed contents of
+#      DIGITAL_ME_BRAIN_TOKEN_FILE, else of the default token file
+#      <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token (the
+#      mode-600 file `digital-me install --runtime brain-host` writes). An
+#      empty or unreadable file is "no token". A URL with no resolvable token
+#      is a configuration error, so the hook reports it on stderr and exits
+#      (fail-open, no request) rather than silently falling back to the
+#      openclaw gateway.
+#   2. OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT / OPENCLAW_GATEWAY_TOKEN.
+#   3. The openclaw config file (gateway.auth.token) on the default port.
+#
+# The score gate is backend-aware. The gateway's hybrid `score` is 0-1 (top
+# hits ~0.5) and MIN_SCORE=40 was calibrated against it. brain-host fuses
+# ranks with RRF, so its `score` peaks at ~0.043 (2.6/61) and a 0-100 gate on
+# it drops every hit; its `vectorScore` (cosine) is the comparable signal —
+# measured 2026-09-20 on the live index: relevant hits 0.71-0.77, off-topic
+# probe 0.50-0.53 — so brain-host gates on vectorScore >= 60.
+# DIGITAL_ME_HOOK_MIN_SCORE overrides either default (0-100 scale).
+if [ -n "${DIGITAL_ME_BRAIN_URL:-}" ]; then
+  BRAIN_URL="$DIGITAL_ME_BRAIN_URL"
+  TOKEN="${DIGITAL_ME_BRAIN_TOKEN:-}"
+  TOKEN_FILE="${DIGITAL_ME_BRAIN_TOKEN_FILE:-${DIGITAL_ME_WIKI_ROOT:-$HOME/digital-me}/.data/brain-host.token}"
+  if [ -z "$TOKEN" ]; then
+    # Env token wins; otherwise the token file. "$( )" drops trailing
+    # newlines, the two expansions trim any remaining whitespace (bash 3.2
+    # safe, no subprocess). A missing, unreadable or blank file leaves TOKEN
+    # empty, which is the hard error below — never a gateway fallback.
+    TOKEN="$(cat "$TOKEN_FILE" 2>/dev/null)"
+    TOKEN="${TOKEN#"${TOKEN%%[![:space:]]*}"}"
+    TOKEN="${TOKEN%"${TOKEN##*[![:space:]]}"}"
+  fi
+  if [ -z "$TOKEN" ]; then
+    echo "dm_memory_search_inject: DIGITAL_ME_BRAIN_URL is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in $TOKEN_FILE), or unset the URL to fall back to the openclaw gateway" >&2
+    exit 0
+  fi
+  SCORE_FIELD="vectorScore"
+  MIN_SCORE="${DIGITAL_ME_HOOK_MIN_SCORE:-60}"
+else
+  BRAIN_URL="http://${OPENCLAW_GATEWAY_HOST:-localhost}:${OPENCLAW_GATEWAY_PORT:-18789}/tools/invoke"
+  TOKEN="${OPENCLAW_GATEWAY_TOKEN:-}"
+  if [ -z "$TOKEN" ]; then
+    OPENCLAW_CONFIG="${DIGITAL_ME_OPENCLAW_CONFIG:-$HOME/.openclaw/config.json}"
+    [ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.openclaw/openclaw.json"
+    [ ! -f "$OPENCLAW_CONFIG" ] && OPENCLAW_CONFIG="$HOME/.clawdbot/openclaw.json"
+    TOKEN="$(jq -r '.gateway.auth.token // empty' "$OPENCLAW_CONFIG" 2>/dev/null)"
+  fi
+  SCORE_FIELD="score"
+  MIN_SCORE="${DIGITAL_ME_HOOK_MIN_SCORE:-40}"
+fi
 [ -z "$TOKEN" ] && exit 0
 
 # Tunables
-MIN_SCORE=40                # drop hits scoring below this (0-100 scale)
 TOP1_BODY_CHARS=2000        # cap on inlined top-1 entry body
 FRESH_DAYS_THRESHOLD=7
 WIKI_ROOT_LOCAL="${DIGITAL_ME_WIKI_ROOT:-$HOME/digital-me}/wiki"
@@ -64,7 +111,7 @@ REQ="$(jq -cn --arg q "$QUERY" --arg a "$AGENT_ID" '{tool:"memory_search", agent
 [ -z "$REQ" ] && exit 0
 
 HOOK_TIMEOUT="${DIGITAL_ME_HOOK_TIMEOUT_SECS:-12}"
-RESP="$(curl -sS -m "$HOOK_TIMEOUT" -X POST http://localhost:18789/tools/invoke \
+RESP="$(curl -sS -m "$HOOK_TIMEOUT" -X POST "$BRAIN_URL" \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d "$REQ" 2>/dev/null)"
@@ -79,10 +126,12 @@ if [ -n "$SEEN_FILE" ] && [ -f "$SEEN_FILE" ]; then
   SEEN_PATHS="$(cat "$SEEN_FILE")"
 fi
 
-# Filter and shape via jq. score_int = floor(score*100). dedup against SEEN_PATHS.
-HITS_JSON="$(printf '%s' "$RESULTS_RAW" | jq -c --arg seen "$SEEN_PATHS" --argjson min_score "$MIN_SCORE" '
+# Filter and shape via jq. score_int = floor(<SCORE_FIELD>*100) — `score` for
+# the gateway, `vectorScore` for brain-host (see the gate note above); falls
+# back to `score` when the backend omits the field. dedup against SEEN_PATHS.
+HITS_JSON="$(printf '%s' "$RESULTS_RAW" | jq -c --arg seen "$SEEN_PATHS" --arg field "$SCORE_FIELD" --argjson min_score "$MIN_SCORE" '
   .results // []
-  | map(. + {score_int: ((.score // 0) * 100 | floor)})
+  | map(. + {score_int: (((.[$field] // .score // 0) * 100) | floor)})
   | map(select(.score_int >= $min_score))
   | (($seen | split("\n") | map(select(length > 0))) as $seenset
      | map(select(.path as $p | $seenset | index($p) | not)))
@@ -119,7 +168,12 @@ HITS="$(printf '%s' "$HITS_JSON" | jq -c '.[]' | awk 'BEGIN{i=0} {print i "\t" $
   if [ "$rel" != "$path" ]; then
     abs="$WIKI_ROOT_LOCAL/$rel"
     if [ -f "$abs" ]; then
-      mtime=$(stat -f %m "$abs" 2>/dev/null || stat -c %Y "$abs" 2>/dev/null)
+      # GNU stat first: on coreutils "stat -f %m" succeeds with filesystem info,
+      # so a BSD-first fallback never fires and the arithmetic below dies. BSD
+      # stat rejects -c, so this order works on both. Keep numeric results only.
+      # NOTE: no case/esac here - bash 3.2 mis-parses its ")" inside "$( )".
+      mtime=$(stat -c %Y "$abs" 2>/dev/null || stat -f %m "$abs" 2>/dev/null)
+      [[ "$mtime" =~ ^[0-9]+$ ]] || mtime=""
       if [ -n "$mtime" ]; then
         age_days=$(( (NOW_EPOCH - mtime) / 86400 ))
         if [ "$age_days" -gt "$FRESH_DAYS_THRESHOLD" ]; then

@@ -59,11 +59,24 @@ Reads from environment variables (recommended) with fallback to `$OPENCLAW_HOME/
 
 | Env var | Default | Purpose |
 |---|---|---|
-| `OPENCLAW_GATEWAY_HOST` | `localhost` | Gateway host |
+| `DIGITAL_ME_BRAIN_URL` | (unset — openclaw gateway) | digital-me brain-host `/tools/invoke` endpoint (e.g. `http://127.0.0.1:18791/tools/invoke`). When set it wins over every `OPENCLAW_GATEWAY_*` value, and a bearer token **must** resolve from the two rows below — a URL with no token is a hard error, never a silent fallback to the gateway |
+| `DIGITAL_ME_BRAIN_TOKEN_FILE` | `<DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token` | **Recommended.** File holding the brain-host bearer token (written mode 600 by `digital-me install --runtime brain-host`); read and trimmed when `DIGITAL_ME_BRAIN_TOKEN` is unset. An empty or unreadable file counts as no token. Registrations should carry this path, not the secret |
+| `DIGITAL_ME_BRAIN_TOKEN` | (unset) | Inline brain-host bearer token; wins over the file when non-empty. Avoid in MCP registrations and service units |
+| `OPENCLAW_GATEWAY_HOST` | `127.0.0.1` | Gateway host |
 | `OPENCLAW_GATEWAY_PORT` | `18789` (or file value) | Gateway port |
-| `OPENCLAW_GATEWAY_TOKEN` | (read from openclaw.json) | Bearer token |
+| `OPENCLAW_GATEWAY_TOKEN` | (read from openclaw.json) | Gateway bearer token |
 | `OPENCLAW_HOME` | `~/.openclaw` | Openclaw config root |
 | `OPENCLAW_AGENT_ID` | (unset) | Default `agent_id` stamped on outgoing tool calls |
+
+Pointing the proxy at brain-host from a Codex registration, for example:
+
+```toml
+[mcp_servers.openclaw-brain]
+command = "digital-me-brain-mcp-proxy"
+env = { OPENCLAW_AGENT_ID = "codex", DIGITAL_ME_BRAIN_URL = "http://127.0.0.1:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN_FILE = "/home/<you>/digital-me/.data/brain-host.token" }
+```
+
+`digital-me install --runtime <claude-code|codex|hermes>` writes exactly this pair (URL + token **file**) into each client's registration once the brain-host token file exists.
 
 Token resolution falls back from env to `$OPENCLAW_HOME/openclaw.json` (`gateway.auth.token`, then `gateway.auth.password`). Throws clearly at startup if no token can be resolved.
 

@@ -71,6 +71,55 @@ export const SECTION_END =
   "<!-- END digital-me auto-generated section -->";
 
 /**
+ * Inputs for the `env:` map of the `openclaw-brain` MCP stanza in
+ * ~/.hermes/config.yaml (written by `hermes mcp add --env KEY=VALUE ...`).
+ */
+export interface HermesMcpEnvInputs {
+  /** OPENCLAW_HOME — the openclaw state dir the proxy reads openclaw.json from. */
+  readonly openclawHome: string;
+  /** OPENCLAW_AGENT_ID attribution label; defaults to "hermes". */
+  readonly agentId?: string;
+  /**
+   * digital-me brain-host: `DIGITAL_ME_BRAIN_URL` plus the PATH of its token
+   * file (`DIGITAL_ME_BRAIN_TOKEN_FILE`). Hermes does not forward the
+   * installer's shell env to MCP servers, so the pair has to be baked into
+   * the stanza; the secret itself never is — brain-mcp-proxy reads the file.
+   * Omit to leave the proxy on the openclaw gateway.
+   */
+  readonly brain?: {
+    readonly brainUrl: string;
+    readonly brainTokenFile: string;
+  };
+}
+
+/**
+ * The `KEY=VALUE` pairs to pass after `--env` to `hermes mcp add`. Pure —
+ * the CLI spawns the command. Throws on half a brain-host contract (a URL
+ * with no token file or vice versa): every caller treats a URL with no
+ * resolvable token as a hard error, never a gateway fallback, so the
+ * installer must not write one.
+ */
+export function buildHermesMcpEnv(inputs: HermesMcpEnvInputs): string[] {
+  const env = [
+    `OPENCLAW_HOME=${inputs.openclawHome}`,
+    `OPENCLAW_AGENT_ID=${inputs.agentId ?? "hermes"}`,
+  ];
+  const brain = inputs.brain;
+  if (brain !== undefined) {
+    if (brain.brainUrl.trim() === "" || brain.brainTokenFile.trim() === "") {
+      throw new Error(
+        "buildHermesMcpEnv: brainUrl and brainTokenFile must be set together (DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN_FILE is a configuration error)",
+      );
+    }
+    env.push(
+      `DIGITAL_ME_BRAIN_URL=${brain.brainUrl}`,
+      `DIGITAL_ME_BRAIN_TOKEN_FILE=${brain.brainTokenFile}`,
+    );
+  }
+  return env;
+}
+
+/**
  * Merge a digital-me protocol section into an existing SOUL.md body.
  * The merge logic matches the codex installer's mergeCodexMd, modulo the
  * file-specific marker text: only the BEGIN..END span is updated.

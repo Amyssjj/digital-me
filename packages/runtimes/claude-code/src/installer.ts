@@ -175,3 +175,54 @@ export function mergeHooksIntoSettings(
   }
   return { ...existing, hooks: mergedHooks };
 }
+
+/**
+ * Brain-host plumbing for the hooks. Claude Code exports settings.json `env`
+ * to every hook process, so writing `DIGITAL_ME_BRAIN_URL` and
+ * `DIGITAL_ME_BRAIN_TOKEN_FILE` there is what makes
+ * `dm_memory_search_inject.sh` / `dm_m1_emit.py` talk to the digital-me
+ * brain-host instead of the openclaw gateway — without a shell export the
+ * user has to remember per machine. Only the token FILE path is written: the
+ * secret stays on disk (mode 600) and every hook reads it itself.
+ */
+export type BrainHostEnv = {
+  /** The brain-host `/tools/invoke` URL (DIGITAL_ME_BRAIN_URL). */
+  readonly url: string;
+  /** Path of the file holding its bearer token (DIGITAL_ME_BRAIN_TOKEN_FILE). */
+  readonly tokenFile: string;
+};
+
+/**
+ * Merge the brain-host env into an existing settings.json object. Both keys
+ * travel together — every caller treats a URL with no resolvable token as a
+ * hard error, so the installer refuses to write half a contract. A
+ * `DIGITAL_ME_BRAIN_TOKEN` an earlier installer version wrote is REMOVED so
+ * settings.json stops carrying the secret (the hooks would otherwise keep
+ * preferring it over the file). Preserves the user's other `env` entries; a
+ * malformed non-object `env` is replaced. Pure function — the installer does
+ * the actual disk I/O.
+ */
+export function mergeBrainEnvIntoSettings(
+  existing: Record<string, unknown>,
+  brain: BrainHostEnv,
+): Record<string, unknown> {
+  if (brain.url.trim() === "" || brain.tokenFile.trim() === "") {
+    throw new Error(
+      "brain-host env needs both DIGITAL_ME_BRAIN_URL and DIGITAL_ME_BRAIN_TOKEN_FILE — refusing to write a URL without a token file (callers treat a URL with no resolvable token as a hard error, never a gateway fallback)",
+    );
+  }
+  const current = existing.env;
+  const existingEnv: Record<string, unknown> =
+    typeof current === "object" && current !== null && !Array.isArray(current)
+      ? { ...(current as Record<string, unknown>) }
+      : {};
+  delete existingEnv.DIGITAL_ME_BRAIN_TOKEN;
+  return {
+    ...existing,
+    env: {
+      ...existingEnv,
+      DIGITAL_ME_BRAIN_URL: brain.url,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: brain.tokenFile,
+    },
+  };
+}

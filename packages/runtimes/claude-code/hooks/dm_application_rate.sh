@@ -23,11 +23,17 @@ LOG_DIR="$HOME/.claude/hooks"
 LOG_FILE="$LOG_DIR/application_rate.log"
 mkdir -p "$LOG_DIR"
 
-python3 - "$SESSION_ID" "$TRANSCRIPT_PATH" "$LOG_FILE" <<'PYEOF' 2>/dev/null || exit 0
+# The M1 emitter ships next to this hook (both are installed into the same
+# hooks dir); pass our own dir explicitly because a `python3 -` heredoc has
+# no usable __file__ ('<stdin>' → the user's cwd).
+HOOK_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+python3 - "$SESSION_ID" "$TRANSCRIPT_PATH" "$LOG_FILE" "$HOOK_DIR" <<'PYEOF' 2>/dev/null || exit 0
 import json, re, sys
 from datetime import datetime
 
 session_id, transcript_path, log_file = sys.argv[1], sys.argv[2], sys.argv[3]
+hook_dir = sys.argv[4] if len(sys.argv) > 4 else ""
 HOOK_BLOCK_MARKER = "Digital Me / openclaw-brain memory_search top hits"
 HOOK_BULLET_RE = re.compile(r"^-\s+(\S+\.md)\s+\(score=", re.M)
 
@@ -149,10 +155,10 @@ with open(log_file, "a", encoding="utf-8") as f:
 # infrastructure/m1-universal-event-protocol.md
 try:
     import os as _os, subprocess as _sp
-    _emit = _os.path.join(_os.path.dirname(__file__) or ".", "dm_m1_emit.py")
-    # The shell hook installs both scripts in the same dir; resolve via /tmp
-    # subprocess-style by finding the emitter relative to this stop-hook script.
-    # Fallback to ~/.claude/hooks/dm_m1_emit.py
+    # The emitter is installed alongside this hook: resolve it from the hook
+    # dir the shell wrapper passed (argv[4]), never from __file__ (this is a
+    # stdin heredoc) or the cwd. Fallback to ~/.claude/hooks/dm_m1_emit.py.
+    _emit = _os.path.join(hook_dir or ".", "dm_m1_emit.py")
     if not _os.path.isfile(_emit):
         _emit = _os.path.expanduser("~/.claude/hooks/dm_m1_emit.py")
 

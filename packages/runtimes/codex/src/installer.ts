@@ -378,17 +378,267 @@ export interface CodexMcpConfigInputs {
   openclawHome: string;
   /** Agent id to inject into outbound calls when caller doesn't set one. */
   agentId?: string;
+  /**
+   * digital-me brain-host `/tools/invoke` URL. Emitted as DIGITAL_ME_BRAIN_URL
+   * in the proxy's env so the proxy Codex spawns talks to brain-host instead
+   * of the openclaw gateway (brain-mcp-proxy/config.ts honours it). Must be
+   * paired with `brainTokenFile`; Codex does not forward the parent shell env
+   * to MCP servers, so the pair has to live in config.toml.
+   */
+  brainUrl?: string;
+  /**
+   * PATH of the file holding the bearer token for `brainUrl`, emitted as
+   * DIGITAL_ME_BRAIN_TOKEN_FILE. The secret itself never lands in
+   * config.toml — the proxy reads the file (mode 600) at start-up.
+   */
+  brainTokenFile?: string;
 }
+
+const nonEmpty = (value: string | undefined): boolean =>
+  value !== undefined && value !== "";
 
 export function buildCodexMcpConfig(inputs: CodexMcpConfigInputs): string {
   const agentId = inputs.agentId ?? "codex";
+  const { brainUrl, brainTokenFile } = inputs;
+  const hasBrain = nonEmpty(brainUrl);
+  if (hasBrain !== nonEmpty(brainTokenFile)) {
+    // Same rule as the proxy: a URL with no resolvable token is a
+    // configuration error, never a silent fallback to the gateway (and a
+    // token file without a URL is meaningless).
+    throw new Error(
+      "buildCodexMcpConfig: brainUrl and brainTokenFile must be set together (DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN_FILE is a configuration error)",
+    );
+  }
+  const env = [
+    `OPENCLAW_HOME = ${tomlString(inputs.openclawHome)}`,
+    `OPENCLAW_AGENT_ID = ${tomlString(agentId)}`,
+    // Both are non-empty strings here: the guard above rejected every other
+    // combination, so the casts only restate what it established. A
+    // DIGITAL_ME_BRAIN_TOKEN an earlier installer wrote into this stanza is
+    // dropped on re-install because mergeMcpServer replaces the whole block
+    // (and strips a colliding `[...env]` sub-table).
+    ...(hasBrain
+      ? [
+          `DIGITAL_ME_BRAIN_URL = ${tomlString(brainUrl as string)}`,
+          `DIGITAL_ME_BRAIN_TOKEN_FILE = ${tomlString(brainTokenFile as string)}`,
+        ]
+      : []),
+    `PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"`,
+  ];
   return [
     "[mcp_servers.openclaw-brain]",
     `command = ${tomlString(inputs.nodeBin)}`,
     `args = [${tomlString(inputs.proxyBinPath)}]`,
-    `env = { OPENCLAW_HOME = ${tomlString(inputs.openclawHome)}, OPENCLAW_AGENT_ID = ${tomlString(agentId)}, PATH = "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin" }`,
+    `env = { ${env.join(", ")} }`,
     "",
   ].join("\n");
+}
+
+// ── Hook environment ([shell_environment_policy.set]) ─────────────────────
+//
+// Codex runs hooks in the shell environment it derives from
+// `[shell_environment_policy]`, NOT in an MCP server's `env` table, so the
+// brain-host contract the inject / Stop hooks read (dm_memory_search_inject.sh,
+// dm_m1_emit.py) has to be set through `[shell_environment_policy.set]`. As
+// everywhere else only the URL and the token FILE path are written; the
+// secret stays on disk and the hooks read it themselves.
+
+/** The two variables the hooks need; throws on half a contract. */
+export function brainHookEnv(brain: {
+  readonly brainUrl: string;
+  readonly brainTokenFile: string;
+}): Record<string, string> {
+  if (brain.brainUrl.trim() === "" || brain.brainTokenFile.trim() === "") {
+    throw new Error(
+      "brainHookEnv: brainUrl and brainTokenFile must be set together (DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN_FILE is a configuration error)",
+    );
+  }
+  return {
+    DIGITAL_ME_BRAIN_URL: brain.brainUrl,
+    DIGITAL_ME_BRAIN_TOKEN_FILE: brain.brainTokenFile,
+  };
+}
+
+export const SHELL_ENV_POLICY_HEADER = "[shell_environment_policy]";
+export const SHELL_ENV_POLICY_SET_HEADER = "[shell_environment_policy.set]";
+
+const isTableHeader = (trimmed: string): boolean =>
+  trimmed.startsWith("[") && trimmed.endsWith("]");
+
+/** `KEY = ...` at the start of a line (bare TOML keys only). */
+const KEY_LINE = /^\s*([A-Za-z0-9_-]+)\s*=/;
+/** `set.KEY = ...` — the dotted-key spelling inside [shell_environment_policy]. */
+const DOTTED_SET_KEY = /^\s*set\.([A-Za-z0-9_-]+)\s*=/;
+/** Any `set = ...` assignment inside [shell_environment_policy]. */
+const SET_ASSIGN = /^\s*set\s*=/;
+/** A single-line inline table: `set = { ... }` with an optional trailing comment. */
+const INLINE_SET = /^(\s*set\s*=\s*)\{(.*)\}\s*(#.*)?$/;
+
+/** Index of the line ending the table that starts at `headerIdx`: the next header, or lines.length. */
+function tableEnd(lines: readonly string[], headerIdx: number): number {
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    if (isTableHeader(lines[i]!.trim())) return i;
+  }
+  return lines.length;
+}
+
+/**
+ * Rewrite the `key = value` lines of the table at `headerIdx` for every key in
+ * `vars` (in place, keeping position and comments), then append the keys the
+ * table did not have after its last non-blank line — so the blank lines that
+ * separate it from the next table stay at the end.
+ */
+function mergeIntoTable(
+  lines: readonly string[],
+  headerIdx: number,
+  vars: ReadonlyMap<string, string>,
+  keyOf: (line: string) => string | undefined,
+  render: (key: string, value: string) => string,
+): string {
+  const end = tableEnd(lines, headerIdx);
+  const body = lines.slice(headerIdx + 1, end);
+  const pending = new Map(vars);
+  for (let i = 0; i < body.length; i++) {
+    const key = keyOf(body[i]!);
+    if (key !== undefined && pending.has(key)) {
+      body[i] = render(key, pending.get(key)!);
+      pending.delete(key);
+    }
+  }
+  let insertAt = body.length;
+  while (insertAt > 0 && body[insertAt - 1]!.trim() === "") insertAt--;
+  body.splice(insertAt, 0, ...[...pending].map(([k, v]) => render(k, v)));
+  return [...lines.slice(0, headerIdx + 1), ...body, ...lines.slice(end)].join("\n");
+}
+
+/** Split the body of a TOML inline table on top-level commas (quotes and nesting respected). */
+export function splitInlineTable(body: string): string[] {
+  const items: string[] = [];
+  let current = "";
+  let quote: '"' | "'" | null = null;
+  let depth = 0;
+  for (let i = 0; i < body.length; i++) {
+    const ch = body[i]!;
+    if (quote !== null) {
+      current += ch;
+      if (ch === "\\" && quote === '"') {
+        // Keep the escaped character with its backslash (a trailing lone
+        // backslash simply ends the string as-is).
+        current += body[i + 1] ?? "";
+        i++;
+      } else if (ch === quote) {
+        quote = null;
+      }
+      continue;
+    }
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+    } else if (ch === "{" || ch === "[") {
+      depth++;
+    } else if (ch === "}" || ch === "]") {
+      depth--;
+    } else if (ch === "," && depth === 0) {
+      items.push(current);
+      current = "";
+      continue;
+    }
+    current += ch;
+  }
+  if (current.trim() !== "") items.push(current);
+  return items;
+}
+
+/** Merge `vars` into a single-line `set = { ... }` inline table, preserving the other pairs. */
+function mergeInlineSet(match: RegExpExecArray, vars: ReadonlyMap<string, string>): string {
+  const pending = new Map(vars);
+  const pairs = splitInlineTable(match[2]!).map((item) => {
+    const key = KEY_LINE.exec(item)?.[1];
+    if (key !== undefined && pending.has(key)) {
+      const value = pending.get(key)!;
+      pending.delete(key);
+      return `${key} = ${tomlString(value)}`;
+    }
+    return item.trim();
+  });
+  for (const [k, v] of pending) pairs.push(`${k} = ${tomlString(v)}`);
+  const comment = match[3] !== undefined ? ` ${match[3]}` : "";
+  return `${match[1]}{ ${pairs.join(", ")} }${comment}`;
+}
+
+/**
+ * Merge `vars` into the `shell_environment_policy.set` table of a Codex
+ * config.toml body, idempotently and preserving every other key in that table
+ * (and every other table). Line-based like {@link mergeMcpServer} — enough for
+ * the key = "string" pairs Codex documents there, without a TOML dependency.
+ *
+ * TOML lets `set` be spelled four ways and defining it twice is a WHOLE-FILE
+ * parse error that would take every MCP server in config.toml down with it
+ * (the 2026-09-01 env sub-table incident), so each spelling is merged in
+ * place rather than a second one added:
+ *
+ *   1. `[shell_environment_policy.set]` sub-table          → keys rewritten / appended
+ *   2. `set = { ... }` inline table under the parent       → pairs rewritten / appended
+ *   3. `set.KEY = ...` dotted keys under the parent        → dotted keys rewritten / appended
+ *   4. `[shell_environment_policy]` present without `set`  → sub-table added right after it
+ *   5. no shell_environment_policy at all                  → sub-table appended at EOF
+ *
+ * A multi-line inline `set = {` table (TOML 1.1) cannot be merged line-wise
+ * and throws instead of risking a duplicate definition.
+ */
+export function mergeShellEnvPolicySet(
+  existingToml: string,
+  vars: Readonly<Record<string, string>>,
+): string {
+  const entries = new Map(Object.entries(vars));
+  if (entries.size === 0) return existingToml;
+  const lines = existingToml.split("\n");
+  const renderBare = (k: string, v: string) => `${k} = ${tomlString(v)}`;
+
+  // 1. Explicit sub-table.
+  const setIdx = lines.findIndex((l) => l.trim() === SHELL_ENV_POLICY_SET_HEADER);
+  if (setIdx >= 0) {
+    return mergeIntoTable(lines, setIdx, entries, (l) => KEY_LINE.exec(l)?.[1], renderBare);
+  }
+
+  const parentIdx = lines.findIndex((l) => l.trim() === SHELL_ENV_POLICY_HEADER);
+  if (parentIdx >= 0) {
+    const end = tableEnd(lines, parentIdx);
+    const body = lines.slice(parentIdx + 1, end);
+    // 2. Inline table.
+    const inlineOffset = body.findIndex((l) => SET_ASSIGN.test(l));
+    if (inlineOffset >= 0) {
+      const lineIdx = parentIdx + 1 + inlineOffset;
+      const match = INLINE_SET.exec(lines[lineIdx]!);
+      if (match === null) {
+        throw new Error(
+          `mergeShellEnvPolicySet: ${SHELL_ENV_POLICY_HEADER} has a multi-line \`set = {\` table (line ${lineIdx + 1}) that cannot be merged line-wise — move its keys to a [shell_environment_policy.set] table and re-run`,
+        );
+      }
+      lines[lineIdx] = mergeInlineSet(match, entries);
+      return lines.join("\n");
+    }
+    // 3. Dotted keys.
+    if (body.some((l) => DOTTED_SET_KEY.test(l))) {
+      return mergeIntoTable(
+        lines,
+        parentIdx,
+        entries,
+        (l) => DOTTED_SET_KEY.exec(l)?.[1],
+        (k, v) => `set.${k} = ${tomlString(v)}`,
+      );
+    }
+    // 4. Parent without `set`: add the sub-table right after the parent's block.
+    const before = lines.slice(0, end);
+    while (before.length > 0 && before[before.length - 1]!.trim() === "") before.pop();
+    const after = lines.slice(end);
+    const block = [SHELL_ENV_POLICY_SET_HEADER, ...[...entries].map(([k, v]) => renderBare(k, v))];
+    return [...before, "", ...block, ...(after.length > 0 ? ["", ...after] : [""])].join("\n");
+  }
+
+  // 5. Nothing yet: append a fresh sub-table (same separator rules as mergeMcpServer).
+  const fragment = [SHELL_ENV_POLICY_SET_HEADER, ...[...entries].map(([k, v]) => renderBare(k, v))].join("\n");
+  const sep = existingToml.endsWith("\n") || existingToml.length === 0 ? "" : "\n";
+  return `${existingToml}${sep}${existingToml.length > 0 ? "\n" : ""}${fragment}\n`;
 }
 
 /**

@@ -87,6 +87,258 @@ def test_load_gateway_handles_missing_openclaw_file(tmp_path: Path) -> None:
     assert gw.port == DEFAULT_PORT
 
 
+# ── load_gateway: DIGITAL_ME_BRAIN_URL/TOKEN (brain-host) wins over openclaw ──
+
+
+BRAIN_URL = "http://127.0.0.1:18791/tools/invoke"
+
+
+def test_load_gateway_brain_url_wins_over_openclaw_env(tmp_path: Path) -> None:
+    """brain-host env beats BOTH the OPENCLAW_GATEWAY_* env and openclaw.json —
+    mirrors packages/transport/brain-mcp-proxy/src/config.ts."""
+    (tmp_path / "openclaw.json").write_text(
+        json.dumps({"gateway": {"port": 19000, "auth": {"token": "file-tok"}}})
+    )
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+            "DIGITAL_ME_BRAIN_TOKEN": "bt",
+            "OPENCLAW_GATEWAY_HOST": "10.0.0.1",
+            "OPENCLAW_GATEWAY_PORT": "20000",
+            "OPENCLAW_GATEWAY_TOKEN": "env-tok",
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.url == BRAIN_URL
+    assert gw.token == "bt"
+    assert gw.host == "127.0.0.1"
+    assert gw.port == 18791
+
+
+def test_load_gateway_brain_url_without_token_errors(tmp_path: Path) -> None:
+    """URL with no resolvable token is a hard error — never a silent fallback to
+    openclaw, even when openclaw.json would have supplied a working token. HOME
+    is pinned to tmp_path so the default token file cannot exist either; the
+    error names both token variables and the file it looked in."""
+    (tmp_path / "openclaw.json").write_text(
+        json.dumps({"gateway": {"auth": {"token": "file-tok"}}})
+    )
+    with pytest.raises(BrainClientError, match="no token was found") as excinfo:
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "HOME": str(tmp_path)},
+            openclaw_home=tmp_path,
+        )
+    msg = str(excinfo.value)
+    assert "DIGITAL_ME_BRAIN_TOKEN," in msg and "DIGITAL_ME_BRAIN_TOKEN_FILE" in msg
+    assert str(tmp_path / "digital-me" / ".data" / "brain-host.token") in msg
+
+
+def test_load_gateway_brain_url_blank_token_errors(tmp_path: Path) -> None:
+    """A whitespace-only token counts as unset (and no token file exists)."""
+    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_TOKEN_FILE"):
+        load_gateway(
+            env={
+                "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+                "DIGITAL_ME_BRAIN_TOKEN": "   ",
+                "DIGITAL_ME_WIKI_ROOT": str(tmp_path),
+            },
+            openclaw_home=tmp_path,
+        )
+
+
+# ── load_gateway: token from DIGITAL_ME_BRAIN_TOKEN_FILE / the default file ───
+
+
+def _write_token(path: Path, contents: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents, encoding="utf-8")
+    return path
+
+
+def test_load_gateway_brain_token_from_default_file_under_wiki_root(tmp_path: Path) -> None:
+    """No env token → the trimmed contents of <DIGITAL_ME_WIKI_ROOT>/.data/brain-host.token."""
+    _write_token(tmp_path / "wiki-root" / ".data" / "brain-host.token", "  file-secret\n")
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_WIKI_ROOT": str(tmp_path / "wiki-root")},
+        openclaw_home=tmp_path,
+    )
+    assert (gw.url, gw.token) == (BRAIN_URL, "file-secret")
+
+
+def test_load_gateway_brain_token_default_file_falls_back_to_home(tmp_path: Path) -> None:
+    """Without DIGITAL_ME_WIKI_ROOT the default file lives under $HOME/digital-me."""
+    _write_token(tmp_path / "digital-me" / ".data" / "brain-host.token", "home-secret\n")
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "HOME": str(tmp_path)},
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "home-secret"
+
+
+def test_load_gateway_brain_token_default_file_uses_path_home_when_env_lacks_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An env mapping with neither DIGITAL_ME_WIKI_ROOT nor HOME resolves through
+    Path.home() (which itself follows $HOME), the way os.environ would."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _write_token(tmp_path / "digital-me" / ".data" / "brain-host.token", "path-home-secret\n")
+    gw = load_gateway(env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL}, openclaw_home=tmp_path)
+    assert gw.token == "path-home-secret"
+
+
+def test_load_gateway_brain_token_explicit_file_beats_default(tmp_path: Path) -> None:
+    _write_token(tmp_path / "wiki-root" / ".data" / "brain-host.token", "default-secret\n")
+    explicit = _write_token(tmp_path / "custom.token", "explicit-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+            "DIGITAL_ME_BRAIN_TOKEN_FILE": str(explicit),
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path / "wiki-root"),
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "explicit-secret"
+
+
+def test_load_gateway_brain_env_token_beats_file(tmp_path: Path) -> None:
+    explicit = _write_token(tmp_path / "custom.token", "explicit-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+            "DIGITAL_ME_BRAIN_TOKEN": "env-secret",
+            "DIGITAL_ME_BRAIN_TOKEN_FILE": str(explicit),
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "env-secret"
+
+
+@pytest.mark.parametrize("contents", ["", "   \n\n"])
+def test_load_gateway_brain_empty_token_file_errors(tmp_path: Path, contents: str) -> None:
+    """An empty / whitespace-only token file counts as no token — hard error,
+    and the openclaw.json token is never consulted."""
+    (tmp_path / "openclaw.json").write_text(json.dumps({"gateway": {"auth": {"token": "file-tok"}}}))
+    blank = _write_token(tmp_path / "blank.token", contents)
+    with pytest.raises(BrainClientError, match=str(blank)):
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN_FILE": str(blank)},
+            openclaw_home=tmp_path,
+        )
+
+
+def test_load_gateway_brain_unreadable_token_file_errors(tmp_path: Path) -> None:
+    """A path that cannot be read as a file (here: a directory) is no token."""
+    with pytest.raises(BrainClientError, match="no token was found"):
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN_FILE": str(tmp_path)},
+            openclaw_home=tmp_path,
+        )
+
+
+@pytest.mark.parametrize("bad_url", ["not-a-url", "ftp://x:1/tools/invoke", "http://"])
+def test_load_gateway_brain_url_invalid_errors(tmp_path: Path, bad_url: str) -> None:
+    with pytest.raises(BrainClientError, match="not a valid URL"):
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": bad_url, "DIGITAL_ME_BRAIN_TOKEN": "bt"},
+            openclaw_home=tmp_path,
+        )
+
+
+def test_load_gateway_brain_url_bad_port_errors(tmp_path: Path) -> None:
+    with pytest.raises(BrainClientError, match="invalid port"):
+        load_gateway(
+            env={
+                "DIGITAL_ME_BRAIN_URL": "http://127.0.0.1:99999/tools/invoke",
+                "DIGITAL_ME_BRAIN_TOKEN": "bt",
+            },
+            openclaw_home=tmp_path,
+        )
+
+
+def test_load_gateway_brain_url_never_reads_openclaw_file(tmp_path: Path) -> None:
+    """An INVALID openclaw.json would raise 'failed to read' via
+    _read_openclaw_file — proving the brain-host branch resolves first and
+    the openclaw file is never touched when DIGITAL_ME_BRAIN_* is set."""
+    (tmp_path / "openclaw.json").write_text("{ this is not json")
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN": "bt"},
+        openclaw_home=tmp_path,
+    )
+    assert gw.url == BRAIN_URL
+    # Sanity: without the brain env the same file IS read and does fail.
+    with pytest.raises(BrainClientError, match="failed to read"):
+        load_gateway(env={}, openclaw_home=tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("url", "host", "port"),
+    [
+        ("https://brain.example/tools/invoke", "brain.example", 443),
+        ("http://brain.example/tools/invoke", "brain.example", 80),
+        ("http://[::1]:18791/tools/invoke", "::1", 18791),
+    ],
+)
+def test_load_gateway_brain_url_infers_port_from_scheme(
+    tmp_path: Path, url: str, host: str, port: int
+) -> None:
+    """No explicit port → scheme default; the verbatim URL is still what's used."""
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": url, "DIGITAL_ME_BRAIN_TOKEN": "bt"},
+        openclaw_home=tmp_path,
+    )
+    assert (gw.host, gw.port, gw.url) == (host, port, url)
+
+
+def test_load_gateway_blank_brain_url_falls_through_to_openclaw(tmp_path: Path) -> None:
+    """An empty/whitespace DIGITAL_ME_BRAIN_URL is 'unset' — legacy path runs."""
+    (tmp_path / "openclaw.json").write_text(
+        json.dumps({"gateway": {"auth": {"token": "file-tok"}}})
+    )
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": "  ", "DIGITAL_ME_BRAIN_TOKEN": "ignored"},
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "file-tok"
+    assert gw.url == f"http://localhost:{DEFAULT_PORT}/tools/invoke"
+
+
+def test_load_gateway_token_error_mentions_brain_host(tmp_path: Path) -> None:
+    """The no-token hint must name the brain-host env contract, not only openclaw."""
+    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_URL") as excinfo:
+        load_gateway(env={}, openclaw_home=tmp_path)
+    assert "DIGITAL_ME_BRAIN_TOKEN_FILE" in str(excinfo.value)
+
+
+def test_gateway_endpoint_url_prefers_invoke_url() -> None:
+    full = GatewayEndpoint(
+        host="h", port=1, token="t", invoke_url="http://x:9/tools/invoke"
+    )
+    assert full.url == "http://x:9/tools/invoke"
+    # Legacy 3-arg constructor keeps building host:port form.
+    legacy = GatewayEndpoint(host="h", port=1234, token="t")
+    assert legacy.invoke_url is None
+    assert legacy.url == "http://h:1234/tools/invoke"
+
+
+def test_brain_client_posts_to_invoke_url_verbatim() -> None:
+    """End-to-end through BrainClient: a full DIGITAL_ME_BRAIN_URL endpoint is
+    what the fetcher receives, with the brain token as the bearer."""
+    captured: dict[str, Any] = {}
+
+    def fetcher(url, body, headers, timeout_s):
+        captured["url"] = url
+        captured["auth"] = headers["Authorization"]
+        return json.dumps({"ok": True, "result": {"ok": True}}).encode("utf-8")
+
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN": "bt"},
+        openclaw_home=Path("/nonexistent-openclaw-home"),
+    )
+    BrainClient(gateway=gw, fetcher=fetcher).schedule_tick()
+    assert captured["url"] == BRAIN_URL
+    assert captured["auth"] == "Bearer bt"
+
+
 # ── BrainClient: request shape + response handling ────────────────────────
 
 
@@ -200,15 +452,28 @@ def test_schedule_tick_posts_correct_action() -> None:
     assert captured["body"] == {"tool": "tasks", "agentId": "main", "args": {"action": "schedule_tick"}}
 
 
-def test_task_status_sends_taskId() -> None:
+def test_task_status_sends_taskId_with_json_format() -> None:
+    """`status` is sent with format=json so the host's handleStatusJson path
+    populates details.json.task (the markdown path leaves details.json None).
+    The mocked envelope mirrors what the MCP tool actually returns."""
     captured: dict[str, Any] = {}
     client = _make_client(
-        response={"ok": True, "result": {"task": {"id": "t-1", "status": "running"}}},
+        response={
+            "ok": True,
+            "result": {
+                "content": [{"type": "text", "text": "{\"task\": {...}}"}],
+                "details": {"json": {"task": {"id": "t-1", "status": "running"}}},
+            },
+        },
         captured=captured,
     )
     payload = client.task_status("t-1")
-    assert captured["body"]["args"] == {"action": "status", "taskId": "t-1"}
-    assert payload["task"]["status"] == "running"
+    assert captured["body"]["args"] == {
+        "action": "status",
+        "taskId": "t-1",
+        "format": "json",
+    }
+    assert payload["details"]["json"]["task"]["status"] == "running"
 
 
 def test_goal_status_filters_board_by_id() -> None:

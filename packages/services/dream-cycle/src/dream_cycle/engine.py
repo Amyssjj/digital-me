@@ -1,6 +1,8 @@
 """LLM/embedding abstraction layer.
 
-engine: openclaw  -> calls OpenClaw gateway APIs
+engine: openclaw  -> Gemini; key from $GEMINI_API_KEY, else ~/.openclaw/openclaw.json
+                     (memory.search.remote.apiKey for openclaw >= 2026.7.1, then the
+                     legacy agents.defaults.memorySearch.remote.apiKey)
 engine: standalone -> direct API calls using api_key_env
 """
 
@@ -59,27 +61,117 @@ class Engine(ABC):
         ...
 
 
-class OpenClawEngine(Engine):
-    """Use OpenClaw's config for LLM and embeddings.
+# openclaw.json paths that hold the memorySearch block, in precedence order.
+# openclaw >= 2026.7.1 moved it to the root "memory.search" namespace; older
+# releases nested it under "agents.defaults.memorySearch".
+_MEMORY_SEARCH_PATHS: tuple[tuple[str, ...], ...] = (
+    ("memory", "search"),
+    ("agents", "defaults", "memorySearch"),
+)
 
-    Reads the Gemini API key and model from ~/.openclaw/openclaw.json
-    and calls Gemini directly. This inherits provider config from OpenClaw
-    without duplicating keys in our own config.
+
+def _load_openclaw_config(path: str) -> dict:
+    """Parse openclaw.json at ``path``; return ``{}`` when missing or unparseable.
+
+    Never raises: the OpenClaw engine has to work on a machine without
+    OpenClaw at all (the key can arrive via ``$GEMINI_API_KEY``), so a bad or
+    absent config only matters if no key turns up anywhere -- and that is
+    ``OpenClawEngine.__init__``'s call, not this loader's.
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        # OSError: missing / unreadable / a directory. ValueError covers
+        # json.JSONDecodeError and UnicodeDecodeError.
+        return {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _dig(node: object, *keys: str) -> object:
+    """Walk nested dicts; ``None`` as soon as a key is absent or a level isn't a dict."""
+    for key in keys:
+        if not isinstance(node, dict):
+            return None
+        node = node.get(key)
+    return node
+
+
+def _clean_str(value: object) -> str:
+    """Stripped string, or ``""`` for anything that is not a non-blank string."""
+    return value.strip() if isinstance(value, str) else ""
+
+
+def _memory_search_block(cfg: dict) -> dict:
+    """Resolve the memorySearch settings from a parsed openclaw.json.
+
+    Returns a normalised ``{"api_key": str, "model": str, "provider": str}``
+    (``""`` when unset). Each field is taken from the namespaced ``memory.search`` block
+    when it is set there, else from the legacy ``agents.defaults.memorySearch``
+    block -- the new layout wins field by field, not block by block, so a
+    half-migrated config still yields whatever key it has.
+    """
+    blocks = [_dig(cfg, *path) for path in _MEMORY_SEARCH_PATHS]
+    blocks = [b for b in blocks if isinstance(b, dict)]
+
+    def first(*keys: str) -> str:
+        for block in blocks:
+            value = _clean_str(_dig(block, *keys))
+            if value:
+                return value
+        return ""
+
+    return {
+        "api_key": first("remote", "apiKey"),
+        "model": first("model"),
+        "provider": first("provider"),
+    }
+
+
+class OpenClawEngine(Engine):
+    """Gemini engine that borrows OpenClaw's Gemini key and embedding model instead of duplicating them.
+
+    API key precedence (first non-blank wins):
+
+    1. ``$GEMINI_API_KEY`` (``API_KEY_ENV``) -- what the digital-me brain-host
+       service exports for the nightly workers. This also lets the engine run
+       on a machine with no OpenClaw install at all.
+    2. ``memory.search.remote.apiKey`` in ``OPENCLAW_CONFIG`` -- the root
+       ``memory`` namespace that openclaw >= 2026.7.1 moved the block to.
+    3. ``agents.defaults.memorySearch.remote.apiKey`` -- the legacy layout.
+
+    Embedding model: ``memory.search.model``, else
+    ``agents.defaults.memorySearch.model``, else ``DEFAULT_EMBEDDING_MODEL`` --
+    but only when the configured ``provider`` is ``gemini`` (or unset). This
+    engine calls the Gemini endpoint only, so a model name configured for
+    another embedding provider (e.g. ``openai`` + ``text-embedding-3-small``)
+    is ignored in favour of the default.
+
+    A missing or unparseable ``OPENCLAW_CONFIG`` is not an error by itself;
+    ``ValueError`` is raised only when no key is found in any of the three
+    sources.
     """
 
+    API_KEY_ENV = "GEMINI_API_KEY"
     OPENCLAW_CONFIG = os.path.expanduser("~/.openclaw/openclaw.json")
+    DEFAULT_EMBEDDING_MODEL = "gemini-embedding-001"
 
     def __init__(self, llm_model: str = "gemini-3-flash-preview"):
         self.llm_model = llm_model
-        with open(self.OPENCLAW_CONFIG) as f:
-            cfg = json.load(f)
-        memory_search = cfg.get("agents", {}).get("defaults", {}).get("memorySearch", {})
-        self.api_key = memory_search.get("remote", {}).get("apiKey", "")
-        self.embedding_model = memory_search.get("model", "gemini-embedding-001")
+        settings = _memory_search_block(_load_openclaw_config(self.OPENCLAW_CONFIG))
+        gemini_configured = settings["provider"] in ("", "gemini")
+        self.embedding_model = (
+            settings["model"] if gemini_configured else ""
+        ) or self.DEFAULT_EMBEDDING_MODEL
+        self.api_key = (
+            _clean_str(os.environ.get(self.API_KEY_ENV)) or settings["api_key"]
+        )
         if not self.api_key:
             raise ValueError(
-                f"No Gemini API key found in {self.OPENCLAW_CONFIG} "
-                "at agents.defaults.memorySearch.remote.apiKey"
+                f"No Gemini API key found. Set ${self.API_KEY_ENV}, or put it in "
+                f"{self.OPENCLAW_CONFIG} at memory.search.remote.apiKey "
+                "(openclaw >= 2026.7.1) or agents.defaults.memorySearch.remote.apiKey "
+                "(legacy layout)."
             )
 
     def llm_call(self, prompt: str, system: str = "") -> str:

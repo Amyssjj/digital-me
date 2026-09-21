@@ -1,5 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { mkdtempSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite") as typeof import("node:sqlite");
@@ -17,6 +20,7 @@ import {
   type OpenClawRuntime,
   type OrchestratorTaskRecord,
   type SubagentRunArgs,
+  type VerifyStep,
 } from "@digital-me/brain-orchestrator";
 import {
   createOpenClawDispatcher,
@@ -651,6 +655,221 @@ describe("dispatchExecTask", () => {
     expect(stored.status).toBe("failed");
     expect(stored.attempts[0]!.endedAt).toBeGreaterThanOrEqual(before);
   });
+
+// ── dispatchExecTask: verify step ──────────────────────────────────────────
+
+describe("dispatchExecTask verify step", () => {
+  const WORKER = ["/abs/node", "/abs/worker.mjs", "/abs/spec.json"];
+  const okRun: ExecRunResult = { success: true, timedOut: false, exitCode: 0, stdout: "worker said done", stderr: "" };
+
+  function seedVerified(deps: OpenClawDispatcherDeps, verify: VerifyStep): OrchestratorTaskRecord {
+    return seedTask(deps, { dispatch: { mode: "exec", command: WORKER, cwd: "/work", verify } });
+  }
+
+  it("runs dispatch.verify after a successful run, with its own cwd/timeout, and completes the task when it exits as expected", async () => {
+    const rt = makeRuntime();
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/test", "-s", "/art/handoff.json"], cwd: "/art", timeoutMs: 30_000, expectedExitCode: 0 });
+    expect(await createOpenClawDispatcher(deps).dispatchExecTask(task)).toBe(true);
+    await flush();
+    expect(rt.execCalls.map((c) => c.command)).toEqual([WORKER, ["/bin/test", "-s", "/art/handoff.json"]]);
+    expect(rt.execCalls[1]).toEqual({ command: ["/bin/test", "-s", "/art/handoff.json"], cwd: "/art", timeoutMs: 30_000 });
+    const stored = deps.tasks.get("t-1")!;
+    expect(stored.status).toBe("completed");
+    expect(stored.attempts[0]!.status).toBe("completed");
+  });
+
+  // A runtime whose execRun models the real `/bin/test -s <file>` (exit 0 iff
+  // the file is non-empty) and runs a handoff-gated task against `content`.
+  async function runWithHandoff(content: string): Promise<{ rt: RuntimeContext; deps: OpenClawDispatcherDeps; handoff: string }> {
+    const dir = mkdtempSync(path.join(tmpdir(), "dm-verify-"));
+    const handoff = path.join(dir, "handoff.json");
+    writeFileSync(handoff, content);
+    const rt = makeRuntime({
+      execRun: async (args) => {
+        if (args.command[0] !== "/bin/test") return okRun;
+        const nonEmpty = statSync(args.command[2]!).size > 0;
+        return { success: nonEmpty, timedOut: false, exitCode: nonEmpty ? 0 : 1, stdout: "", stderr: "" };
+      },
+    });
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/test", "-s", handoff] });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    rmSync(dir, { recursive: true, force: true });
+    return { rt, deps, handoff };
+  }
+
+  it("fails the task when the worker exits 0 but handoff.json is empty (the gate the alias resolver implies)", async () => {
+    const { rt, deps, handoff } = await runWithHandoff("");
+    const stored = deps.tasks.get("t-1")!;
+    expect(stored.status).toBe("failed");
+    expect(stored.failureReason).toBe(`verify failed: /bin/test -s ${handoff} exited 1 (expected 0)`);
+    expect(stored.attempts[0]!.status).toBe("failed");
+    // The run's own stdout survives the verify failure.
+    expect(stored.attempts[0]!.outputSummary).toBe("worker said done");
+    expect(rt.logs.some((l) => l.level === "error" && l.message.includes("verify failed"))).toBe(true);
+  });
+
+  it("completes the task when handoff.json is non-empty", async () => {
+    const { deps } = await runWithHandoff("{\"summary\":\"done\"}");
+    expect(deps.tasks.get("t-1")!.status).toBe("completed");
+  });
+
+  it("honours a custom expectedExitCode", async () => {
+    const rt = makeRuntime({
+      execRun: async (args) =>
+        args.command[0] === "/bin/sh" ? { success: false, timedOut: false, exitCode: 3, stdout: "", stderr: "" } : okRun,
+    });
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/sh", "-c", "exit 3"], expectedExitCode: 3 });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(deps.tasks.get("t-1")!.status).toBe("completed");
+  });
+
+  it("appends the verify command's stderr to the failure reason", async () => {
+    const rt = makeRuntime({
+      execRun: async (args) =>
+        args.command[0] === "/bin/test" ? { success: false, timedOut: false, exitCode: 2, stdout: "", stderr: "test: no such file\n" } : okRun,
+    });
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/test", "-s", "/art/handoff.json"] });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(deps.tasks.get("t-1")!.failureReason).toBe(
+      "verify failed: /bin/test -s /art/handoff.json exited 2 (expected 0); stderr: test: no such file\n",
+    );
+  });
+
+  it("records a timed-out verify as a timeout attempt", async () => {
+    const rt = makeRuntime({
+      execRun: async (args) => (args.command[0] === "/bin/test" ? { success: false, timedOut: true, stdout: "", stderr: "" } : okRun),
+    });
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/test", "-s", "/art/handoff.json"], timeoutMs: 5 });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    const stored = deps.tasks.get("t-1")!;
+    expect(stored.status).toBe("failed");
+    expect(stored.attempts[0]!.status).toBe("timeout");
+    expect(stored.failureReason).toBe("verify failed: /bin/test -s /art/handoff.json timed out");
+  });
+
+  it("treats a verify result without an exit code as 0 when it succeeded", async () => {
+    const rt = makeRuntime({
+      execRun: async (args) => (args.command[0] === "/bin/test" ? { success: true, timedOut: false, stdout: "", stderr: "" } : okRun),
+    });
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/test", "-s", "/art/handoff.json"] });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(deps.tasks.get("t-1")!.status).toBe("completed");
+  });
+
+  it("does not run verify when the run itself failed", async () => {
+    const rt = makeRuntime({
+      execRun: async () => ({ success: false, timedOut: false, exitCode: 1, stdout: "", stderr: "crash" }),
+    });
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedVerified(deps, { command: ["/bin/test", "-s", "/art/handoff.json"] });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls).toHaveLength(1);
+    expect(deps.tasks.get("t-1")!.failureReason).toMatch(/exit code 1/);
+  });
+});
+
+// ── dispatchExecTask: default cwd ──────────────────────────────────────────
+
+describe("dispatchExecTask default cwd", () => {
+  // Regression: an exec dispatch without a cwd used to inherit the dispatching
+  // process's cwd — "/" under the openclaw gateway, but the brain-host package
+  // directory under launchd, where Claude Code's working-directory policy
+  // blocked the CLI worker's shell reads (cat/ls) outside it. brain-host
+  // passes its wiki root as `defaultCwd`; the gateway
+  // plugin passes nothing and keeps today's behaviour.
+  const WIKI = "/home/t/wiki";
+  const VERIFY = ["/bin/test", "-s", "/art/handoff.json"];
+
+  function withDefault(rt: RuntimeContext): OpenClawDispatcherDeps {
+    return { ...makeDeps(rt), defaultCwd: WIKI };
+  }
+
+  it("runs an exec task that carries no cwd in defaultCwd", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["echo"] } });
+    expect(await createOpenClawDispatcher(deps).dispatchExecTask(task)).toBe(true);
+    await flush();
+    expect(rt.execCalls).toHaveLength(1);
+    expect(rt.execCalls[0]!.cwd).toBe(WIKI);
+    expect(deps.tasks.get("t-1")!.status).toBe("completed");
+  });
+
+  it("leaves a task's own cwd untouched", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["echo"], cwd: "/work" } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls[0]!.cwd).toBe("/work");
+  });
+
+  it("applies defaultCwd to a verify step without a cwd", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["worker"], verify: { command: VERIFY } } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls.map((c) => c.cwd)).toEqual([WIKI, WIKI]);
+    expect(rt.execCalls[1]).toEqual({ command: VERIFY, cwd: WIKI, timeoutMs: undefined });
+  });
+
+  it("keeps a verify step's own cwd", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, {
+      dispatch: { mode: "exec", command: ["worker"], cwd: "/work", verify: { command: VERIFY, cwd: "/art" } },
+    });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls.map((c) => c.cwd)).toEqual(["/work", "/art"]);
+  });
+
+  it("treats an empty-string cwd on the task and on its verify as unset, like the alias resolver", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["worker"], cwd: "", verify: { command: VERIFY, cwd: "" } } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls.map((c) => c.cwd)).toEqual([WIKI, WIKI]);
+  });
+
+  it("passes cwd undefined for the task and its verify when no defaultCwd is configured (inherits the process cwd, as before)", async () => {
+    const rt = makeRuntime();
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["worker"], verify: { command: VERIFY } } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls).toHaveLength(2);
+    expect(rt.execCalls[0]!.cwd).toBeUndefined();
+    expect(rt.execCalls[1]!.cwd).toBeUndefined();
+  });
+});
 
 // ── probeSessionLiveness ───────────────────────────────────────────────────
 

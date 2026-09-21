@@ -59,7 +59,8 @@ Dream-cycle reads `config.yaml` from your wiki root. Resolution order:
 |---|---|
 | Config file path | `--config-path` → `$DIGITAL_ME_CONFIG_PATH` → `<wiki_root>/config.yaml` |
 | Wiki root | `--wiki-root` → `$DIGITAL_ME_WIKI_ROOT` → `~/digital-me/` |
-| Brain DB (optional input) | `$DIGITAL_ME_BRAIN_DB` → `~/.openclaw/data/task-orchestrator.db` (graceful skip if missing) |
+| Brain DB (optional input) | `$DIGITAL_ME_BRAIN_DB` → `~/.openclaw/data/brain.db` (graceful skip if missing) |
+| Gemini key (`engine: openclaw`) | `$GEMINI_API_KEY` → `~/.openclaw/openclaw.json` `memory.search.remote.apiKey` (openclaw ≥ 2026.7.1) → `agents.defaults.memorySearch.remote.apiKey` (legacy); a missing/unparseable `openclaw.json` is fine when the env var is set |
 | Drift-check repo roots | `$DIGITAL_ME_DRIFT_CHECK_ROOTS` (`:`-separated) → `dream_cycle.drift_check_repo_roots` in config → `[wiki_root, $HOME]` |
 
 Minimal `config.yaml`:
@@ -153,7 +154,7 @@ src/dream_cycle/
   drift_check.py          LLM citation-drift audit (configurable code roots)
   index.py                _INDEX.md / _STATS.md
   crosslink.py            _GRAPH.md cross-link generation
-  citations.py            citation tracking from traces
+  citations.py            citation tracking from brain-DB traces (same DB as brain_learnings)
   lint.py                 frontmatter / structure checks
   bundles.py              skill-bundle packaging
   brain_learnings.py      materialize learnings from brain MCP
