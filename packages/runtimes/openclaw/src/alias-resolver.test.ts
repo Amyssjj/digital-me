@@ -248,6 +248,65 @@ describe("createOpenClawAliasResolver", () => {
     expect(result.cwd).toBe(process.cwd());
   });
 
+  // Regression: with no dispatch cwd and no goal worktree the worker used to
+  // inherit the dispatching process's cwd — "/" under the openclaw gateway,
+  // but the brain-host package directory under launchd, where the Claude CLI
+  // sandbox blocked reads outside it. brain-host now passes its wiki root as
+  // defaultCwd; the gateway plugin passes nothing and keeps process.cwd().
+  it("uses defaultCwd when neither dispatch.cwd nor ctx.cwd is set — for the worker, the spec, and verify", () => {
+    const resolver = createOpenClawAliasResolver({
+      aliases: { "claude-code-cli": claudeAlias },
+      artifactRoot,
+      defaultCwd: "/home/t/wiki",
+    });
+    const ctx = makeCtx({
+      cwd: undefined,
+      originalDispatch: { mode: "exec" as const, command: ["raw"] },
+    });
+    const result = resolver("claude-code-cli", ctx) as TaskDispatch;
+    if (result.mode !== "exec") throw new Error();
+    expect(result.cwd).toBe("/home/t/wiki");
+    expect(result.verify!.cwd).toBe("/home/t/wiki");
+    const spec = JSON.parse(
+      fs.readFileSync(
+        path.join(artifactRoot, "g-1", "t-1", "spec.json"),
+        "utf8",
+      ),
+    ) as { cwd: string };
+    expect(spec.cwd).toBe("/home/t/wiki");
+  });
+
+  it("prefers ctx.cwd (the goal's worktree) over defaultCwd", () => {
+    const resolver = createOpenClawAliasResolver({
+      aliases: { "claude-code-cli": claudeAlias },
+      artifactRoot,
+      defaultCwd: "/home/t/wiki",
+    });
+    const result = resolver("claude-code-cli", makeCtx({ cwd: "/home/t/worktree" })) as TaskDispatch;
+    if (result.mode !== "exec") throw new Error();
+    expect(result.cwd).toBe("/home/t/worktree");
+  });
+
+  it("prefers an explicit exec dispatch cwd over both ctx.cwd and defaultCwd", () => {
+    const resolver = createOpenClawAliasResolver({
+      aliases: { "claude-code-cli": claudeAlias },
+      artifactRoot,
+      defaultCwd: "/home/t/wiki",
+    });
+    const ctx = makeCtx({
+      cwd: "/home/t/worktree",
+      originalDispatch: {
+        mode: "exec" as const,
+        command: ["raw"],
+        cwd: "/explicit/cwd",
+      },
+    });
+    const result = resolver("claude-code-cli", ctx) as TaskDispatch;
+    if (result.mode !== "exec") throw new Error();
+    expect(result.cwd).toBe("/explicit/cwd");
+    expect(result.verify!.cwd).toBe("/explicit/cwd");
+  });
+
   it("forwards finalMessageArg + promptTemplate into the spec.json", () => {
     const resolver = createOpenClawAliasResolver({
       aliases: {

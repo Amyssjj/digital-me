@@ -26,7 +26,7 @@ A required variable has no default — the package errors at startup if it's not
 | `BRAIN_PROXY_PATH` | no | `$(which digital-me-brain-mcp-proxy)` | this repo | runtime adapters |
 | `ORCHESTRATOR_DB_PATH` | no | `$OPENCLAW_DATA_DIR/orchestrator.db` | brain-orchestrator | **deprecated** — registry entry with no live consumer; the live orchestrator store is `$OPENCLAW_DATA_DIR/brain.db` |
 | `OPENCLAW_BRAIN_DB` | no | `~/.openclaw/data/brain.db` | brain-orchestrator | `services/dashboard` intake ETL |
-| `DIGITAL_ME_BRAIN_DB` | no | `~/.openclaw/data/task-orchestrator.db` (legacy) | brain-orchestrator | `services/dream-cycle` brain-learnings reader |
+| `DIGITAL_ME_BRAIN_DB` | no | `~/.openclaw/data/brain.db` (the retired `task-orchestrator.db` is no longer read) | brain-orchestrator | `services/dream-cycle` brain-learnings reader |
 | `DASHBOARD_PORT` | no | `3458` | dashboard | dashboard Express server (loopback only) |
 | `DASHBOARD_DB` | no | `~/digital-me/.data/dashboard.db` | dashboard | dashboard server + Python intake ETL |
 | `OPENCLAW_EXTENSIONS_DIR` | no | `$OPENCLAW_HOME/extensions` | openclaw | `cli` (plugin install target) |

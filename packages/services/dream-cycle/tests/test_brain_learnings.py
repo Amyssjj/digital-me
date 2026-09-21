@@ -23,6 +23,14 @@ def test_resolve_brain_db_default(monkeypatch: pytest.MonkeyPatch) -> None:
     assert resolve_brain_db_path() == DEFAULT_BRAIN_DB_PATH
 
 
+def test_default_brain_db_path_is_the_live_orchestrator_db() -> None:
+    """The orchestrator lives at ~/.openclaw/data/brain.db. The retired
+    task-orchestrator.db default pointed at a stale copy on old hosts (same
+    rows every night, nothing new graduated) and at nothing on fresh ones."""
+    assert DEFAULT_BRAIN_DB_PATH.parts[-3:] == (".openclaw", "data", "brain.db")
+    assert DEFAULT_BRAIN_DB_PATH.as_posix().endswith(".openclaw/data/brain.db")
+
+
 def test_resolve_brain_db_env_override(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:

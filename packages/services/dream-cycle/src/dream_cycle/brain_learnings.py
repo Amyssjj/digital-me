@@ -5,9 +5,12 @@ the `learning_capture` MCP tool — and writes one wiki entry per row that
 carries a `proposed_wiki_path`.
 
 DB path resolution: `$DIGITAL_ME_BRAIN_DB` env var, then the default
-`~/.openclaw/data/task-orchestrator.db`. If the file does not exist (fresh
-open-source install with no OpenClaw runtime yet), the step is a graceful
-no-op rather than a hard error.
+`~/.openclaw/data/brain.db` -- the orchestrator's live DB. The older
+`task-orchestrator.db` default is retired: on hosts that still carry that
+file the step re-read the same stale rows every night and graduated nothing
+new; on fresh installs the file is simply absent. If the resolved file does
+not exist (fresh open-source install with no OpenClaw runtime yet), the step
+is a graceful no-op rather than a hard error.
 
 This is the graduation step the brain-api-contract described but no module
 implemented. Without it, `learning_capture` was a write-only black hole;
@@ -40,7 +43,7 @@ import yaml
 from dream_cycle.config import load_config, Config
 
 
-DEFAULT_BRAIN_DB_PATH = Path.home() / ".openclaw" / "data" / "task-orchestrator.db"
+DEFAULT_BRAIN_DB_PATH = Path.home() / ".openclaw" / "data" / "brain.db"
 
 
 def resolve_brain_db_path() -> Path:

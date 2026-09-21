@@ -63,7 +63,13 @@ export type Logger = (level: "info" | "warn" | "error", message: string) => void
 
 export type OrchestratorOptions = {
   readonly db: DatabaseSync;
-  /** Directory containing config.yaml (cli_exec_aliases). */
+  /**
+   * Directory containing config.yaml (cli_exec_aliases). Also the working
+   * directory for exec tasks whose dispatch carries no cwd: without it the
+   * child would inherit this process's cwd, which under launchd is the
+   * brain-host package directory (Claude Code's working-directory policy
+   * then blocks the worker's shell reads of the wiki and its staging files).
+   */
   readonly wikiRoot: string;
   readonly log: Logger;
   readonly stallThresholdMs: number;
@@ -184,6 +190,7 @@ export class Orchestrator {
       tasks,
       now: opts.now,
       runtime: { log: forward, subagent: { run: unsupportedSpawn }, execRun },
+      defaultCwd: opts.wikiRoot,
     });
     this.dispatcher = {
       dispatchSpawnTask: async (task) => {
@@ -195,7 +202,10 @@ export class Orchestrator {
     };
 
     const io = { exists: opts.exists ?? existsSync, readFile: opts.readFile ?? ((p: string) => readFileSync(p, "utf-8")) };
-    this.aliasResolver = createOpenClawAliasResolver({ aliases: loadCliExecAliases(opts.wikiRoot, this.log, io) });
+    this.aliasResolver = createOpenClawAliasResolver({
+      aliases: loadCliExecAliases(opts.wikiRoot, this.log, io),
+      defaultCwd: opts.wikiRoot,
+    });
 
     const deps: BrainOrchestratorPluginDeps & { readonly aliasResolver: AliasResolver } = {
       db,
