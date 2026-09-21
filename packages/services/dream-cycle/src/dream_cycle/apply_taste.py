@@ -15,8 +15,8 @@ Staging file shape (input):
         "transcript_index": int,
         "outcome": "candidate" | "evidence" | "neither",
         "domain": str,
-        "principle_fingerprint": str | null,
-        "matched_existing_fingerprint": str | null,
+        "principle_fingerprint": str | null,           # REQUIRED for candidate; usually null for evidence
+        "matched_existing_fingerprint": str | null,    # REQUIRED for evidence (verbatim manifest match); null for candidate
         "evidence_record": {project_id, date, wiki_paths, what_happened, what_triggers_principle},
         "fire_signature_hints": [str, ...],
         "rubric_item_candidates": [str, ...],
