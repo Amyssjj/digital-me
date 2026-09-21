@@ -6,14 +6,18 @@ capture → recall loop in about five minutes.
 
 ## Prerequisites
 
-- **[openclaw](https://github.com/openclaw/openclaw)** — mandatory. The brain
-  rides on openclaw's gateway daemon; install it first and verify
-  `openclaw --version` works. `setup` hard-stops with install guidance if it's
-  missing.
 - **Node.js ≥ 22.5** — to install and run the CLI from npm. (`pnpm` is only
   needed for the *From source* path below.)
+- **A Gemini API key** — `memory_search` embeds your wiki with
+  `gemini-embedding-001` and the nightly dream-cycle uses the same key. You add
+  it to one file right after `setup`.
 - **Python ≥ 3.11** — optional; only needed for the dream-cycle distillation
   pipeline (skip it with `--minimal`).
+
+That's the whole list. The brain — **brain-host** — ships with the CLI and
+`setup` installs it as an always-on service; there is no gateway daemon to
+install first. [openclaw](https://github.com/openclaw/openclaw) is one of the
+supported runtimes, not a prerequisite.
 
 ## Install
 
@@ -32,15 +36,28 @@ digital-me setup --minimal
 digital-me setup --wiki-root ~/notes/brain
 ```
 
+Then give the brain its key — one line in `~/digital-me/.data/.env`, which
+brain-host loads and every nightly worker inherits:
+
+```bash
+echo 'GEMINI_API_KEY=...' >> ~/digital-me/.data/.env
+digital-me doctor        # the key is seen, the brain is serving
+```
+
 What `setup` does:
 
-1. **Detects** `~/.claude/`, `~/.codex/`, `~/.hermes/` to figure out which
-   runtimes you have.
-2. **Scaffolds** the wiki root — `~/digital-me/{wiki,inbox,.cache}` plus a
-   live `config.yaml` (created only if absent, never clobbered).
-3. **Installs each detected runtime** — hooks, skills, MCP entries, protocol
-   bundles (see [Runtimes](/docs/runtimes) for what lands where).
-4. **Runs `doctor`** to confirm everything resolved.
+1. **Detects** `~/.claude/`, `~/.codex/`, `~/.hermes/`, `~/.openclaw/` to
+   figure out which runtimes you have.
+2. **Scaffolds** the wiki root — `~/digital-me/{wiki,tastes,inbox,.cache,.data}`
+   plus a live `config.yaml` (created only if absent, never clobbered) and a
+   `.gitignore` that keeps `.data/` out of your wiki repo.
+3. **Installs brain-host** — the hub: links the service, writes its bearer
+   token, builds the retrieval index over `wiki/` + `tastes/`, and loads it as
+   a `launchd` / `systemd --user` service on `127.0.0.1:18791`.
+4. **Installs each detected runtime**, pointed at brain-host — hooks, skills,
+   MCP entries, protocol bundles (see [Runtimes](/docs/runtimes) for what
+   lands where).
+5. **Runs `doctor`** to confirm everything resolved.
 
 Re-running is idempotent — installers merge into existing settings without
 clobbering your other hooks.
@@ -71,8 +88,9 @@ The whole system exists for one loop: an agent learns something once, and
 every agent knows it afterwards.
 
 ```bash
-# 1. Verify the brain is reachable
+# 1. Verify the brain is serving
 digital-me doctor
+digital-me service brain-host status
 
 # 2. In any wired agent (Claude Code, Codex, Hermes, openclaw), do real work.
 #    When something reusable surfaces, the agent calls learning_capture —
@@ -96,7 +114,9 @@ With the npm install, the only directory that's yours to own is `~/digital-me`
 | Path | What it is |
 |---|---|
 | `~/digital-me/` | **your** data: wiki, tastes, inbox, config (own it in a private git repo) |
-| `~/.openclaw/` | openclaw gateway home (brain database, plugins) |
+| `~/digital-me/.data/` | the brain's state, git-ignored: `brain.db`, the retrieval index, `brain-host.token`, your `.env` |
+| `~/.local/share/digital-me/` | stable install links for the always-on services (brain-host, dashboard) |
+| `~/.openclaw/` | only if you run openclaw: its home, where the `digital-me-brain` plugin is installed |
 
 *(Installed [from source](#from-source)? The repo checkout lives at
 `~/digital-me-os` — code only, no personal data.)*

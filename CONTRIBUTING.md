@@ -19,8 +19,9 @@ release.
   landed in 22.5.0. Older 22.x will not work.
 - **pnpm** (the repo pins a version via `packageManager`; run `corepack enable` to
   get the matching one automatically).
-- **[openclaw](https://github.com/openclaw/openclaw)** — required to run the full
-  stack locally, though most unit tests run without it.
+- **[openclaw](https://github.com/openclaw/openclaw)** — optional; only needed to
+  work on the openclaw runtime adapter (`packages/runtimes/openclaw/`). The hub,
+  brain-host, runs from this repo alone.
 - **Python ≥ 3.11** — only needed when working on the dream-cycle service.
 
 ## Setup

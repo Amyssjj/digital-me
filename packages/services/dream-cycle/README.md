@@ -17,8 +17,9 @@ brain_learnings  →  compile  →  index  →  citations  →  crosslink
                   consolidate  ←  drift_check  ←  lint
 ```
 
-Each step uses either an LLM (via the OpenClaw gateway or directly against
-Gemini / OpenAI / Anthropic) or deterministic file operations.
+Each step uses either an LLM (directly against Gemini / OpenAI / Anthropic with
+`engine: standalone`, or borrowing an openclaw install's Gemini key with the
+legacy `engine: openclaw`) or deterministic file operations.
 
 ## Install
 
@@ -59,7 +60,7 @@ Dream-cycle reads `config.yaml` from your wiki root. Resolution order:
 |---|---|
 | Config file path | `--config-path` → `$DIGITAL_ME_CONFIG_PATH` → `<wiki_root>/config.yaml` |
 | Wiki root | `--wiki-root` → `$DIGITAL_ME_WIKI_ROOT` → `~/digital-me/` |
-| Brain DB (optional input) | `$DIGITAL_ME_BRAIN_DB` → `~/.openclaw/data/brain.db` (graceful skip if missing) |
+| Brain DB (optional input) | `$DIGITAL_ME_BRAIN_DB` → `<wiki_root>/.data/brain.db` → legacy `~/.openclaw/data/brain.db` while only that exists (graceful skip if missing) — the same rule every digital-me reader applies |
 | Gemini key (`engine: openclaw`) | `$GEMINI_API_KEY` → `~/.openclaw/openclaw.json` `memory.search.remote.apiKey` (openclaw ≥ 2026.7.1) → `agents.defaults.memorySearch.remote.apiKey` (legacy); a missing/unparseable `openclaw.json` is fine when the env var is set |
 | Drift-check repo roots | `$DIGITAL_ME_DRIFT_CHECK_ROOTS` (`:`-separated) → `dream_cycle.drift_check_repo_roots` in config → `[wiki_root, $HOME]` |
 

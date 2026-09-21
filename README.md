@@ -13,7 +13,7 @@
 
 **Agents change. Your intelligence compounds.**
 
-[Getting Started](#install) · [Architecture](docs/ARCHITECTURE.md) · [Contracts](docs/CONTRACTS.md) · [Releasing](docs/RELEASING.md) · [openclaw](https://github.com/openclaw/openclaw)
+[Getting Started](#install) · [Architecture](docs/ARCHITECTURE.md) · [Contracts](docs/CONTRACTS.md) · [Releasing](docs/RELEASING.md) · [Docs](https://motusai.co/docs)
 
 </div>
 
@@ -43,7 +43,7 @@ New install? Start here: [Getting started](#install)
 
 ## What you get
 
-When fully installed, every agent runtime shares:
+When fully installed, every agent runtime shares one **brain-host** — a small always-on service on your machine (`http://127.0.0.1:18791`) that serves:
 
 - **memory_search** — retrieve from a personal knowledge wiki
 - **learning_capture** — agents submit observations back as reusable knowledge
@@ -58,12 +58,10 @@ When fully installed, every agent runtime shares:
 ### Prerequisites
 
 - **Node.js ≥ 22.5** — to install and run the CLI from npm (`pnpm` is only needed for the *Install from source* path).
-- **[openclaw](https://github.com/openclaw/openclaw)** — mandatory, see below.
+- **A Gemini API key** — `memory_search` embeds your wiki with `gemini-embedding-001`, and the nightly dream-cycle uses the same key. You put it in one file after `setup` (below).
 - **Python ≥ 3.11** — optional; only needed for the dream-cycle distillation pipeline (skip with `setup --minimal`).
 
-### Prerequisite — openclaw (mandatory)
-
-Install [openclaw](https://github.com/openclaw/openclaw) **first** and verify `openclaw --version` works. Digital Me is a plugin + CLI-adapter set that rides on top of the openclaw gateway daemon — without it, the brain MCP tools and every runtime adapter have nothing to connect to. `setup` and `install` **hard-stop** with install guidance if openclaw isn't detected (override with `--skip-openclaw-check` for advanced/CI use).
+That's it. The brain itself — **brain-host** — ships with the CLI and `setup` installs it as an always-on service. No gateway daemon to install first. [openclaw](https://github.com/openclaw/openclaw) is one of the four supported runtimes, not a prerequisite: if it's on the machine, `setup` also installs its plugin so openclaw agents share the same brain.
 
 ### Install (npm)
 
@@ -83,22 +81,31 @@ digital-me setup --wiki-root ~/notes/brain
 digital-me setup --minimal
 ```
 
-After `setup`, `config.yaml` is auto-created with `sources` pre-filled from your
-detected CLIs; the default `engine=openclaw` reads your LLM key from
-`~/.openclaw/openclaw.json`, so there's usually nothing left to edit. Review
-`~/digital-me/config.yaml` (override the data dir with
+After `setup`, put your provider key where brain-host and every nightly worker
+read it — one line in `~/digital-me/.data/.env`:
+
+```bash
+echo 'GEMINI_API_KEY=...' >> ~/digital-me/.data/.env
+digital-me doctor        # confirms the key is seen and the brain is serving
+```
+
+`config.yaml` is auto-created with `sources` pre-filled from your detected CLIs
+and `engine: standalone` (Gemini via that same key), so there's usually nothing
+else to edit. Review `~/digital-me/config.yaml` (override the data dir with
 `export DIGITAL_ME_WIKI_ROOT=~/digital-me`).
 
 What `setup` does:
 
-1. **Detects** `~/.claude/`, `~/.codex/`, `~/.hermes/` to figure out which runtimes you have.
-2. **Scaffolds** the wiki root: `~/digital-me/{wiki,inbox,.cache}` + a pristine `config.example.yaml` and a live `config.yaml` (created only if absent, never clobbered).
-3. **Installs each detected runtime**:
-   - `~/.claude/hooks/*` + `~/.claude/skills/digital-me/` + merged settings.json
-   - `~/.codex/CODEX.md` + openclaw-brain MCP entry in `~/.codex/config.toml` + `~/.codex/hooks/*` wired via `~/.codex/hooks.json` (UserPromptSubmit / Stop / PreToolUse, with M1 application_rate tracking)
-   - `~/.hermes/SOUL.md` with the digital-me protocol section
-4. **Populates `cli_exec_aliases`** in the starter config so workflows can dispatch tasks via `claude` / `codex` out of the box.
-5. **Runs `doctor`** to confirm everything resolved.
+1. **Detects** `~/.claude/`, `~/.codex/`, `~/.hermes/`, `~/.openclaw/` to figure out which runtimes you have.
+2. **Scaffolds** the wiki root: `~/digital-me/{wiki,tastes,inbox,.cache,.data}` + a pristine `config.example.yaml`, a live `config.yaml` (created only if absent, never clobbered) and a `.gitignore` that keeps `~/digital-me/.data/` — brain.db, the bearer token, your `.env` — out of the wiki repo.
+3. **Installs brain-host** — the hub. Links it at `~/.local/share/digital-me/brain-host`, writes its bearer token to `~/digital-me/.data/brain-host.token`, builds the retrieval index over `~/digital-me/wiki/` + `~/digital-me/tastes/`, and loads it as a `launchd` (macOS) / `systemd --user` (Linux) service on `127.0.0.1:18791` with the scheduler tick on.
+4. **Installs each detected runtime**, pointed at brain-host (the registrations carry `DIGITAL_ME_BRAIN_URL` + the token-file *path*, never the secret):
+   - `~/.claude/hooks/*` + `~/.claude/skills/digital-me/` + merged settings.json + the `openclaw-brain` MCP server (the name is historical; it's brain-host behind it)
+   - `~/.codex/CODEX.md` + MCP entry in `~/.codex/config.toml` + `~/.codex/hooks/*` wired via `~/.codex/hooks.json` (UserPromptSubmit / Stop / PreToolUse, with M1 application_rate tracking)
+   - `~/.hermes/SOUL.md` with the digital-me protocol section + MCP stanza
+   - the `digital-me-brain` plugin into `~/.openclaw/extensions/` — only when openclaw is present
+5. **Populates `cli_exec_aliases`** in the starter config so workflows can dispatch tasks via `claude` / `codex` out of the box.
+6. **Runs `doctor`** to confirm everything resolved.
 
 Re-running is idempotent — installers merge into existing settings without clobbering your other hooks.
 
@@ -122,9 +129,9 @@ Pick the row that matches you:
 
 | You have… | Run | What you get |
 |---|---|---|
-| openclaw + Claude Code / Codex / Hermes | `digital-me setup` | Full install: adapters + brain plugin + dashboard + dream-cycle, `digital-me` on PATH, green doctor |
-| openclaw, but node-only (no Python / no dashboard) | `digital-me setup --minimal` | Wiki + agent-runtime wiring + brain plugin only; add the rest later with `digital-me install --runtime dream-cycle\|dashboard` |
-| **not** openclaw yet | *(install openclaw first)* | `setup` hard-stops and points you at the openclaw install — it's the mandatory foundation |
+| Claude Code / Codex / Hermes | `digital-me setup` | Full install: brain-host + adapters + dashboard + dream-cycle + digest, `digital-me` on PATH, green doctor |
+| node-only (no Python / no dashboard) | `digital-me setup --minimal` | brain-host + wiki + agent-runtime wiring only; add the rest later with `digital-me install --runtime dream-cycle\|dashboard\|digest` |
+| …and openclaw agents too | `digital-me setup` | Same, plus the `digital-me-brain` plugin in `~/.openclaw/extensions/` so openclaw agents read and write the same brain (their scheduler tick defers to brain-host automatically) |
 | Homebrew / Debian / recent Ubuntu Python | *(see [dream-cycle](#running-the-dream-cycle-distillation-pipeline))* | These enforce PEP 668; install dream-cycle into a venv (recipe below). `digital-me doctor` prints the exact recipe for your Python. |
 
 Everything is idempotent — re-run `setup` anytime; it merges and skips what already exists.
@@ -133,7 +140,9 @@ Everything is idempotent — re-run `setup` anytime; it merges and skips what al
 
 ```bash
 digital-me init                       # scaffold wiki dir only
-digital-me install --runtime codex    # install one runtime
+digital-me install --runtime brain-host   # the hub (setup does this first)
+digital-me install --runtime codex    # install one runtime (needs the hub, or a legacy openclaw gateway)
+digital-me service brain-host status  # is the brain serving?
 digital-me doctor                     # diagnose without changes
 digital-me dashboard                  # launch the OA dashboard in your browser
 ```
@@ -143,9 +152,19 @@ port 3458), starts the always-on service first if it isn't, and exits with
 install guidance if the dashboard was never installed. `--no-open` prints the
 URL instead of opening a browser; `--port <n>` overrides the port.
 
-### Installing the brain into openclaw
+### The hub — brain-host
 
-The brain itself (the `tasks`, `agent_identify`, `learning_capture`, `traces_record`, `traces_query`, `m1_event_record`, and `m1_score` tools) lives in `@digital-me/brain-orchestrator`. See [packages/runtimes/openclaw/README.md](packages/runtimes/openclaw/README.md) for the manifest + wiring snippet that registers them with openclaw.
+The brain is [`@digital-me/brain-host`](packages/services/brain-host/): one Node process that serves the retriever (`memory_search`, `memory_get`, `wiki` — hybrid FTS5 + embeddings over your `~/digital-me/wiki/` and `~/digital-me/tastes/`, one hit per entry) and the operations core from [`@digital-me/brain-orchestrator`](packages/plugins/brain-orchestrator/) (`tasks`, `agent_identify`, `learning_capture`, `traces_record`, `traces_query`, `m1_event_record`, `m1_score`) on a single `POST /tools/invoke` wire, bearer-token gated, loopback only. It owns `brain.db` (`~/digital-me/.data/brain.db`) and the scheduler tick that fires your workflows. Every runtime adapter reaches it through [`brain-mcp-proxy`](packages/transport/brain-mcp-proxy/) (stdio MCP ↔ HTTP) or a direct HTTP client.
+
+```bash
+digital-me service brain-host status                 # process, port, health
+curl -s http://127.0.0.1:18791/health | jq .         # index size, scheduler, brain.db location
+DIGITAL_ME_BRAIN_SCHEDULER=off digital-me service brain-host install   # hand the tick to another host
+```
+
+### Running openclaw agents on the same brain (optional)
+
+If you also run [openclaw](https://github.com/openclaw/openclaw), `digital-me install --runtime openclaw` materializes the `digital-me-brain` + `digital-me-recall` plugins into `~/.openclaw/extensions/` so openclaw agents get the same tools and the same prompt-time recall. The plugin opens the same `brain.db` and leaves the scheduler tick to brain-host (exactly one process ticks a brain). See [packages/runtimes/openclaw/README.md](packages/runtimes/openclaw/README.md). Installs that predate brain-host keep working: a legacy openclaw gateway is still accepted as the brain endpoint, and `digital-me brain-db migrate` moves a database from `~/.openclaw/data/` to its canonical home when you're ready.
 
 ### Running the dream-cycle distillation pipeline
 
@@ -165,7 +184,7 @@ digital-me dream-cycle --no-compile    # skip the LLM compile step (cheap rerun)
 digital-me dream-cycle --help          # all flags
 ```
 
-`digital-me doctor` adds three checks (`python3 >= 3.11`, `dream_cycle` importable, LLM-auth env var set per `config.yaml`). If `dream_cycle` isn't installed, the doctor prints the exact venv recipe for your Python — including whether it's externally-managed. **The nightly distillation is scheduled for you** at install time (workflow + schedule `dream-cycle-nightly`, `0 3 * * *`, registered with the openclaw orchestrator) — no manual cron needed; adjust or disable it via the dashboard or `tasks.schedule_*`.
+`digital-me doctor` adds three checks (`python3 >= 3.11`, `dream_cycle` importable, the LLM key set per `config.yaml` — in your shell or in `~/digital-me/.data/.env`). If `dream_cycle` isn't installed, the doctor prints the exact venv recipe for your Python — including whether it's externally-managed. **The nightly distillation is scheduled for you** at install time (workflow + schedule `dream-cycle-nightly`, `0 3 * * *`, registered with brain-host's orchestrator) — no manual cron needed; adjust or disable it via the dashboard or `tasks.schedule_*`.
 
 ## CLI exec aliases — dispatching to your CLIs
 
@@ -194,29 +213,31 @@ Five package roles, each with one clear job:
 
 ```
 packages/
-├── plugins/        ← installed INTO openclaw (universal brain tools)
-├── runtimes/       ← per-CLI auto-injection + protocol bundles
-│   ├── openclaw/
+├── plugins/        ← the operations core (brain-orchestrator: tasks, traces, learnings, scheduler)
+├── services/       ← long-running or scheduled processes on your machine
+│   ├── brain-host/       (THE HUB: retriever + brain-orchestrator on /tools/invoke, owns brain.db + the tick)
+│   ├── dashboard/
+│   ├── dream-cycle/
+│   └── digest/
+├── runtimes/       ← per-CLI auto-injection + protocol bundles (the spokes)
 │   ├── claude-code/
 │   ├── codex/
-│   └── hermes/
-├── transport/      ← MCP plumbing (stdio↔HTTP shim for non-openclaw CLIs)
-├── services/       ← long-running or scheduled processes beside openclaw
-│   ├── dashboard/
-│   └── dream-cycle/
+│   ├── hermes/
+│   └── openclaw/         (optional: plugin overlay so openclaw agents share the brain)
+├── transport/      ← MCP plumbing (stdio MCP ↔ brain-host HTTP)
 ├── cli/            ← installer/orchestrator (`digital-me <command>`)
-└── shared/         ← contracts (env vars), schemas, lint rules
+└── shared/         ← contracts (env vars, path rules), schemas
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for the full mental model.
 
-## How it relates to openclaw
+## Where the brain runs
 
-- **openclaw** owns the brain runtime (gateway daemon, memory-core, active-memory).
-- **this repo** owns everything built on top: one extension plugin (brain-orchestrator), per-runtime protocol adapters, transport, services, CLI.
-- **digital-me-data** (separate private repo per user) holds your wiki content and config.
+- **brain-host** (this repo, `packages/services/brain-host/`) is the brain runtime: retrieval, operations, scheduling — one service, one database, one wire.
+- **the runtimes** (Claude Code, Codex, Hermes, openclaw) are clients of it. Any MCP-speaking CLI can be added the same way.
+- **your data** — `~/digital-me/` — holds the wiki, tastes, config, and (git-ignored) runtime state under `~/digital-me/.data/`. Own it in a private repo.
 
-This repo contains **no personal data**. All user-specific configuration lives in your local `digital-me-data` repo and is loaded at runtime via the env-var contract documented in [docs/CONTRACTS.md](docs/CONTRACTS.md).
+This repo contains **no personal data**. All user-specific configuration lives in your `~/digital-me` directory and is loaded at runtime via the env-var contract documented in [docs/CONTRACTS.md](docs/CONTRACTS.md).
 
 ## Development
 
