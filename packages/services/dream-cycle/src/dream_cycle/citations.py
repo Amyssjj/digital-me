@@ -1,14 +1,35 @@
 """Update wiki frontmatter `citations`/`cited_by`/`last_cited_at` from real
-cross-agent usage recorded in the openclaw-brain traces table.
+cross-agent usage recorded in the brain `traces` table.
 
-Source: `~/.openclaw/data/task-orchestrator.db`, table `traces`. Each
-`memory_search` hit emits one `tool_call` trace with `payload.filePath` set to
-the wiki entry's relative path (e.g. `agents/foo.md`). This step aggregates
-those traces and writes the counts back into the entry's YAML frontmatter so
-the next read of the wiki sees real, derived citation data.
+Source: the brain DB resolved by
+`dream_cycle.brain_learnings.resolve_brain_db_path()` (`$DIGITAL_ME_BRAIN_DB`,
+else the orchestrator's live `~/.openclaw/data/brain.db`), table `traces`. A
+per-hit `memory_search` trace is a `tool_call` row with `payload.filePath` set
+to the wiki entry's relative path (e.g. `agents/foo.md`). This step aggregates
+those rows and writes the counts back into the entry's YAML frontmatter so the
+next read of the wiki sees real, derived citation data.
+
+The retired `~/.openclaw/data/task-orchestrator.db` is no longer read: on old
+hosts it is a frozen copy (the same rows every night), on fresh installs it
+does not exist. brain.db carries the same `traces` schema (brain-orchestrator's
+`createTracesStore`), so the query is unchanged.
+
+What the live table holds (checked 2026-09-21): the current producers -- the
+openclaw recall hook (`kind = 'memory_search'`) and the MCP proxy
+(`kind = 'mcp_tool_call'`) -- record only `query` + `hitCount`, never a per-hit
+`filePath`. So this step only ever sees the legacy per-hit `tool_call` rows
+that `digital-me migrate` copied into brain.db (469 rows from May 2026 on the
+reference host, none on a fresh install). Re-pointing the reader is therefore
+bounded: it rewrites nothing new on that host and is a no-op elsewhere. Real
+citation tracking returns only when a producer emits `filePath` per hit again;
+that is producer work, not a reader change.
 
 Idempotent: re-running on the same trace state produces the same wiki state.
 The frontmatter body is preserved byte-for-byte except inside the YAML block.
+The summary accounts for every entry that has traces:
+updated + skipped_unchanged + skipped_unparseable + len(missing_entries)
+== entries_with_traces. Entries whose file has no parseable frontmatter (the
+generated `_OVERVIEW.md` files, for one) used to vanish from the totals.
 """
 
 import argparse
@@ -20,10 +41,8 @@ from typing import Optional
 
 import yaml
 
+from dream_cycle.brain_learnings import resolve_brain_db_path
 from dream_cycle.config import load_config, Config
-
-
-TRACES_DB_PATH = Path.home() / ".openclaw" / "data" / "task-orchestrator.db"
 
 
 CITATIONS_QUERY = """
@@ -230,48 +249,50 @@ def _update_entry(
     }
 
 
-def run_citations(config: Config, *, dry_run: bool = False) -> dict:
+def run_citations(
+    config: Config,
+    *,
+    dry_run: bool = False,
+    db_path: Optional[Path] = None,
+) -> dict:
     """Update wiki frontmatter from trace-derived citation stats.
+
+    `db_path` defaults to `resolve_brain_db_path()` (`$DIGITAL_ME_BRAIN_DB`,
+    else the live brain.db). A missing file is a graceful no-op, not an error.
 
     Returns a summary dict with counts + per-entry changes (full list when
     dry_run=True so the caller can review proposed edits).
     """
-    stats_by_path = _query_citation_stats(TRACES_DB_PATH)
-    if not stats_by_path:
-        return {
-            "traces_db": str(TRACES_DB_PATH),
-            "entries_with_traces": 0,
-            "updated": 0,
-            "skipped_unchanged": 0,
-            "missing_entries": [],
-        }
-
+    traces_db = db_path if db_path is not None else resolve_brain_db_path()
     wiki = config.wiki_dir
-    updated = 0
-    skipped_unchanged = 0
-    missing: list[str] = []
+    stats_by_path = _query_citation_stats(traces_db, wiki)
+
+    summary: dict = {
+        "traces_db": str(traces_db),
+        "entries_with_traces": len(stats_by_path),
+        "updated": 0,
+        "updated_paths": [],
+        "skipped_unchanged": 0,
+        "skipped_unparseable": 0,
+        "missing_entries": [],
+    }
     changes: list[dict] = []
     for rel_path, stats in stats_by_path.items():
         md_path = wiki / rel_path
         if not md_path.exists():
-            missing.append(rel_path)
+            summary["missing_entries"].append(rel_path)
             continue
         result = _update_entry(md_path, stats, dry_run=dry_run)
         if result is None:
+            summary["skipped_unparseable"] += 1
             continue
         if result["changed"]:
-            updated += 1
+            summary["updated"] += 1
+            summary["updated_paths"].append(rel_path)
             changes.append(result)
         else:
-            skipped_unchanged += 1
+            summary["skipped_unchanged"] += 1
 
-    summary = {
-        "traces_db": str(TRACES_DB_PATH),
-        "entries_with_traces": len(stats_by_path),
-        "updated": updated,
-        "skipped_unchanged": skipped_unchanged,
-        "missing_entries": missing,
-    }
     if dry_run:
         summary["proposed_changes"] = changes
     return summary

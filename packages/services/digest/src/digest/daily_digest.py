@@ -47,12 +47,16 @@ from zoneinfo import ZoneInfo
 
 from digest.config import load_paths
 
-ORCH_DB = Path(os.path.expanduser("~/.openclaw/data/task-orchestrator.db"))
 # Live orchestrator DB (gateway-owned). The summarize spawn returns the
 # built presentation+markdown via tasks.handoff (NOT by writing the staging
 # file — that needs an interpreter and trips OpenClaw's exec-approval gate).
 # publish reads that handoff envelope back from here. This is the same
 # stage -> spawn -> apply-reads-handoff pattern the dream cycle uses.
+# Goal names reach the digest through that handoff too (the summarizer reads
+# the board itself); this script runs no goals/tasks query of its own. The
+# retired pre-brain.db orchestrator file is not read anywhere: it is frozen on
+# old hosts and absent on fresh installs, where opening it read-only raised and
+# took the deterministic publish fallback down with it.
 #
 # All machine-specific values resolve through digest.config via the
 # arg → env → default contract. NOTHING personal (Discord channel id, user
@@ -913,27 +917,6 @@ def _hermes_raw_prompts(
     return prompts
 
 
-def _coo_goals(start_ms: int, end_ms: int) -> list[tuple[str, int]]:
-    """Goals worked on by COO (orchestrator-tracked) yesterday — secondary signal
-    for the COO line; supplements session-count with goal names."""
-    db = sqlite3.connect(f"file:{ORCH_DB}?mode=ro", uri=True)
-    rows = db.execute(
-        """
-        SELECT g.name AS goal_name, COUNT(*) AS n
-          FROM tasks t
-          JOIN goals g ON g.id = t.goal_id
-         WHERE t.status = 'completed'
-           AND t.completed_at BETWEEN ? AND ?
-           AND json_extract(t.dispatch, '$.agentId') = 'coo'
-         GROUP BY g.name
-         ORDER BY n DESC
-        """,
-        (start_ms, end_ms),
-    ).fetchall()
-    db.close()
-    return rows
-
-
 def _count_active_agents(cc_projects, codex_sessions, openclaw_agents) -> int:
     """Active agent count: distinct OpenClaw agents + Claude Code (if any) + Codex (if any)."""
     n = len(openclaw_agents)
@@ -1047,7 +1030,6 @@ def render_full(date_str: str) -> tuple[str, dict]:
         for agent, prompts in openclaw_raw.items()
     }
     _save_summary_cache(cache)
-    coo_goals = _coo_goals(start_ms, end_ms)
     active_agents = (
         (1 if cc_topics else 0)
         + (1 if codex_topics else 0)
@@ -1176,7 +1158,6 @@ def render_full(date_str: str) -> tuple[str, dict]:
         "codex_last_seen": codex_last_seen,
         "hermes_topics": hermes_topics,
         "openclaw_topics": openclaw_topics,
-        "coo_goals": coo_goals,
     }
     return full_md, structured
 
