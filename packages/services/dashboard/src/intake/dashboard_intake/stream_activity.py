@@ -448,6 +448,13 @@ def _taste(tastes_root: Path, limit: int) -> list[dict]:
     for f in sorted(tastes_root.rglob("*.md")):
         if not f.is_file():
             continue
+        # Underscore-prefixed files are tree furniture (`_OVERVIEW.md` domain
+        # hubs, `_INDEX.md`), not principles — the same skip
+        # scan_knowledge_trees applies. Without it every hub file becomes a
+        # "taste" card titled OVERVIEW, timestamped by the nightly rewrite's
+        # mtime, and crowds the real (frontmatter-dated) leaves out of the feed.
+        if f.name.startswith("_"):
+            continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:

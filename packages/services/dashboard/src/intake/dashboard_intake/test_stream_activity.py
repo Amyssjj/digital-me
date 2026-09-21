@@ -264,6 +264,34 @@ def test_taste_stream_reads_leaf_files(tmp_path: Path) -> None:
     assert "## Principle" in att[0]["markdown"]
 
 
+def test_taste_stream_skips_underscore_hub_files(tmp_path: Path) -> None:
+    """`_OVERVIEW.md` / `_INDEX.md` are tree furniture the dream-cycle rewrites
+    nightly, not principles. They must not surface as taste cards (they used
+    to appear as four "OVERVIEW" rows dated by that night's mtime, burying the
+    real leaves) — mirror scan_knowledge_trees' underscore skip."""
+    dash = tmp_path / "dashboard.db"
+    tastes = tmp_path / "tastes"
+    (tastes / "design").mkdir(parents=True)
+    (tastes / "design" / "_OVERVIEW.md").write_text(
+        "# Design\n> 1 entries in this domain\n\n## Entries\n- [Leaf](leaf.md)\n",
+        encoding="utf-8",
+    )
+    (tastes / "_INDEX.md").write_text("# Tastes index\n", encoding="utf-8")
+    (tastes / "design" / "leaf.md").write_text(
+        "---\ndomain: design\nstatus: candidate\ntitle: Leaf\ncreated: '2026-08-29'\n---\n\n"
+        "## Principle\n\nOnly real leaves are taste.\n",
+        encoding="utf-8",
+    )
+    _create_dashboard_schema(dash)
+
+    rc = main(["--brain-db", str(tmp_path / "nope.db"), "--db", str(dash), "--tastes-dir", str(tastes)])
+    assert rc == 0
+
+    rows = _rows(dash)
+    assert [r["title"] for r in rows] == ["Leaf"]
+    assert rows[0]["id"] == "taste::design/leaf.md"
+
+
 def test_idempotent_upsert(tmp_path: Path) -> None:
     brain = tmp_path / "brain.db"
     dash = tmp_path / "dashboard.db"
