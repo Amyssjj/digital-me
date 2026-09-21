@@ -81,13 +81,27 @@ Return ONLY valid JSON, no markdown fences, no prose before or after:
 }"""
 
 
+def _fm_list(value) -> list[str]:
+    """Coerce a frontmatter list field to a list of strings.
+
+    YAML parses unquoted scalars by type, so `tags: [foo, 422]` yields an
+    int in the list and `tags: foo` yields a bare str. Both are valid on
+    disk — normalize here rather than failing the whole batch.
+    """
+    if value is None:
+        return []
+    if isinstance(value, (str, int, float)):
+        return [str(value)]
+    return [str(v) for v in value if v is not None]
+
+
 def _build_batch_prompt(entries: list[dict]) -> str:
     lines = ["Classify each entry below into exactly one type:\n"]
     for e in entries:
         path = str(e["_rel_path"])
         title = e.get("title", "Untitled")
-        domain = ", ".join(e.get("domain", []) or [e.get("_domain", "")])
-        tags = ", ".join(e.get("tags", []) or [])
+        domain = ", ".join(_fm_list(e.get("domain")) or [str(e.get("_domain", ""))])
+        tags = ", ".join(_fm_list(e.get("tags")))
         body_preview = (e.get("_body", "") or "")[:600].strip()
         lines.append(f"---\nPATH: {path}\nTITLE: {title}\nDOMAINS: {domain}\nTAGS: {tags}\nBODY (truncated):\n{body_preview}")
     lines.append("\n---\nReturn JSON with one classification per entry, in the same order.")
