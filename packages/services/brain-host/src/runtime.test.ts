@@ -46,6 +46,75 @@ describe("BrainHostRuntime", () => {
   });
 });
 
+describe("BrainHostRuntime index refresh", () => {
+  it("re-indexes on a timer, logs only when something changed, and reports in health", async () => {
+    const config = fixture();
+    const logs: string[] = [];
+    const rt = new BrainHostRuntime({ config, offline: true, openDb: () => new DatabaseSync(":memory:"), log: (l) => logs.push(l) });
+    await rt.index(false);
+    let cb: (() => void) | null = null;
+    const fakeSet = ((fn: () => void) => {
+      cb = fn;
+      return { unref: () => {} } as unknown as NodeJS.Timeout;
+    }) as unknown as typeof setInterval;
+    rt.startIndexRefresh(fakeSet);
+    rt.startIndexRefresh(fakeSet); // idempotent
+    expect(logs.some((l) => l.includes("index refresh every"))).toBe(true);
+    const h1 = rt.health() as { indexRefresh: { active: boolean; last: unknown }; indexGeneration: string };
+    expect(h1.indexRefresh.active).toBe(true);
+    expect(h1.indexGeneration).toBe("1");
+
+    // nothing changed → refresh runs silently
+    cb!();
+    await new Promise((r) => setTimeout(r, 20));
+    expect(logs.filter((l) => l.startsWith("index refresh:")).length).toBe(0);
+    expect((rt.health() as { indexGeneration: string }).indexGeneration).toBe("2");
+
+    // a new wiki entry → refresh embeds it and logs once
+    writeFileSync(join(dir, "wiki", "a", "two.md"), "---\ntitle: Two\n---\n## Rule\ndelta\n");
+    await rt.refreshIndex();
+    expect(logs.some((l) => l.startsWith("index refresh: 1 embedded, 0 removed, 2 total"))).toBe(true);
+    const last = (rt.health() as { indexRefresh: { last: { result?: { embedded: number } } } }).indexRefresh.last;
+    expect(last.result?.embedded).toBe(1);
+
+    let cleared = 0;
+    rt.close((() => { cleared++; }) as unknown as typeof clearInterval);
+    rt.close((() => { cleared++; }) as unknown as typeof clearInterval);
+    expect(cleared).toBe(1);
+    expect((rt.health() as { indexRefresh: { active: boolean } }).indexRefresh.active).toBe(false);
+  });
+
+  it("does not start when disabled, never overlaps itself, and records errors", async () => {
+    const config = { ...fixture(), indexRefreshMs: 0 };
+    const rt = new BrainHostRuntime({ config, offline: true, openDb: () => new DatabaseSync(":memory:") });
+    rt.startIndexRefresh();
+    expect((rt.health() as { indexRefresh: { active: boolean } }).indexRefresh.active).toBe(false);
+
+    // overlapping: the second call returns immediately while the first is in flight
+    let release: (() => void) | null = null;
+    const slow = {
+      provider: "hash", model: "bag-of-words-v1", dims: 8,
+      embed: () => new Promise<Float32Array[]>((res) => { release = () => res([]); }),
+    };
+    const logs: string[] = [];
+    const rt2 = new BrainHostRuntime({ config, offline: true, openDb: () => new DatabaseSync(":memory:"), embedder: slow, log: (l) => logs.push(l) });
+    const p1 = rt2.refreshIndex();
+    await rt2.refreshIndex(); // returns early: refreshing
+    release!();
+    await p1;
+    // an empty embed result → buildIndex throws (vecs[cursor] undefined) → recorded, not thrown
+    expect(logs.some((l) => l.startsWith("index refresh failed:"))).toBe(true);
+    expect((rt2.health() as { indexRefresh: { last: { error?: string } } }).indexRefresh.last.error).toBeTruthy();
+  });
+
+  it("uses real timers by default and starts when configured", () => {
+    const rt = new BrainHostRuntime({ config: fixture(), offline: true, openDb: () => new DatabaseSync(":memory:") });
+    rt.startIndexRefresh();
+    expect((rt.health() as { indexRefresh: { active: boolean } }).indexRefresh.active).toBe(true);
+    rt.close();
+  });
+});
+
 describe("BrainHostRuntime with orchestrator", () => {
   it("mounts orchestrator tools, serves them, reports them in health, and honours the scheduler flag", async () => {
     const config = { ...fixture(), brainDbPath: join(dir, ".data", "brain.db"), schedulerEnabled: true, tickIntervalMs: 60_000 };

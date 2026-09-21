@@ -67,6 +67,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       }
       const port = cmd.port ?? config.port;
       const server = await startServer({ runtime, token: config.token, host: config.host, port, log });
+      runtime.startIndexRefresh();
       const toolList = ["memory_search", "memory_get", "wiki", ...(runtime.orchestrator?.tools.keys() ?? [])];
       log(`serving http://${config.host}:${port} (tools: ${toolList.join(", ")}; scheduler ${config.schedulerEnabled ? "ON" : "off"})`);
       await new Promise<void>((resolve) => {

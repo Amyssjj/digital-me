@@ -23,7 +23,12 @@ export type BuildResult = {
   readonly unchanged: number;
   readonly removed: number;
   readonly vectors: number;
+  /** Monotonic counter bumped on every build; the serving process's vector cache keys on it. */
+  readonly generation: number;
 };
+
+/** meta key: bumped by every buildIndex, read by VectorCache to detect an out-of-process re-index. */
+export const INDEX_GENERATION_KEY = "index_generation";
 
 export class ProvenanceMismatchError extends Error {
   constructor(expected: string, actual: string) {
@@ -86,5 +91,7 @@ export async function buildIndex(opts: BuildOptions): Promise<BuildResult> {
   }
   store.setProvenance(mine);
   store.setMeta("last_index_at", new Date().toISOString());
-  return { scanned: docs.length, embedded: todo.length, unchanged: docs.length - todo.length, removed: removed.length, vectors };
+  const generation = Number(store.getMeta(INDEX_GENERATION_KEY) ?? "0") + 1;
+  store.setMeta(INDEX_GENERATION_KEY, String(generation));
+  return { scanned: docs.length, embedded: todo.length, unchanged: docs.length - todo.length, removed: removed.length, vectors, generation };
 }

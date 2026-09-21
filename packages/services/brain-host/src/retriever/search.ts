@@ -16,7 +16,7 @@
 
 import type { Embedder } from "./embedder.js";
 import { tokenize } from "./embedder.js";
-import { ProvenanceMismatchError, provenanceLabel } from "./index-builder.js";
+import { INDEX_GENERATION_KEY, ProvenanceMismatchError, provenanceLabel } from "./index-builder.js";
 import type { IndexStore } from "./store.js";
 import { dot, topK } from "./vec.js";
 
@@ -54,24 +54,43 @@ const SNIPPET_CHARS = 400;
 export const DEFAULT_LIMIT = 6;
 export const MAX_LIMIT = 50;
 
-/** Cache of vectors in memory; invalidated by the caller after re-index. */
+/**
+ * Cache of vectors in memory. It keys on the store's `index_generation` meta,
+ * so a re-index by ANY process (the serving brain-host's own refresh, or a
+ * `brain-host index` run from the CLI) is picked up on the next search without
+ * a restart. One cheap meta read per search.
+ */
 export class VectorCache {
   private entries: { path: string; vec: Float32Array }[] | null = null;
   private sections: { path: string; vec: Float32Array; sectionId: number }[] | null = null;
+  private generation: string | null = null;
 
   constructor(private readonly store: IndexStore) {}
 
   invalidate(): void {
     this.entries = null;
     this.sections = null;
+    this.generation = null;
+  }
+
+  /** Drop cached vectors when the on-disk index generation moved. */
+  private refresh(): void {
+    const current = this.store.getMeta(INDEX_GENERATION_KEY);
+    if (current !== this.generation) {
+      this.entries = null;
+      this.sections = null;
+      this.generation = current;
+    }
   }
 
   entryVecs(): { path: string; vec: Float32Array }[] {
+    this.refresh();
     this.entries ??= this.store.entryVectors();
     return this.entries;
   }
 
   sectionVecs(): { path: string; vec: Float32Array; sectionId: number }[] {
+    this.refresh();
     this.sections ??= this.store.sectionVectors().map((r) => ({ path: r.path, vec: r.vec, sectionId: r.sectionId! }));
     return this.sections;
   }
