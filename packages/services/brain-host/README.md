@@ -34,6 +34,12 @@ it after a run that exited 0; a non-expected exit (or a verify timeout) fails
 the task with `verify failed: …` and keeps the run's stdout in the attempt, so
 a worker that exits 0 without a handoff is no longer recorded as completed.
 
+**Exec working directory.** An exec task whose dispatch carries no `cwd` (and
+whose goal has no worktree) runs in the wiki root (`DIGITAL_ME_WIKI_ROOT`),
+as does its `verify` step — not in brain-host's own cwd, which under launchd
+is the package directory (Claude Code workers only get shell reads inside
+their cwd, so that placement blocked `cat` of the wiki and staging files).
+
 ## What the retriever indexes
 
 `~/digital-me/wiki/**/*.md` and `~/digital-me/tastes/**/*.md`. Nothing else:

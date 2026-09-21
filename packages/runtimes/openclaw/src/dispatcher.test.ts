@@ -787,6 +787,90 @@ describe("dispatchExecTask verify step", () => {
   });
 });
 
+// ── dispatchExecTask: default cwd ──────────────────────────────────────────
+
+describe("dispatchExecTask default cwd", () => {
+  // Regression: an exec dispatch without a cwd used to inherit the dispatching
+  // process's cwd — "/" under the openclaw gateway, but the brain-host package
+  // directory under launchd, where Claude Code's working-directory policy
+  // blocked the CLI worker's shell reads (cat/ls) outside it. brain-host
+  // passes its wiki root as `defaultCwd`; the gateway
+  // plugin passes nothing and keeps today's behaviour.
+  const WIKI = "/home/t/wiki";
+  const VERIFY = ["/bin/test", "-s", "/art/handoff.json"];
+
+  function withDefault(rt: RuntimeContext): OpenClawDispatcherDeps {
+    return { ...makeDeps(rt), defaultCwd: WIKI };
+  }
+
+  it("runs an exec task that carries no cwd in defaultCwd", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["echo"] } });
+    expect(await createOpenClawDispatcher(deps).dispatchExecTask(task)).toBe(true);
+    await flush();
+    expect(rt.execCalls).toHaveLength(1);
+    expect(rt.execCalls[0]!.cwd).toBe(WIKI);
+    expect(deps.tasks.get("t-1")!.status).toBe("completed");
+  });
+
+  it("leaves a task's own cwd untouched", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["echo"], cwd: "/work" } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls[0]!.cwd).toBe("/work");
+  });
+
+  it("applies defaultCwd to a verify step without a cwd", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["worker"], verify: { command: VERIFY } } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls.map((c) => c.cwd)).toEqual([WIKI, WIKI]);
+    expect(rt.execCalls[1]).toEqual({ command: VERIFY, cwd: WIKI, timeoutMs: undefined });
+  });
+
+  it("keeps a verify step's own cwd", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, {
+      dispatch: { mode: "exec", command: ["worker"], cwd: "/work", verify: { command: VERIFY, cwd: "/art" } },
+    });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls.map((c) => c.cwd)).toEqual(["/work", "/art"]);
+  });
+
+  it("treats an empty-string cwd on the task and on its verify as unset, like the alias resolver", async () => {
+    const rt = makeRuntime();
+    const deps = withDefault(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["worker"], cwd: "", verify: { command: VERIFY, cwd: "" } } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls.map((c) => c.cwd)).toEqual([WIKI, WIKI]);
+  });
+
+  it("passes cwd undefined for the task and its verify when no defaultCwd is configured (inherits the process cwd, as before)", async () => {
+    const rt = makeRuntime();
+    const deps = makeDeps(rt);
+    seedGoal(deps);
+    const task = seedTask(deps, { dispatch: { mode: "exec", command: ["worker"], verify: { command: VERIFY } } });
+    await createOpenClawDispatcher(deps).dispatchExecTask(task);
+    await flush();
+    expect(rt.execCalls).toHaveLength(2);
+    expect(rt.execCalls[0]!.cwd).toBeUndefined();
+    expect(rt.execCalls[1]!.cwd).toBeUndefined();
+  });
+});
+
 // ── probeSessionLiveness ───────────────────────────────────────────────────
 
 describe("probeSessionLiveness", () => {

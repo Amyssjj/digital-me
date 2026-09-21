@@ -47,6 +47,15 @@ export type OpenClawDispatcherDeps = {
    * earlier attempt's chat history.
    */
   readonly sessionKeyFor?: (task: OrchestratorTaskRecord) => string;
+  /**
+   * Working directory for an exec task (and its `verify` step) whose
+   * dispatch carries no `cwd` (an empty string counts as none, as in the
+   * alias resolver). Unset, the child inherits this process's
+   * cwd as before — "/" under the openclaw gateway, but the package
+   * directory under a launchd-run brain-host, which is why brain-host
+   * passes its wiki root here.
+   */
+  readonly defaultCwd?: string;
 };
 
 export function createOpenClawDispatcher(
@@ -188,7 +197,7 @@ async function dispatchExec(
 
   const execArgs: ExecRunArgs = {
     command: dispatch.command,
-    cwd: dispatch.cwd,
+    cwd: dispatch.cwd || deps.defaultCwd,
     env: dispatch.env,
     // Fall back to the task's own timeoutMs (carried from the workflow step
     // template) when the dispatch object doesn't have one. Alias resolution
@@ -218,7 +227,9 @@ async function dispatchExec(
     // nothing consumed it, so a worker that exited 0 with an empty handoff
     // was recorded as completed; now the verify command runs and a
     // non-expected exit fails the task.
-    .then((result) => (result.success && dispatch.verify ? verifyExecResult(execRun, dispatch.verify, result) : result))
+    .then((result) =>
+      result.success && dispatch.verify ? verifyExecResult(execRun, dispatch.verify, result, deps.defaultCwd) : result,
+    )
     .then((result) => finalizeExecResult(deps, task, attemptId, result))
     .catch((err) => {
       deps.runtime.log(
@@ -235,15 +246,17 @@ async function dispatchExec(
  * original result untouched when the verify command exits with the expected
  * code (default 0); otherwise a failed copy of it that keeps the run's stdout
  * (so the operator still sees what the worker produced) and explains which
- * post-condition was not met.
+ * post-condition was not met. A verify step without a cwd runs in
+ * `defaultCwd`, like the task itself.
  */
 async function verifyExecResult(
   execRun: (args: ExecRunArgs) => Promise<ExecRunResult>,
   verify: VerifyStep,
   result: ExecRunResult,
+  defaultCwd?: string,
 ): Promise<ExecRunResult> {
   const expected = verify.expectedExitCode ?? 0;
-  const v = await execRun({ command: verify.command, cwd: verify.cwd, timeoutMs: verify.timeoutMs });
+  const v = await execRun({ command: verify.command, cwd: verify.cwd || defaultCwd, timeoutMs: verify.timeoutMs });
   const exitCode = v.exitCode ?? (v.success ? 0 : 1);
   if (!v.timedOut && exitCode === expected) return result;
   const why = v.timedOut ? "timed out" : `exited ${exitCode} (expected ${expected})`;

@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -246,5 +246,71 @@ describe("Orchestrator", () => {
     expect((await orch.execute("tasks", { action: "schedule_disable", scheduleId: findings[0]!.scheduleId }))!.isError).toBeUndefined();
     await orch.tick();
     expect(orch.status().spawnSchedules).toEqual([]);
+  });
+
+  it("runs exec tasks that carry no cwd in the wiki root: a plain exec step and its verify via the dispatcher, an alias step via the resolver (worker, spec.json, verify)", async () => {
+    // Regression: under the openclaw gateway an exec task without a cwd ran
+    // in "/", but under the launchd brain-host it ran in the brain-host
+    // package directory, where Claude Code's working-directory policy blocked
+    // the CLI worker's shell reads (cat/ls) of the wiki and its staging files.
+    // Both dispatch seams now default to opts.wikiRoot.
+    dir = mkdtempSync(join(tmpdir(), "bh-orch-"));
+    const wikiRoot = join(dir, "wiki");
+    mkdirSync(wikiRoot);
+    // The alias resolver writes spec.json under $HOME/.openclaw/task-artifacts,
+    // so point HOME at the temp dir for the mount (the root is read at construction).
+    const home = join(dir, "home");
+    const origHome = process.env.HOME;
+    process.env.HOME = home;
+    const calls: { command: readonly string[]; cwd: string | undefined }[] = [];
+    const yaml = "cli_exec_aliases:\n  claude-code-cli:\n    binary: claude\n    args: ['-p', '{{prompt}}']\n";
+    let orch: Orchestrator;
+    try {
+      const db = openBrainDb(join(dir, "brain.db"), (p) => new DatabaseSync(p));
+      orch = new Orchestrator({
+        db,
+        wikiRoot,
+        log: () => {},
+        stallThresholdMs: 60_000,
+        now: () => 1_700_000_000_000,
+        exists: (p) => p === join(wikiRoot, "config.yaml"),
+        readFile: () => yaml,
+        execRun: async (args) => {
+          calls.push({ command: args.command, cwd: args.cwd });
+          return { success: true, exitCode: 0, timedOut: false, stdout: "", stderr: "" };
+        },
+      });
+    } finally {
+      process.env.HOME = origHome;
+    }
+    const imported = await orch.execute("tasks", {
+      action: "workflow_import",
+      workflowJson: JSON.stringify({
+        id: "wf_cwd", name: "cwd", description: "d", variables: [],
+        steps: [
+          { stepKey: "plain", name: "plain", promptTemplate: "echo", blockedByKeys: [], dispatch: { mode: "exec", command: ["true"], verify: { command: ["/usr/bin/true"] } } },
+          { stepKey: "cli", name: "cli", promptTemplate: "read the wiki", blockedByKeys: [], dispatch: { mode: "exec", command: [], agentId: "claude-code-cli" } },
+        ],
+      }),
+    });
+    expect(imported!.isError).toBeUndefined();
+    expect(await orch.instantiateWorkflow("wf_cwd", {})).toMatchObject({ ok: true, taskCount: 2, dispatched: 2 });
+    await new Promise((res) => setTimeout(res, 20));
+
+    // Plain exec step: the dispatcher's defaultCwd, for the run and for its verify.
+    const plain = calls.find((c) => c.command[0] === "true")!;
+    expect(plain.cwd).toBe(wikiRoot);
+    const plainVerify = calls.find((c) => c.command[0] === "/usr/bin/true")!;
+    expect(plainVerify.cwd).toBe(wikiRoot);
+
+    // Alias step: the resolver's defaultCwd, on the worker invocation, in spec.json, and on the verify step.
+    const worker = calls.find((c) => String(c.command[1]).endsWith("cli-exec-worker.mjs"))!;
+    expect(worker.cwd).toBe(wikiRoot);
+    const specPath = worker.command[2]!;
+    expect(specPath.startsWith(join(home, ".openclaw", "task-artifacts"))).toBe(true);
+    expect((JSON.parse(readFileSync(specPath, "utf8")) as { cwd: string }).cwd).toBe(wikiRoot);
+    const verify = calls.find((c) => c.command[0] === "/bin/test")!;
+    expect(verify.cwd).toBe(wikiRoot);
+    expect(calls).toHaveLength(4);
   });
 });
