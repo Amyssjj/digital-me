@@ -226,3 +226,19 @@ def prune_legacy_captured_rows(conn: sqlite3.Connection) -> int:
         "DELETE FROM activity WHERE activity = 'captured' AND id NOT LIKE 'cap::%'"
     )
     return cur.rowcount or 0
+
+
+def prune_taste_hub_rows(conn: sqlite3.Connection) -> int:
+    """Drop taste cards that were ingested from underscore-prefixed hub files.
+
+    The taste stream used to walk every `*.md` under the tastes tree, so the
+    per-domain `_OVERVIEW.md` hubs (and a root `_INDEX.md`) landed as
+    `taste::<domain>/_OVERVIEW.md` rows titled "OVERVIEW". The stream now skips
+    underscore files, but the upsert never touches those ids again, so the
+    stale rows would linger at the top of the feed forever. Returns rows
+    removed."""
+    cur = conn.execute(
+        "DELETE FROM activity WHERE activity = 'taste' "
+        "AND (id LIKE 'taste::\\_%' ESCAPE '\\' OR id LIKE 'taste::%/\\_%' ESCAPE '\\')"
+    )
+    return cur.rowcount or 0
