@@ -54,6 +54,7 @@ from .db import (
     connect,
     prune_legacy_captured_rows,
     prune_legacy_workflow_rows,
+    prune_taste_hub_rows,
     upsert_activity,
 )
 
@@ -448,6 +449,13 @@ def _taste(tastes_root: Path, limit: int) -> list[dict]:
     for f in sorted(tastes_root.rglob("*.md")):
         if not f.is_file():
             continue
+        # Underscore-prefixed files are tree furniture (`_OVERVIEW.md` domain
+        # hubs, `_INDEX.md`), not principles — the same skip
+        # scan_knowledge_trees applies. Without it every hub file becomes a
+        # "taste" card titled OVERVIEW, timestamped by the nightly rewrite's
+        # mtime, and crowds the real (frontmatter-dated) leaves out of the feed.
+        if f.name.startswith("_"):
+            continue
         try:
             text = f.read_text(encoding="utf-8", errors="replace").strip()
         except OSError:
@@ -565,6 +573,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             pruned_cap = prune_legacy_captured_rows(conn)
             if pruned_cap:
                 print(f"stream-activity: pruned {pruned_cap} legacy captured row(s).", file=sys.stderr)
+        # The taste stream no longer ingests `_OVERVIEW.md` / `_INDEX.md` hubs;
+        # drop any hub cards an older snapshot left behind (their ids are never
+        # upserted again, so they would otherwise sit at the top of the feed).
+        pruned_hubs = prune_taste_hub_rows(conn)
+        if pruned_hubs:
+            print(f"stream-activity: pruned {pruned_hubs} taste hub row(s).", file=sys.stderr)
         for r in rows:
             upsert_activity(conn, **r)
 
