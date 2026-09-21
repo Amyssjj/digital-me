@@ -5,6 +5,8 @@
 // high-churn *stylistic* rules to warnings so the harness lands green and can
 // be tightened incrementally. Type-aware linting is intentionally NOT enabled
 // (no parserOptions.project) to keep `pnpm lint` fast and project-config-free.
+// `parserOptions.tsconfigRootDir` IS pinned below, but only so the parser never
+// has to guess the repo root; it does not turn type-aware linting on.
 import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 import globals from "globals";
@@ -12,6 +14,14 @@ import globals from "globals";
 export default tseslint.config(
   {
     ignores: [
+      // Claude Code / the Claude desktop app keep git worktrees under
+      // `.claude/worktrees/<name>/`. ESLint flat config does not ignore
+      // dot-directories by default, so without this `eslint .` also lints
+      // every worktree's copy of the repo and typescript-eslint sees several
+      // candidate tsconfig roots ("Parsing error: No tsconfigRootDir was set,
+      // and multiple candidate TSConfigRootDirs are present"). GitHub CI never
+      // hits this because its checkout has no nested worktrees.
+      ".claude/**",
       "**/dist/**",
       "**/coverage/**",
       "**/node_modules/**",
@@ -30,6 +40,13 @@ export default tseslint.config(
   {
     languageOptions: {
       globals: { ...globals.node },
+      parserOptions: {
+        // Pin the TSConfig root to this config's own directory so
+        // typescript-eslint never infers it from the files being linted (a
+        // nested worktree would otherwise offer a second candidate root).
+        // This is NOT `parserOptions.project`; type-aware linting stays off.
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     rules: {
       // Dead bindings are the cleanliness signal the audit asked for. The repo
