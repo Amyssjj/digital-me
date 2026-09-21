@@ -54,6 +54,7 @@ from .db import (
     connect,
     prune_legacy_captured_rows,
     prune_legacy_workflow_rows,
+    prune_taste_hub_rows,
     upsert_activity,
 )
 
@@ -572,6 +573,12 @@ def main(argv: Optional[list[str]] = None) -> int:
             pruned_cap = prune_legacy_captured_rows(conn)
             if pruned_cap:
                 print(f"stream-activity: pruned {pruned_cap} legacy captured row(s).", file=sys.stderr)
+        # The taste stream no longer ingests `_OVERVIEW.md` / `_INDEX.md` hubs;
+        # drop any hub cards an older snapshot left behind (their ids are never
+        # upserted again, so they would otherwise sit at the top of the feed).
+        pruned_hubs = prune_taste_hub_rows(conn)
+        if pruned_hubs:
+            print(f"stream-activity: pruned {pruned_hubs} taste hub row(s).", file=sys.stderr)
         for r in rows:
             upsert_activity(conn, **r)
 

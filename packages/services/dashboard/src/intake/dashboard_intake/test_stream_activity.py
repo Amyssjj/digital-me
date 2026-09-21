@@ -292,6 +292,33 @@ def test_taste_stream_skips_underscore_hub_files(tmp_path: Path) -> None:
     assert rows[0]["id"] == "taste::design/leaf.md"
 
 
+def test_taste_stream_prunes_stale_hub_rows(tmp_path: Path) -> None:
+    """Hub cards written by an older snapshot are removed on the next run, even
+    though the stream never upserts their ids again."""
+    dash = tmp_path / "dashboard.db"
+    tastes = tmp_path / "tastes"
+    (tastes / "design").mkdir(parents=True)
+    (tastes / "design" / "leaf.md").write_text(
+        "---\ntitle: Leaf\ncreated: '2026-08-29'\n---\n\n## Principle\n\nReal.\n", encoding="utf-8"
+    )
+    _create_dashboard_schema(dash)
+    with sqlite3.connect(dash) as conn:
+        for stale in ("taste::design/_OVERVIEW.md", "taste::_INDEX.md"):
+            conn.execute(
+                "INSERT INTO activity (id, ts, agent_id, activity, title) VALUES (?, ?, ?, ?, ?)",
+                (stale, "2026-09-21T09:47:28+00:00", "dream-cycle", "taste", "OVERVIEW"),
+            )
+        # A real leaf whose slug merely contains an underscore must survive.
+        conn.execute(
+            "INSERT INTO activity (id, ts, agent_id, activity, title) VALUES (?, ?, ?, ?, ?)",
+            ("taste::design/keep_me.md", "2026-08-01T00:00:00+00:00", "dream-cycle", "taste", "Keep"),
+        )
+
+    rc = main(["--brain-db", str(tmp_path / "nope.db"), "--db", str(dash), "--tastes-dir", str(tastes)])
+    assert rc == 0
+    assert sorted(r["id"] for r in _rows(dash)) == ["taste::design/keep_me.md", "taste::design/leaf.md"]
+
+
 def test_idempotent_upsert(tmp_path: Path) -> None:
     brain = tmp_path / "brain.db"
     dash = tmp_path / "dashboard.db"
