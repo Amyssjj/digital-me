@@ -115,7 +115,7 @@ def normalize_domains(config: Config, entries: list[dict]) -> dict:
         if isinstance(fm_domains, str):
             fm_domains = [fm_domains]
         normalized_fm_domains = list(dict.fromkeys(
-            [normalize_domain_name(d) for d in fm_domains if d]
+            [normalize_domain_name(str(d)) for d in fm_domains if d]
         ))
 
         needs_move = old_domain != canonical
