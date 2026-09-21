@@ -17,14 +17,15 @@ describe("buildIndex", () => {
     const lines: string[] = [];
     let docs = [doc({ path: "/w/a.md" }), doc({ path: "/w/b.md", hash: "hb" })];
     const r1 = await buildIndex({ roots, store, embedder, log: (l) => lines.push(l), scan: () => docs });
-    expect(r1).toEqual({ scanned: 2, embedded: 2, unchanged: 0, removed: 0, vectors: 6 });
+    expect(r1).toEqual({ scanned: 2, embedded: 2, unchanged: 0, removed: 0, vectors: 6, generation: 1 });
+    expect(store.getMeta("index_generation")).toBe("1");
     expect(store.getProvenance()).toEqual({ provider: "hash", model: "bag-of-words-v1", dims: 16 });
     expect(store.getMeta("last_index_at")).toMatch(/^\d{4}-/);
     expect(lines.some((l) => l.includes("2 to embed"))).toBe(true);
 
     docs = [doc({ path: "/w/a.md" }), doc({ path: "/w/c.md", hash: "hc" })];
     const r2 = await buildIndex({ roots, store, embedder, scan: () => docs });
-    expect(r2).toEqual({ scanned: 2, embedded: 1, unchanged: 1, removed: 1, vectors: 3 });
+    expect(r2).toEqual({ scanned: 2, embedded: 1, unchanged: 1, removed: 1, vectors: 3, generation: 2 });
     expect([...store.hashes().keys()].sort()).toEqual(["/w/a.md", "/w/c.md"]);
   });
 

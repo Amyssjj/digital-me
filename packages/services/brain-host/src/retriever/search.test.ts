@@ -1,4 +1,7 @@
+import { mkdtempSync, rmSync } from "node:fs";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { HashEmbedder } from "./embedder.js";
 import { buildIndex, ProvenanceMismatchError } from "./index-builder.js";
@@ -117,6 +120,36 @@ describe("search", () => {
     expect(res.results.every((r) => r.textScore === 0)).toBe(true);
     cache.invalidate();
     expect((await search(store, cache, embedder, "pnpm")).count).toBe(3);
+  });
+
+  it("picks up a re-index done by another process (generation meta) without invalidate()", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "bh-gen-"));
+    try {
+      const file = join(dir, "retrieval.db");
+      const serving = new IndexStore(new DatabaseSync(file));
+      const embedder = new HashEmbedder(64);
+      await buildIndex({ roots, store: serving, embedder, scan: corpus });
+      const cache = new VectorCache(serving);
+      expect((await search(serving, cache, embedder, "pnpm overrides workspace")).count).toBe(3);
+
+      // A separate handle (as `brain-host index` from the CLI would be) adds an entry.
+      const indexer = new IndexStore(new DatabaseSync(file));
+      const extra = doc({
+        path: "/w/new.md", relPath: "wiki/dev/new.md", title: "Brand new entry", hash: "hn",
+        entryText: "Brand new entry\nzebra quokka platypus", fullText: "zebra quokka platypus",
+        sections: [{ heading: "Rule", text: "zebra quokka platypus", startLine: 3, endLine: 4 }],
+      });
+      const r = await buildIndex({ roots, store: indexer, embedder, scan: () => [...corpus(), extra] });
+      expect(r.generation).toBe(2);
+
+      // Same cache object, no invalidate(): the next search sees the new entry.
+      const res = await search(serving, cache, embedder, "zebra quokka platypus", { limit: 1 });
+      expect(res.results[0]!.path).toBe("/w/new.md");
+      // and a second search with an unchanged generation reuses the cache (no throw, same answer)
+      expect((await search(serving, cache, embedder, "zebra quokka platypus", { limit: 1 })).results[0]!.path).toBe("/w/new.md");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("skips entries deleted between ranking and lookup", async () => {

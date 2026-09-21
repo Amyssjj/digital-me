@@ -20,6 +20,13 @@ describe("loadConfig", () => {
     expect(c.schedulerEnabled).toBe(false);
     expect(c.tickIntervalMs).toBe(60_000);
     expect(c.stallThresholdMs).toBe(3_600_000);
+    expect(c.indexRefreshMs).toBe(1_800_000);
+  });
+
+  it("parses the index refresh period, with 0 meaning disabled", () => {
+    expect(loadConfig({ DIGITAL_ME_INDEX_REFRESH_MS: "60000" }, "/h").indexRefreshMs).toBe(60_000);
+    expect(loadConfig({ DIGITAL_ME_INDEX_REFRESH_MS: "0" }, "/h").indexRefreshMs).toBe(0);
+    expect(loadConfig({ DIGITAL_ME_INDEX_REFRESH_MS: "nope" }, "/h").indexRefreshMs).toBe(1_800_000);
   });
 
   it("derives brain.db from OPENCLAW_HOME and parses scheduler settings", () => {

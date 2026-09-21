@@ -15,6 +15,7 @@
  *   DIGITAL_ME_BRAIN_SCHEDULER  on|off (default off — one ticker per brain.db)
  *   DIGITAL_ME_TICK_MS       default 60000
  *   DIGITAL_ME_STALL_MS      default 3600000
+ *   DIGITAL_ME_INDEX_REFRESH_MS  serve-mode incremental re-index period (default 1800000 = 30 min; 0 disables)
  */
 
 import { readFileSync } from "node:fs";
@@ -29,6 +30,8 @@ export type HostConfig = {
   readonly schedulerEnabled: boolean;
   readonly tickIntervalMs: number;
   readonly stallThresholdMs: number;
+  /** Serve-mode incremental re-index period in ms; 0 disables. Keeps recall fresh after dream-cycle writes. */
+  readonly indexRefreshMs: number;
   readonly roots: { dir: string; corpus: "wiki" | "tastes" }[];
   readonly dbPath: string;
   readonly token: string | undefined;
@@ -58,6 +61,7 @@ export function loadConfig(
     schedulerEnabled: (env.DIGITAL_ME_BRAIN_SCHEDULER ?? "off").toLowerCase() === "on",
     tickIntervalMs: positiveInt(env.DIGITAL_ME_TICK_MS, 60_000),
     stallThresholdMs: positiveInt(env.DIGITAL_ME_STALL_MS, 60 * 60 * 1000),
+    indexRefreshMs: env.DIGITAL_ME_INDEX_REFRESH_MS === "0" ? 0 : positiveInt(env.DIGITAL_ME_INDEX_REFRESH_MS, 30 * 60 * 1000),
     roots: [
       { dir: join(wikiRoot, "wiki"), corpus: "wiki" },
       { dir: join(wikiRoot, "tastes"), corpus: "tastes" },

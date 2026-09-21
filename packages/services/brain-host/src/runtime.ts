@@ -8,6 +8,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import type { HostConfig } from "./config.js";
+import { errorMessage } from "./errors.js";
 import type { ExecRunArgs, ExecRunResult } from "./exec-run.js";
 import { openBrainDb, Orchestrator, type Logger } from "./orchestrator.js";
 import { GeminiEmbedder, HashEmbedder, type Embedder } from "./retriever/embedder.js";
@@ -40,6 +41,9 @@ export class BrainHostRuntime {
   readonly orchestrator: Orchestrator | null;
   private readonly config: HostConfig;
   private readonly log: (line: string) => void;
+  private refreshTimer: NodeJS.Timeout | null = null;
+  private refreshing = false;
+  private lastRefresh: { at: string; result?: BuildResult; error?: string } | null = null;
 
   constructor(opts: RuntimeOptions) {
     this.config = opts.config;
@@ -72,9 +76,45 @@ export class BrainHostRuntime {
     }
   }
 
-  /** Stop background work (scheduler). Safe to call twice. */
-  close(): void {
+  /**
+   * Start the periodic incremental re-index (serve mode). Cheap when nothing
+   * changed (hash scan only); embeds only new/changed entries. Idempotent.
+   */
+  startIndexRefresh(setTimer: typeof setInterval = setInterval): void {
+    if (this.refreshTimer !== null || this.config.indexRefreshMs <= 0) return;
+    this.refreshTimer = setTimer(() => {
+      void this.refreshIndex();
+    }, this.config.indexRefreshMs);
+    this.refreshTimer.unref();
+    this.log(`index refresh every ${this.config.indexRefreshMs}ms`);
+  }
+
+  /** One incremental re-index; never overlaps itself; errors are logged, not thrown. */
+  async refreshIndex(): Promise<void> {
+    if (this.refreshing) return;
+    this.refreshing = true;
+    try {
+      const result = await this.index(false);
+      this.lastRefresh = { at: new Date().toISOString(), result };
+      if (result.embedded > 0 || result.removed > 0) {
+        this.log(`index refresh: ${result.embedded} embedded, ${result.removed} removed, ${result.scanned} total (generation ${result.generation})`);
+      }
+    } catch (err) {
+      const message = errorMessage(err);
+      this.lastRefresh = { at: new Date().toISOString(), error: message };
+      this.log(`index refresh failed: ${message}`);
+    } finally {
+      this.refreshing = false;
+    }
+  }
+
+  /** Stop background work (scheduler, index refresh). Safe to call twice. */
+  close(clearTimer: typeof clearInterval = clearInterval): void {
     this.orchestrator?.stopScheduler();
+    if (this.refreshTimer !== null) {
+      clearTimer(this.refreshTimer);
+      this.refreshTimer = null;
+    }
   }
 
   async index(force: boolean): Promise<BuildResult> {
@@ -95,6 +135,8 @@ export class BrainHostRuntime {
       ...this.store.stats(),
       dbPath: this.config.dbPath,
       wikiRoot: join(this.config.wikiRoot),
+      indexGeneration: this.store.getMeta("index_generation"),
+      indexRefresh: { everyMs: this.config.indexRefreshMs, active: this.refreshTimer !== null, last: this.lastRefresh },
       orchestrator: this.orchestrator ? { brainDb: this.config.brainDbPath, ...this.orchestrator.status() } : null,
     };
   }
