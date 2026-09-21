@@ -1,7 +1,7 @@
 {
   "dimension": "facts",
   "surface": "docs",
-  "note": "digital-me-os docs-truth sweep (motus-facts-sweep). packageJsonPath points at the bundle script because the published npm name (`digital-me`) is stamped there at publish time — the workspace package stays @digital-me/cli and the root manifest is digital-me-os, so neither is the published-name ground truth (see .github/workflows/publish-cli.yml).",
+  "note": "digital-me-os docs-truth sweep (motus-facts-sweep). packageJsonPath points at the bundle script because the published npm name (`digital-me`) is stamped there at publish time \u2014 the workspace package stays @digital-me/cli and the root manifest is digital-me-os, so neither is the published-name ground truth (see .github/workflows/publish-cli.yml). retiredClaims (2026-09-21) registers the pre-#123 'openclaw is the hub / mandatory' narrative and scans the docs-site sources + ARCHITECTURE too (retiredSurfaces), so a regression of that story blocks the nightly instead of drifting for months; those pages stay out of `surfaces` because their illustrative `plugins/`-style tokens would false-flag the path rule.",
   "surfaces": [
     "README.md"
   ],
@@ -32,5 +32,28 @@
   "captureCmd": "node ~/.agents/skills/motus-facts-sweep/engine/lib/extract-claims.mjs --repo . --profile health-sweep/profiles/docs.json --out health-sweep/capture-docs.json",
   "requireDeployed": false,
   "artifacts": "scoped",
-  "candidates": true
+  "candidates": true,
+  "retiredClaims": [
+    {
+      "key": "openclaw-is-the-hub",
+      "pattern": "openclaw (owns|is) the brain runtime|rides on (top of )?(the )?openclaw|an openclaw[^.\\n]{0,20}gateway daemon|owned by upstream openclaw|openclaw memory-core|installed INTO openclaw|forwarding to openclaw|(beside|alongside) openclaw",
+      "reason": "brain-host (packages/services/brain-host) is the hub since digital-me #123 (2026-09-21): retriever + brain-orchestrator on /tools/invoke, owns brain.db + the tick. openclaw is one optional runtime.",
+      "since": "2026-09-21"
+    },
+    {
+      "key": "openclaw-mandatory",
+      "pattern": "openclaw[^.\\n]{0,40}\\bmandatory\\b|\\bmandatory\\b[^.\\n]{0,40}openclaw|mandatory foundation|hard-stops?[^.\\n]{0,60}openclaw|install openclaw first|--skip-openclaw-check",
+      "reason": "the openclaw prerequisite gate was lifted in digital-me #123; setup installs brain-host itself and --skip-openclaw-check is a deprecated no-op.",
+      "since": "2026-09-21"
+    }
+  ],
+  "factRules": {
+    "retired": "block"
+  },
+  "retiredSurfaces": [
+    "README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/site/*.md",
+    "CONTRIBUTING.md"
+  ]
 }
