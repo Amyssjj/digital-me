@@ -90,6 +90,43 @@ for (const plugin of PLUGINS) {
   });
 }
 
+// ── brain-host (the hub) ────────────────────────────────────────────────────
+// `digital-me setup` installs brain-host before any adapter, so the npm
+// artifact must carry it: a self-contained bundle of its bin (workspace deps
+// + yaml inlined, node:* builtins external) at assets/brain-host/bin, plus the
+// cli-exec worker script beside it — @digital-me/runtime-openclaw's alias
+// resolver derives DEFAULT_WORKER_SCRIPT from its own module root, which in
+// this bundle is assets/brain-host/, so scripts/ must exist right there.
+// The installer (installBrainHost → resolveBrainHostPackagePath) links
+// ~/.local/share/digital-me/brain-host at this directory when no source
+// checkout is present.
+const brainHostOut = path.join(outDir, "assets", "brain-host");
+mkdirSync(path.join(brainHostOut, "bin"), { recursive: true });
+await build({
+  entryPoints: [path.join(repoRoot, "packages", "services", "brain-host", "bin", "brain-host.mjs")],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  external: ["node:*"],
+  // A CJS dependency's `require("process")` becomes esbuild's throwing
+  // `__require` shim inside an ESM bundle; give the bundle a real require.
+  banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
+  outfile: path.join(brainHostOut, "bin", "brain-host.mjs"),
+  legalComments: "none",
+  logLevel: "info",
+});
+chmodSync(path.join(brainHostOut, "bin", "brain-host.mjs"), 0o755);
+cpSync(
+  path.join(repoRoot, "packages", "runtimes", "openclaw", "scripts", "cli-exec-worker.mjs"),
+  path.join(brainHostOut, "scripts", "cli-exec-worker.mjs"),
+);
+writeFileSync(
+  path.join(brainHostOut, "package.json"),
+  JSON.stringify({ name: "@digital-me/brain-host", type: "module", private: true, bin: { "digital-me-brain-host": "./bin/brain-host.mjs" } }, null, 2) + "\n",
+  "utf-8",
+);
+
 // ── brain-mcp-proxy ─────────────────────────────────────────────────────────
 // The MCP registrations the installers write point at BIN_PATH =
 // <package-root>/bin/brain-mcp-proxy.mjs — which in the published layout is

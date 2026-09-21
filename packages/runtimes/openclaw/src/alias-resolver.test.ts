@@ -53,24 +53,29 @@ describe("DEFAULT_WORKER_SCRIPT + defaultArtifactRoot", () => {
     );
   });
 
-  it("defaultArtifactRoot expands to ~/.openclaw/task-artifacts", () => {
-    expect(defaultArtifactRoot("/home/u")).toBe(
-      "/home/u/.openclaw/task-artifacts",
-    );
+  it("defaultArtifactRoot: env → <wiki-root>/.data/task-artifacts → legacy ~/.openclaw/task-artifacts (only while that alone exists)", () => {
+    const canonical = "/home/u/digital-me/.data/task-artifacts";
+    const legacy = "/home/u/.openclaw/task-artifacts";
+    expect(defaultArtifactRoot("/home/u", {}, () => false)).toBe(canonical);
+    expect(defaultArtifactRoot("/home/u", {}, (p) => p === legacy)).toBe(legacy);
+    expect(defaultArtifactRoot("/home/u", {}, (p) => p === legacy || p === canonical)).toBe(canonical);
+    expect(defaultArtifactRoot("/home/u", { DIGITAL_ME_TASK_ARTIFACTS: "/ta" }, () => false)).toBe("/ta");
+    expect(defaultArtifactRoot("/home/u", { DIGITAL_ME_WIKI_ROOT: "/w", OPENCLAW_HOME: "/oc" }, (p) => p === "/oc/task-artifacts")).toBe("/oc/task-artifacts");
+    expect(defaultArtifactRoot("/home/u", { DIGITAL_ME_WIKI_ROOT: "/w" }, () => false)).toBe("/w/.data/task-artifacts");
   });
 
-  it("defaultArtifactRoot uses process.env.HOME when no arg is given", () => {
+  it("defaultArtifactRoot uses process.env.HOME + the real filesystem when no arg is given", () => {
     const out = defaultArtifactRoot();
-    expect(out.endsWith(".openclaw/task-artifacts")).toBe(true);
+    expect(out.endsWith("task-artifacts")).toBe(true);
   });
 
   it("defaultArtifactRoot falls back to '' when HOME is unset", () => {
     const orig = process.env.HOME;
     delete process.env.HOME;
     try {
-      const out = defaultArtifactRoot();
-      // path.join("", ".openclaw", "task-artifacts") → ".openclaw/task-artifacts"
-      expect(out).toBe(".openclaw/task-artifacts");
+      const out = defaultArtifactRoot(undefined, {}, () => false);
+      // path.join("", "digital-me", ".data", "task-artifacts") → relative canonical path
+      expect(out).toBe("digital-me/.data/task-artifacts");
     } finally {
       if (orig !== undefined) process.env.HOME = orig;
     }

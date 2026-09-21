@@ -126,9 +126,20 @@ import {
   buildDefaultAliases,
   buildTranscriptSources,
   detectInstalledRuntimes,
+  ensureGitignoreEntries,
   planWikiInit,
   type DetectedRuntime,
 } from "../setup.js";
+import {
+  brainHostTokenFileOf,
+  detectBrainEndpoint,
+  isOpenclawInstalled as probeOpenclawInstalled,
+  noBrainEndpointMessage,
+  orderRuntimesHubFirst,
+  runtimesNeedingBrain,
+} from "../brain-endpoint.js";
+import { planBrainDbMigration, postMigrationSteps } from "../brain-db.js";
+import { resolveBrainDbPath } from "@digital-me/contracts";
 import { formatReport as formatMigrateReport, migrateBrainDb } from "../migrate.js";
 import {
   AGENTS_MIGRATIONS,
@@ -431,7 +442,7 @@ function linkCliGlobally(): void {
 function readWorkflowProvenance(): WorkflowProvenance[] {
   const home = process.env.HOME ?? process.env.USERPROFILE;
   if (!home) return [];
-  const dbPath = path.join(home, ".openclaw", "data", "brain.db");
+  const dbPath = resolveBrainDbPath({ env: process.env, home, exists: existsSync }).path;
   if (!existsSync(dbPath)) return [];
   const db = new DatabaseSync(`file:${dbPath}?mode=ro`, { open: true });
   try {
@@ -479,10 +490,20 @@ function doctor(runtimes: RuntimeId[]): number {
         }
       },
     },
-    runtimes.length > 0 ? runtimes : VALID_RUNTIMES,
+    runtimes.length > 0 ? runtimes : defaultDoctorRuntimes(),
   );
   console.log(formatReport(report));
   return report.summary.failed > 0 ? 1 : 0;
+}
+
+/**
+ * `digital-me doctor` with no --runtime: every runtime the default setup
+ * lights up, plus openclaw only where it is actually installed — it is an
+ * optional runtime, so its rows must not turn a brain-host-only machine red.
+ */
+function defaultDoctorRuntimes(): readonly RuntimeId[] {
+  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
+  return VALID_RUNTIMES.filter((r) => r !== "openclaw" || isOpenclawInstalled(home));
 }
 
 // Subcommand routing for `digital-me dream-cycle <subcommand> ...`. Each
@@ -523,6 +544,7 @@ function dreamCycle(args: readonly string[]): number {
   }
   const r = spawnSync(python, ["-m", pythonModule, ...forwardedArgs], {
     stdio: "inherit",
+    env: brainChildEnv(home),
   });
   if (r.error) {
     console.error(`dream-cycle: failed to spawn ${python}: ${r.error.message}`);
@@ -614,6 +636,28 @@ function installClaudeCode(home: string): void {
 /** Token-file reader for resolveBrainCallerEnv: contents when present, else undefined. */
 function readTokenFileIfExists(file: string): string | undefined {
   return existsSync(file) ? readFileSync(file, "utf-8") : undefined;
+}
+
+/**
+ * Environment for a child process that talks to the brain (the Python
+ * workflow importers, dream-cycle, the digest smoke): the installer's own
+ * env plus DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE whenever
+ * brain-host is installed on this machine. Without this a fresh `setup`
+ * (no env exported yet) would send those registrations to an openclaw
+ * gateway that may not exist. `wikiRoot` scopes the token-file default.
+ */
+function brainChildEnv(home: string, wikiRoot?: string): NodeJS.ProcessEnv {
+  const env = wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: wikiRoot } : { ...process.env };
+  const nodeBin = which("node") ?? "node";
+  let caller: BrainCallerEnv | undefined;
+  try {
+    caller = resolveBrainCallerEnv(env, resolveBrainHostServiceConfig(home, env, nodeBin), readTokenFileIfExists);
+  } catch {
+    caller = undefined; // a misconfigured DIGITAL_ME_BRAIN_URL is reported by the adapter installers
+  }
+  return caller
+    ? { ...env, DIGITAL_ME_BRAIN_URL: caller.brainUrl, DIGITAL_ME_BRAIN_TOKEN_FILE: caller.brainTokenFile }
+    : env;
 }
 
 function installCodex(home: string): void {
@@ -888,6 +932,7 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
   );
   const wfResult = spawnSync(venvPython, installWorkflowsArgs, {
     stdio: "inherit",
+    env: brainChildEnv(home, wikiRoot),
   });
   if (wfResult.status !== 0) {
     console.error(
@@ -926,9 +971,12 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
  * returns the exit code and prints the smoke's own diagnostics; callers decide
  * how loudly to react. Skips (returns 0) when the digest isn't installed.
  */
-function runDigestSmoke(venvPython: string): number {
+function runDigestSmoke(venvPython: string, home?: string): number {
   if (!existsSync(venvPython)) return 0; // digest not installed — nothing to check
-  const r = spawnSync(venvPython, ["-m", "digest.smoke"], { stdio: "inherit" });
+  const r = spawnSync(venvPython, ["-m", "digest.smoke"], {
+    stdio: "inherit",
+    ...(home ? { env: brainChildEnv(home) } : {}),
+  });
   return r.status ?? 1;
 }
 
@@ -1015,6 +1063,7 @@ function installDigest(home: string, wikiRoot?: string): number {
   console.log(`install digest: importing bundled workflow into the brain ...`);
   const wfResult = spawnSync(venvPython, installWorkflowsArgs, {
     stdio: "inherit",
+    env: brainChildEnv(home, wikiRoot),
   });
   if (wfResult.status !== 0) {
     console.error(
@@ -1027,7 +1076,7 @@ function installDigest(home: string, wikiRoot?: string): number {
 
   // Self-verify the publisher contract is intact (hermetic — no brain/LLM/post).
   // A failure here means the digest can't reliably publish; surface it loudly.
-  runDigestSmoke(venvPython);
+  runDigestSmoke(venvPython, home);
 
   console.log(
     `\n[OK] installed digest:\n` +
@@ -1236,7 +1285,7 @@ function installDashboard(home: string, wikiRoot?: string): number {
     ];
     if (wikiRoot) wfArgs.push("--wiki-root", wikiRoot);
     console.log(`install dashboard: importing dashboard-intake workflow + schedule into the brain ...`);
-    const wfResult = spawnSync(dcVenvPython, wfArgs, { stdio: "inherit" });
+    const wfResult = spawnSync(dcVenvPython, wfArgs, { stdio: "inherit", env: brainChildEnv(home, wikiRoot) });
     if (wfResult.status !== 0) {
       console.error(
         `install dashboard: workflow import returned exit ${wfResult.status ?? "?"}. ` +
@@ -1579,17 +1628,21 @@ async function install(
     console.error("install: HOME / USERPROFILE not set");
     return 2;
   }
-  // Prerequisite gate for everything except installing openclaw's own brain
-  // plugin (`--runtime openclaw` materializes into the openclaw checkout, which
-  // a user may set up before first running the gateway). Adapters/services for
-  // other runtimes are useless without a working gateway.
-  const needsGateway = runtimes.some((r) => r !== "openclaw");
-  if (!skipOpenclawCheck && needsGateway && !isOpenclawInstalled(home)) {
-    printOpenclawMissing("the requested runtimes");
-    return 2;
+  // Prerequisite: something for the adapters to connect to. brain-host is the
+  // hub (and is installed first when it is part of this invocation); a legacy
+  // openclaw gateway is accepted too. Neither brain-host itself nor the
+  // openclaw plugin needs the gate.
+  const ordered = orderRuntimesHubFirst(runtimes);
+  const gated = runtimesNeedingBrain(ordered);
+  if (!skipOpenclawCheck && gated.length > 0 && !ordered.includes("brain-host")) {
+    const endpoint = detectBrainEndpoint({ home, env: process.env, fileExists: existsSync, which });
+    if (endpoint.kind === "none") {
+      console.error(noBrainEndpointMessage("the requested runtimes", brainHostTokenFileOf({ home, env: process.env })));
+      return 2;
+    }
   }
   let exit = 0;
-  for (const r of runtimes) {
+  for (const r of ordered) {
     if (r === "claude-code") installClaudeCode(home);
     else if (r === "codex") installCodex(home);
     else if (r === "hermes") installHermes(home);
@@ -1728,7 +1781,7 @@ async function update(
         "bin",
         "python3",
       );
-      if (runDigestSmoke(digestVenvPython) !== 0) {
+      if (runDigestSmoke(digestVenvPython, home) !== 0) {
         console.error(
           "\n[WARN] post-update digest smoke FAILED — the daily digest may not " +
             "publish (see [digest-smoke] lines above). The openclaw update itself " +
@@ -1758,6 +1811,7 @@ function initWikiDir(wikiRoot: string, detected: readonly DetectedRuntime[]): nu
     writeFileSync(f.path, f.contents, "utf-8");
     created++;
   }
+  ensureWikiGitignore(wikiRoot);
   console.log(
     `[OK] init wiki dir at ${wikiRoot}: ${created} file(s) created, ${skipped} already present`,
   );
@@ -1765,33 +1819,28 @@ function initWikiDir(wikiRoot: string, detected: readonly DetectedRuntime[]): nu
 }
 
 /**
- * openclaw is the mandatory foundation: the gateway daemon every brain MCP
- * tool (memory_search, tasks, …) rides on. Detect a real install via the
- * binary on PATH or the config/data home (~/.openclaw). Installing the wiki +
- * runtime adapters without it just produces a half-brain with nothing to
- * connect to — so setup/install hard-stop and point the user at openclaw first.
+ * `.data/` (brain.db, brain-host.token, .env with provider keys) must never
+ * reach a wiki repo's remote. New roots get a full .gitignore from the plan;
+ * existing ones get the missing entries merged in — never overwritten.
  */
-function isOpenclawInstalled(home: string): boolean {
-  return which("openclaw") !== undefined || existsSync(path.join(home, ".openclaw"));
+function ensureWikiGitignore(wikiRoot: string): void {
+  const file = path.join(wikiRoot, ".gitignore");
+  if (!existsSync(file)) return; // planWikiInit created it, or the root is not a repo the user cares about
+  const merged = ensureGitignoreEntries(readFileSync(file, "utf-8"));
+  if (merged !== null) {
+    writeFileSync(file, merged, "utf-8");
+    console.log(`[OK] ${file}: added .data/ (brain.db, token, provider keys) to the ignore list`);
+  }
 }
 
-function printOpenclawMissing(context: string): void {
-  console.error(
-    [
-      ``,
-      `[STOP] openclaw not found — it is the mandatory foundation for digital-me-os.`,
-      ``,
-      `Without the openclaw gateway, the brain MCP tools and every runtime adapter`,
-      `${context} would install would have nothing to connect to. Install openclaw first:`,
-      ``,
-      `  1. Install openclaw — see https://github.com/openclaw/openclaw`,
-      `  2. Verify it works:  openclaw --version`,
-      `  3. Re-run:           pnpm dm setup`,
-      ``,
-      `Advanced / CI: pass --skip-openclaw-check to bypass this gate.`,
-      ``,
-    ].join("\n"),
-  );
+/**
+ * openclaw is an optional runtime (one of the agents the brain serves), not a
+ * prerequisite. Detect a real install via the binary on PATH or its
+ * config/data home (~/.openclaw) so setup can install the gateway plugin
+ * where it applies and the doctor can skip openclaw rows where it does not.
+ */
+function isOpenclawInstalled(home: string): boolean {
+  return probeOpenclawInstalled({ home, env: process.env, fileExists: existsSync, which });
 }
 
 async function setup(
@@ -1805,10 +1854,11 @@ async function setup(
     console.error("setup: HOME / USERPROFILE not set");
     return 2;
   }
-  // Prerequisite gate — fail fast before scaffolding/installing anything.
-  if (!skipOpenclawCheck && !isOpenclawInstalled(home)) {
-    printOpenclawMissing("this command");
-    return 2;
+  if (skipOpenclawCheck) {
+    console.log(
+      "[NOTE] --skip-openclaw-check is deprecated and has no effect: openclaw is no longer a prerequisite " +
+        "(brain-host is the hub and setup installs it). The flag is accepted for existing scripts.",
+    );
   }
   const wikiRoot = wikiRootArg ?? path.join(home, "digital-me");
 
@@ -1831,6 +1881,30 @@ async function setup(
 
   // 2. Init wiki dir + write starter config (idempotent — skips existing files)
   initWikiDir(wikiRoot, detection.runtimes);
+
+  // 2b. The hub. brain-host serves memory_search + the orchestrator on
+  // :18791 and owns the scheduler tick; it goes in BEFORE the adapters so
+  // their registrations bake its URL + token-file path in (see
+  // resolveBrainCallerEnv). Its scheduler is ON here: setup is the one
+  // place we know no other host ticks this brain.db — unless an openclaw
+  // gateway plugin is present, in which case the plugin defers to
+  // brain-host on its own (it checks for the token file).
+  const brainHostRc = await installBrainHost(home, false, { scheduler: "on", wikiRoot });
+  if (brainHostRc !== 0) {
+    if (isOpenclawInstalled(home)) {
+      console.log(
+        `[WARN] brain-host install returned exit ${brainHostRc}. Adapters will fall back to the openclaw ` +
+          `gateway (legacy hub). Fix it later with: digital-me install --runtime brain-host`,
+      );
+    } else {
+      console.error(
+        `[STOP] brain-host install returned exit ${brainHostRc} and no openclaw gateway is present — ` +
+          `the adapters would have nothing to connect to. Fix the error above, then re-run digital-me setup.`,
+      );
+      return brainHostRc;
+    }
+  }
+  console.log("");
 
   // 3. Install each detected runtime. A failure in one (e.g. a hand-edited
   // settings.json that no longer parses) must not abort the others.
@@ -1914,11 +1988,9 @@ async function setup(
       );
     }
   } else {
-    // Only reachable with --skip-openclaw-check (the prerequisite gate
-    // hard-stops otherwise).
     console.log(
-      `[SKIP] openclaw not detected — skipping the brain plugin install.\n` +
-        `       After installing openclaw, run:  digital-me install --runtime openclaw`,
+      `[SKIP] openclaw not detected — it is an optional runtime. If you add it later, run:\n` +
+        `       digital-me install --runtime openclaw`,
     );
   }
   console.log("");
@@ -1932,7 +2004,7 @@ async function setup(
   // checks (python version, dream_cycle import, LLM auth) actually run —
   // without them they silently degrade to "skipped" notes and setup's
   // closing "doctor confirms everything resolved" promise is hollow.
-  const doctorRuntimes: RuntimeId[] = [...(detection.runtimes as RuntimeId[])];
+  const doctorRuntimes: RuntimeId[] = ["brain-host", ...(detection.runtimes as RuntimeId[])];
   if (openclawInstallAttempted && !doctorRuntimes.includes("openclaw")) {
     doctorRuntimes.push("openclaw");
   }
@@ -1952,9 +2024,11 @@ async function setup(
   );
   console.log(formatReport(report));
   console.log("");
+  const setupEnvFile = resolveBrainHostServiceConfig(home, { ...process.env, DIGITAL_ME_WIKI_ROOT: wikiRoot }, which("node") ?? "node").envFile;
   console.log(`Next:`);
+  console.log(`  • Put your provider key in ${setupEnvFile}  (one line: GEMINI_API_KEY=...).`);
+  console.log(`    brain-host loads it for memory_search + every nightly worker; the doctor checks it there.`);
   console.log(`  • Review ${wikiRoot}/config.yaml (auto-created; sources pre-filled from detected CLIs).`);
-  console.log(`    Default engine=openclaw reads your LLM key from ~/.openclaw/openclaw.json — no extra key needed.`);
   console.log(`  • export DIGITAL_ME_WIKI_ROOT=${wikiRoot}`);
   console.log(`  • Run 'digital-me doctor' anytime to re-verify`);
   if (openclawInstallRc !== 0) return openclawInstallRc;
@@ -1970,7 +2044,7 @@ function migrate(fromArg: string | undefined, toArg: string | undefined): number
   }
   const fromPath =
     fromArg ?? path.join(home, ".openclaw", "data", "task-orchestrator.db");
-  const toPath = toArg ?? path.join(home, ".openclaw", "data", "brain.db");
+  const toPath = toArg ?? resolveBrainDbPath({ env: process.env, home, exists: existsSync }).path;
   if (!existsSync(fromPath)) {
     console.error(`migrate: source DB not found: ${fromPath}`);
     return 2;
@@ -2024,19 +2098,84 @@ function migrate(fromArg: string | undefined, toArg: string | undefined): number
   }
 }
 
+// ─── brain-db: move brain.db to its canonical home ─────────────────────────
+
+/**
+ * `digital-me brain-db migrate [--dry-run]`. The planner (brain-db.ts)
+ * decides from the shared contracts rule; this does the copy with SQLite's
+ * `VACUUM INTO` (a consistent, compacted single-file snapshot that does not
+ * need the -wal/-shm sidecars) and refuses while brain-host is serving the
+ * legacy file, since a live writer would diverge from the copy.
+ */
+async function brainDbCommand(args: readonly string[]): Promise<number> {
+  const action = args[0] ?? "migrate";
+  const dryRun = args.includes("--dry-run");
+  if (action !== "migrate") {
+    console.error(`brain-db: unknown action '${action}'. Usage: digital-me brain-db migrate [--dry-run]`);
+    return 2;
+  }
+  const home = process.env.HOME ?? process.env.USERPROFILE;
+  if (!home) {
+    console.error("brain-db: HOME / USERPROFILE not set");
+    return 2;
+  }
+  const plan = planBrainDbMigration({ env: process.env, home, exists: existsSync });
+  console.log(`brain-db: ${plan.message}`);
+  if (plan.action !== "migrate") return plan.action === "explicit-env" ? 2 : 0;
+  if (dryRun) {
+    console.log(`[dry-run] would VACUUM INTO ${plan.to} from ${plan.from}; nothing written.`);
+    return 0;
+  }
+  const nodeBin = which("node") ?? "node";
+  const cfg = resolveBrainHostServiceConfig(home, process.env, nodeBin);
+  if (await pollBrainHost(cfg.port, 1500)) {
+    console.error(
+      `brain-db: brain-host is serving on :${cfg.port} — stop it first so the copy cannot diverge:\n` +
+        `  digital-me service brain-host uninstall\n` +
+        `then re-run this command and finish with 'digital-me install --runtime brain-host'.`,
+    );
+    return 1;
+  }
+  mkdirSync(path.dirname(plan.to), { recursive: true });
+  const { DatabaseSync: SqliteDatabase } = requireSqlite();
+  const source = new SqliteDatabase(plan.from!, { readOnly: true });
+  try {
+    source.exec(`VACUUM INTO '${plan.to.replace(/'/g, "''")}'`);
+  } finally {
+    source.close();
+  }
+  const copied = new SqliteDatabase(plan.to, { readOnly: true });
+  let goals = 0;
+  try {
+    goals = Number((copied.prepare("SELECT COUNT(*) AS n FROM goals").get() as { n: number }).n);
+  } finally {
+    copied.close();
+  }
+  console.log(`[OK] brain.db copied to ${plan.to} (${goals} goals). The legacy file was left in place.`);
+  console.log("Next, so every reader picks the canonical path up:");
+  for (const step of postMigrationSteps({
+    brainHostInstalled: existsSync(cfg.tokenFile),
+    dashboardInstalled: existsSync(dashboardInstallDir(home)),
+    openclawInstalled: isOpenclawInstalled(home),
+  })) {
+    console.log(`  • ${step}`);
+  }
+  return 0;
+}
+
 function printHelp(): void {
   console.log(
     [
       "digital-me — install, doctor, and orchestrate the digital-me ecosystem.",
       "",
       "Usage:",
-      "  digital-me setup [--wiki-root <path>] [--minimal] [--skip-openclaw-check]",
-      "    One-shot: detect CLIs, init wiki dir, install runtimes, link the",
-      "    `digital-me` command onto PATH, doctor. Requires openclaw (the",
-      "    mandatory foundation) — hard-stops with install guidance if it's",
-      "    missing. --minimal skips the heavy optional services (dream-cycle",
-      "    Python venv + dashboard build); --skip-openclaw-check bypasses the",
-      "    prerequisite gate (advanced / CI).",
+      "  digital-me setup [--wiki-root <path>] [--minimal]",
+      "    One-shot: detect CLIs, init wiki dir, install brain-host (the hub:",
+      "    memory_search + orchestrator on :18791, scheduler on), install the",
+      "    adapters pointed at it, link the `digital-me` command onto PATH,",
+      "    doctor. openclaw is optional — its plugin is installed only where",
+      "    openclaw is present. --minimal skips the heavy optional services",
+      "    (dream-cycle Python venv + dashboard build + digest).",
       "",
       "  digital-me init [--wiki-root <path>]",
       "    Scaffold wiki/, inbox/, .cache/, config.example.yaml.",
@@ -2046,9 +2185,11 @@ function printHelp(): void {
       "",
       "  digital-me install --runtime <id> [--runtime <id>...] [--no-service]",
       "    --runtime brain-host links the brain host, writes its token file,",
-      "    builds the retrieval index (GEMINI_API_KEY from $OPENCLAW_HOME/.env)",
-      "    and installs the always-on service. DIGITAL_ME_BRAIN_SCHEDULER=on",
-      "    enables its scheduler tick (only when no other host ticks brain.db).",
+      "    builds the retrieval index (GEMINI_API_KEY from <wiki-root>/.data/.env,",
+      "    or the legacy ~/.openclaw/.env) and installs the always-on service.",
+      "    DIGITAL_ME_BRAIN_SCHEDULER=on|off sets its scheduler tick (default on",
+      "    when no other host ticks brain.db). Adapters need a brain endpoint:",
+      "    brain-host (installed first when listed) or a legacy openclaw gateway.",
       "    Install a specific runtime adapter. For --runtime dashboard, also",
       "    sets up an always-on service (launchd/systemd) so the dashboard",
       "    survives closing the terminal + reboot; --no-service skips that.",
@@ -2080,6 +2221,12 @@ function printHelp(): void {
       "    One-shot copy from upstream task-orchestrator.db to brain.db.",
       "    Idempotent — re-runs skip already-migrated rows.",
       "",
+      "  digital-me brain-db migrate [--dry-run]",
+      "    Move brain.db from the legacy ~/.openclaw/data/ location to its",
+      "    canonical home <wiki-root>/.data/brain.db (SQLite VACUUM INTO — a",
+      "    consistent snapshot). Refuses while brain-host is serving it; prints",
+      "    the re-install steps every reader needs afterwards.",
+      "",
       "  digital-me dream-cycle [args...]",
       "    Run the dream-cycle knowledge distillation pipeline. All args",
       "    after `dream-cycle` pass through to `python3 -m dream_cycle.run`.",
@@ -2095,7 +2242,8 @@ function printHelp(): void {
       "  claude-code   5 hooks + digital-me skill into ~/.claude/",
       "  codex         CODEX.md + openclaw-brain MCP into ~/.codex/",
       "  hermes        SOUL.md digital-me protocol into ~/.hermes/",
-      "  openclaw      see @digital-me/runtime-openclaw README",
+      "  openclaw      (optional) gateway plugin — see @digital-me/runtime-openclaw README",
+      "  brain-host    the hub: retriever + orchestrator service on :18791 (installed by setup)",
       "  dream-cycle   creates ~/.venvs/dream-cycle/ + pip install -e the Python service",
       "  dashboard     builds the dashboard + installs the always-on service (see --no-service)",
     ].join("\n"),
@@ -2410,31 +2558,51 @@ async function serviceCommand(args: readonly string[]): Promise<number> {
 
 /**
  * `digital-me install --runtime brain-host`: link the stable install dir at
- * the workspace package, build it, make sure the bearer token file exists,
- * build the retrieval index, and (unless --no-service) install the service.
- * The scheduler tick follows DIGITAL_ME_BRAIN_SCHEDULER (default off — one
- * ticker per brain.db).
+ * the brain-host package, build it (source checkout) or use the pre-bundled
+ * copy the npm artifact ships, make sure the bearer token file exists, build
+ * the retrieval index, and (unless --no-service) install the service.
+ *
+ * Scheduler tick: an explicit DIGITAL_ME_BRAIN_SCHEDULER wins; otherwise ON
+ * on a machine with no openclaw gateway (nothing else can tick brain.db) and
+ * OFF where openclaw is installed, because a gateway that has not yet been
+ * restarted onto the current plugin template may still be ticking — exactly
+ * one process may tick a brain.db.
  */
-async function installBrainHost(home: string, noService: boolean): Promise<number> {
-  const repoRoot = resolveRepoRoot();
-  if (!repoRoot) {
-    console.log(
-      "[SKIP] brain-host: requires a source checkout (it runs from the repo workspace). " +
-        "Clone https://github.com/Amyssjj/digital-me.git, `pnpm install && pnpm build`, then `pnpm dm install --runtime brain-host`.",
+async function installBrainHost(
+  home: string,
+  noService: boolean,
+  opts: { readonly scheduler?: "on" | "off"; readonly wikiRoot?: string } = {},
+): Promise<number> {
+  const packagePath = resolveBrainHostPackagePath();
+  if (!packagePath) {
+    console.error(
+      "install brain-host: package not found — neither a source checkout (packages/services/brain-host) " +
+        "nor the npm bundle's assets/brain-host. Reinstall the CLI (`npm install -g digital-me`) or clone " +
+        "https://github.com/Amyssjj/digital-me.git, `pnpm install && pnpm build`, then `pnpm dm install --runtime brain-host`.",
     );
-    return 0;
-  }
-  const packagePath = path.join(repoRoot, "packages", "services", "brain-host");
-  if (!existsSync(path.join(packagePath, "bin", "brain-host.mjs"))) {
-    console.error(`install brain-host: package not found at ${packagePath}.`);
     return 2;
   }
+  const repoRoot = resolveRepoRoot();
   const nodeBin = which("node");
   if (!nodeBin) {
     console.error("install brain-host: node not on PATH.");
     return 2;
   }
-  const cfg = resolveBrainHostServiceConfig(home, process.env, nodeBin);
+  const envForCfg = opts.wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot } : process.env;
+  const explicitScheduler = (process.env.DIGITAL_ME_BRAIN_SCHEDULER ?? "").toLowerCase();
+  const scheduler: "on" | "off" =
+    explicitScheduler === "on" || explicitScheduler === "off"
+      ? explicitScheduler
+      : (opts.scheduler ?? (isOpenclawInstalled(home) ? "off" : "on"));
+  const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, { scheduler });
+  if (scheduler === "off" && explicitScheduler === "" && opts.scheduler === undefined) {
+    console.log(
+      "install brain-host: scheduler tick left OFF because an openclaw gateway is installed and may still tick brain.db. " +
+        "Once the gateway runs the current digital-me-brain plugin (it defers to brain-host by itself), enable the tick with:\n" +
+        "  DIGITAL_ME_BRAIN_SCHEDULER=on digital-me service brain-host install",
+    );
+  }
+  ensureWikiGitignore(cfg.wikiRoot);
 
   mkdirSync(path.dirname(cfg.workingDir), { recursive: true });
   if (existsSync(cfg.workingDir)) {
@@ -2450,14 +2618,16 @@ async function installBrainHost(home: string, noService: boolean): Promise<numbe
     if (ln.status !== 0) return ln.status ?? 1;
   }
 
-  const pnpmBin = which("pnpm");
-  if (pnpmBin) {
+  const pnpmBin = repoRoot ? which("pnpm") : undefined;
+  if (repoRoot && pnpmBin) {
     console.log("install brain-host: pnpm --filter @digital-me/brain-host... build");
     const build = spawnSync(pnpmBin, ["--filter", "@digital-me/brain-host...", "build"], { cwd: repoRoot, stdio: "inherit" });
     if (build.status !== 0) {
       console.error(`install brain-host: build failed (exit ${build.status ?? "?"}).`);
       return build.status ?? 1;
     }
+  } else if (!repoRoot) {
+    console.log(`install brain-host: using the pre-bundled service shipped with the CLI (${packagePath})`);
   }
 
   if (!existsSync(cfg.tokenFile)) {
@@ -2483,11 +2653,29 @@ async function installBrainHost(home: string, noService: boolean): Promise<numbe
     console.log("install brain-host: skipped always-on service (--no-service). Enable later with 'digital-me service brain-host install'.");
     return 0;
   }
-  const sc = await setupBrainHostService(home);
+  const sc = await setupBrainHostService(home, { scheduler, wikiRoot: opts.wikiRoot });
   if (sc !== 0) {
     console.error("install brain-host: service did not complete; retry with 'digital-me service brain-host install'.");
   }
   return sc;
+}
+
+/**
+ * Where the brain-host package lives: the workspace package in a source
+ * checkout, else the pre-bundled copy `scripts/build-cli-bundle.mjs` stages
+ * under the npm artifact's assets/brain-host (single-file bin, workspace deps
+ * inlined). undefined when neither exists.
+ */
+function resolveBrainHostPackagePath(): string | undefined {
+  const repoRoot = resolveRepoRoot();
+  if (repoRoot) {
+    const pkg = path.join(repoRoot, "packages", "services", "brain-host");
+    return existsSync(path.join(pkg, "bin", "brain-host.mjs")) ? pkg : undefined;
+  }
+  // npm artifact: this file is <npm-root>/bin/digital-me.js and the bundle
+  // stages the service at <npm-root>/assets/brain-host (see build-cli-bundle).
+  const bundled = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "assets", "brain-host");
+  return existsSync(path.join(bundled, "bin", "brain-host.mjs")) ? bundled : undefined;
 }
 
 async function pollBrainHost(port: number, totalMs: number): Promise<boolean> {
@@ -2504,7 +2692,10 @@ async function pollBrainHost(port: number, totalMs: number): Promise<boolean> {
   return false;
 }
 
-async function setupBrainHostService(home: string): Promise<number> {
+async function setupBrainHostService(
+  home: string,
+  opts: { readonly scheduler?: "on" | "off"; readonly wikiRoot?: string } = {},
+): Promise<number> {
   const platform = servicePlatform();
   if (!platform) {
     console.log(`service brain-host: no supported service manager on '${process.platform}'.`);
@@ -2515,7 +2706,8 @@ async function setupBrainHostService(home: string): Promise<number> {
     console.error("service brain-host: node not on PATH.");
     return 2;
   }
-  const cfg = resolveBrainHostServiceConfig(home, process.env, nodeBin);
+  const envForCfg = opts.wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot } : process.env;
+  const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, opts.scheduler ? { scheduler: opts.scheduler } : {});
   if (!existsSync(path.join(cfg.workingDir, "bin", "brain-host.mjs"))) {
     console.error(`service brain-host: install dir missing (${cfg.workingDir}). Run 'digital-me install --runtime brain-host' first.`);
     return 2;
@@ -2897,6 +3089,7 @@ async function main(): Promise<number> {
   }
   if (cmd === "deploy") return deploy(runtimes, { dryRun });
   if (cmd === "migrate") return migrate(from, to);
+  if (cmd === "brain-db") return brainDbCommand(process.argv.slice(3));
   if (cmd === "help" || cmd === "--help" || cmd === "-h") {
     printHelp();
     return 0;

@@ -53,6 +53,12 @@ export class BrainHostRuntime {
     this.cache = new VectorCache(this.store);
     this.embedder = opts.embedder ?? selectEmbedder(opts.config, opts.offline);
     const orchLog: Logger = (level, msg) => this.log(`[${level}] orchestrator: ${msg}`);
+    if (opts.orchestrator && opts.config.brainDbSource === "legacy-openclaw") {
+      this.log(
+        `[warn] orchestrator: brain.db still lives at the legacy openclaw location ${opts.config.brainDbPath}; ` +
+          `move it to <wiki-root>/.data/brain.db with \`digital-me brain-db migrate\` (stops nothing: run it while the service is down).`,
+      );
+    }
     this.orchestrator = opts.orchestrator
       ? new Orchestrator({
           db: openBrainDb(opts.config.brainDbPath, opts.openDb),
@@ -137,7 +143,9 @@ export class BrainHostRuntime {
       wikiRoot: join(this.config.wikiRoot),
       indexGeneration: this.store.getMeta("index_generation"),
       indexRefresh: { everyMs: this.config.indexRefreshMs, active: this.refreshTimer !== null, last: this.lastRefresh },
-      orchestrator: this.orchestrator ? { brainDb: this.config.brainDbPath, ...this.orchestrator.status() } : null,
+      orchestrator: this.orchestrator
+        ? { brainDb: this.config.brainDbPath, brainDbSource: this.config.brainDbSource, ...this.orchestrator.status() }
+        : null,
     };
   }
 }

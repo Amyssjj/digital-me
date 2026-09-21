@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from typing import Optional
 
 __version__ = "0.1.0"
 
@@ -50,6 +51,28 @@ def wiki_root() -> Path:
     if override:
         return Path(override).expanduser()
     return Path.home() / "digital-me" / "wiki"
+
+
+def brain_db_path(explicit: Optional[Path] = None) -> Path:
+    """Where brain.db lives — the rule every digital-me reader shares
+    (Python twin of ``@digital-me/contracts`` ``resolveBrainDbPath``):
+    arg → $DIGITAL_ME_BRAIN_DB (or the intake's older $OPENCLAW_BRAIN_DB) →
+    <wiki-root>/.data/brain.db when it exists → the legacy
+    <OPENCLAW_HOME or ~/.openclaw>/data/brain.db when it exists → canonical.
+    """
+    if explicit is not None:
+        return explicit.expanduser()
+    override = os.environ.get("DIGITAL_ME_BRAIN_DB") or os.environ.get("OPENCLAW_BRAIN_DB")
+    if override:
+        return Path(override).expanduser()
+    canonical = wiki_root().parent / ".data" / "brain.db"
+    if canonical.exists():
+        return canonical
+    oc_home = os.environ.get("OPENCLAW_HOME")
+    legacy = (Path(oc_home).expanduser() if oc_home else Path.home() / ".openclaw") / "data" / "brain.db"
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 def tastes_root() -> Path:

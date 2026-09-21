@@ -257,8 +257,9 @@ describe("Orchestrator", () => {
     dir = mkdtempSync(join(tmpdir(), "bh-orch-"));
     const wikiRoot = join(dir, "wiki");
     mkdirSync(wikiRoot);
-    // The alias resolver writes spec.json under $HOME/.openclaw/task-artifacts,
-    // so point HOME at the temp dir for the mount (the root is read at construction).
+    // The alias resolver writes spec.json under <wiki-root>/.data/task-artifacts
+    // (legacy $HOME/.openclaw/task-artifacts only while that alone exists), so
+    // point HOME at the temp dir for the mount (the root is read at construction).
     const home = join(dir, "home");
     const origHome = process.env.HOME;
     process.env.HOME = home;
@@ -307,7 +308,7 @@ describe("Orchestrator", () => {
     const worker = calls.find((c) => String(c.command[1]).endsWith("cli-exec-worker.mjs"))!;
     expect(worker.cwd).toBe(wikiRoot);
     const specPath = worker.command[2]!;
-    expect(specPath.startsWith(join(home, ".openclaw", "task-artifacts"))).toBe(true);
+    expect(specPath.startsWith(join(wikiRoot, ".data", "task-artifacts"))).toBe(true);
     expect((JSON.parse(readFileSync(specPath, "utf8")) as { cwd: string }).cwd).toBe(wikiRoot);
     const verify = calls.find((c) => c.command[0] === "/bin/test")!;
     expect(verify.cwd).toBe(wikiRoot);

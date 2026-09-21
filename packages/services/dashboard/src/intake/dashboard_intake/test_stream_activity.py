@@ -409,3 +409,31 @@ def test_missing_brain_is_noop(tmp_path: Path) -> None:
     assert rc == 0
     rows = _rows(dash)
     assert [r["id"] for r in rows] == ["old"]
+
+
+def test_brain_db_path_follows_the_shared_rule(monkeypatch, tmp_path):
+    """arg → env → <wiki-root>/.data/brain.db → legacy ~/.openclaw → canonical
+    (twin of @digital-me/contracts resolveBrainDbPath)."""
+    from dashboard_intake import brain_db_path
+
+    for var in ("DIGITAL_ME_BRAIN_DB", "OPENCLAW_BRAIN_DB"):
+        monkeypatch.delenv(var, raising=False)
+    wiki = tmp_path / "digital-me" / "wiki"
+    wiki.mkdir(parents=True)
+    oc = tmp_path / ".openclaw"
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(wiki))
+    monkeypatch.setenv("OPENCLAW_HOME", str(oc))
+    canonical = tmp_path / "digital-me" / ".data" / "brain.db"
+    legacy = oc / "data" / "brain.db"
+    assert brain_db_path(None) == canonical
+    legacy.parent.mkdir(parents=True)
+    legacy.write_bytes(b"")
+    assert brain_db_path(None) == legacy
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(b"")
+    assert brain_db_path(None) == canonical
+    assert brain_db_path(Path("~/explicit.db")) == Path("~/explicit.db").expanduser()
+    monkeypatch.setenv("OPENCLAW_BRAIN_DB", str(tmp_path / "old-style.db"))
+    assert brain_db_path(None) == tmp_path / "old-style.db"
+    monkeypatch.setenv("DIGITAL_ME_BRAIN_DB", str(tmp_path / "new-style.db"))
+    assert brain_db_path(None) == tmp_path / "new-style.db"

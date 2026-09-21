@@ -26,6 +26,7 @@ import { buildActivityFeedRouter } from "./activity-feed.js";
 import { buildRemoteClientsRouter } from "./remote-clients-routes.js";
 // DNS-rebinding guard: reject any request whose Host isn't a loopback name.
 import { isLoopbackHost } from "./host-guard.js";
+import { resolveBrainDbPath } from "@digital-me/contracts";
 
 const app = express();
 // DNS-rebinding guard — MUST be the first middleware, before body parsing and
@@ -69,13 +70,17 @@ const LEGACY_DB_PATH = path.join(
 const DASHBOARD_DB_PATH = process.env["DASHBOARD_DB"] ?? DEFAULT_DB_PATH;
 
 // Brain traces store. This is a DIFFERENT DB from dashboard.db: traces +
-// brain_agents live in brain.db, written by the brain-mcp proxy's trace-writer.
-// Path source-of-truth matches trace-writer.ts (~/.openclaw/data/brain.db);
-// honor $BRAIN_DB, then $OPENCLAW_DATA_DIR, else the canonical home path.
-const OPENCLAW_DATA_DIR =
-  process.env["OPENCLAW_DATA_DIR"] ?? path.join(HOME, ".openclaw", "data");
+// brain_agents live in brain.db, written by brain-host and the proxy's
+// trace-writer. Honor the dashboard's own $BRAIN_DB / $OPENCLAW_DATA_DIR
+// overrides first (existing installs), then the rule every reader shares
+// (@digital-me/contracts resolveBrainDbPath: $DIGITAL_ME_BRAIN_DB →
+// <wiki-root>/.data/brain.db → legacy ~/.openclaw/data/brain.db while only
+// that exists → canonical).
 const BRAIN_DB_PATH =
-  process.env["BRAIN_DB"] ?? path.join(OPENCLAW_DATA_DIR, "brain.db");
+  process.env["BRAIN_DB"] ??
+  (process.env["OPENCLAW_DATA_DIR"]
+    ? path.join(process.env["OPENCLAW_DATA_DIR"], "brain.db")
+    : resolveBrainDbPath({ env: process.env, home: HOME, exists: (p) => fs.existsSync(p) }).path);
 
 (function migrateLegacyDbIfNeeded() {
   if (process.env["DASHBOARD_DB"]) return; // explicit override — don't touch.

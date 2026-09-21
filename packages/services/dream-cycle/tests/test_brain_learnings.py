@@ -18,17 +18,43 @@ from dream_cycle.brain_learnings import (
 from dream_cycle.config import load_config
 
 
-def test_resolve_brain_db_default(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_brain_db_rule(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """env → <wiki-root>/.data/brain.db → legacy ~/.openclaw/data/brain.db (only
+    while that alone exists) → canonical. Twin of contracts resolveBrainDbPath."""
     monkeypatch.delenv("DIGITAL_ME_BRAIN_DB", raising=False)
-    assert resolve_brain_db_path() == DEFAULT_BRAIN_DB_PATH
+    wiki = tmp_path / "digital-me"
+    oc = tmp_path / ".openclaw"
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(wiki))
+    monkeypatch.setenv("OPENCLAW_HOME", str(oc))
+    canonical = wiki.resolve() / ".data" / "brain.db"
+    legacy = oc / "data" / "brain.db"
+    assert resolve_brain_db_path() == canonical  # fresh machine: never under ~/.openclaw
+    legacy.parent.mkdir(parents=True)
+    legacy.write_bytes(b"")
+    assert resolve_brain_db_path() == legacy  # pre-move install keeps working
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(b"")
+    assert resolve_brain_db_path() == canonical  # canonical wins once it exists
 
 
-def test_default_brain_db_path_is_the_live_orchestrator_db() -> None:
-    """The orchestrator lives at ~/.openclaw/data/brain.db. The retired
-    task-orchestrator.db default pointed at a stale copy on old hosts (same
-    rows every night, nothing new graduated) and at nothing on fresh ones."""
+def test_legacy_fallback_uses_the_module_default_without_openclaw_home(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.delenv("DIGITAL_ME_BRAIN_DB", raising=False)
+    monkeypatch.delenv("OPENCLAW_HOME", raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(tmp_path / "wiki-root"))
+    legacy = tmp_path / "legacy-brain.db"
+    legacy.write_bytes(b"")
+    from dream_cycle import brain_learnings
+
+    monkeypatch.setattr(brain_learnings, "DEFAULT_BRAIN_DB_PATH", legacy)
+    assert resolve_brain_db_path() == legacy
+
+
+def test_default_brain_db_path_is_the_legacy_orchestrator_location() -> None:
+    """The legacy fallback is the openclaw plugin's brain.db — never the retired
+    task-orchestrator.db (a stale copy on old hosts, nothing on fresh ones)."""
     assert DEFAULT_BRAIN_DB_PATH.parts[-3:] == (".openclaw", "data", "brain.db")
-    assert DEFAULT_BRAIN_DB_PATH.as_posix().endswith(".openclaw/data/brain.db")
 
 
 def test_resolve_brain_db_env_override(

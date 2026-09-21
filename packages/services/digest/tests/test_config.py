@@ -127,3 +127,95 @@ def test_paths_derive_from_wiki_root(tmp_path):
     assert p.wiki_dir == tmp_path.resolve() / "wiki"
     assert p.digest_dir == tmp_path.resolve() / "digests"
     assert p.skills_proposals == tmp_path.resolve() / "skills-proposals"
+
+
+# ── brain.db: the shared contracts rule ──────────────────────────────────────
+
+def test_brain_db_rule_prefers_canonical_then_legacy_then_canonical(monkeypatch, tmp_path):
+    """Python twin of @digital-me/contracts resolveBrainDbPath."""
+    monkeypatch.delenv("DIGITAL_ME_BRAIN_DB", raising=False)
+    wiki = tmp_path / "digital-me"
+    oc = tmp_path / ".openclaw"
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(wiki))
+    monkeypatch.setenv("OPENCLAW_HOME", str(oc))
+    canonical = wiki.resolve() / ".data" / "brain.db"
+    legacy = oc / "data" / "brain.db"
+    # fresh machine → canonical (never a path under ~/.openclaw)
+    assert config.resolve_brain_db() == canonical
+    # pre-move install: only the legacy file exists → keep using it
+    legacy.parent.mkdir(parents=True)
+    legacy.write_bytes(b"")
+    assert config.resolve_brain_db() == legacy
+    # once the canonical file exists it wins, even with the legacy copy around
+    canonical.parent.mkdir(parents=True)
+    canonical.write_bytes(b"")
+    assert config.resolve_brain_db() == canonical
+
+
+# ── webhook delivery ─────────────────────────────────────────────────────────
+
+def test_webhook_url_no_default(monkeypatch, tmp_path):
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_WEBHOOK_URL_FILE", raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(tmp_path))
+    assert config.resolve_webhook_url() is None
+
+
+def test_webhook_url_from_env(monkeypatch):
+    monkeypatch.setenv("DIGITAL_ME_DIGEST_WEBHOOK_URL", " https://discord.com/api/webhooks/1/x \n")
+    assert config.resolve_webhook_url() == "https://discord.com/api/webhooks/1/x"
+
+
+def test_webhook_url_from_env_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_WEBHOOK_URL", raising=False)
+    f = tmp_path / "hook.url"
+    f.write_text("https://discord.com/api/webhooks/2/y\n")
+    monkeypatch.setenv("DIGITAL_ME_DIGEST_WEBHOOK_URL_FILE", str(f))
+    assert config.resolve_webhook_url() == "https://discord.com/api/webhooks/2/y"
+
+
+def test_webhook_url_from_config_file_and_default_data_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_WEBHOOK_URL", raising=False)
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_WEBHOOK_URL_FILE", raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(tmp_path))
+    monkeypatch.delenv("DIGITAL_ME_CONFIG_PATH", raising=False)
+    # config.yaml names a file (with ~ / env expansion)
+    hook = tmp_path / "cfg-hook.url"
+    hook.write_text("https://discord.com/api/webhooks/3/z")
+    (tmp_path / "config.yaml").write_text(f"digest:\n  webhook_url_file: {hook}\n")
+    assert config.resolve_webhook_url() == "https://discord.com/api/webhooks/3/z"
+    # an unreadable / blank configured file is skipped, falling through to the default data file
+    hook.write_text("   \n")
+    assert config.resolve_webhook_url() is None
+    data = tmp_path / ".data" / "digest-webhook.url"
+    data.parent.mkdir()
+    data.write_text("https://discord.com/api/webhooks/4/w\n")
+    assert config.resolve_webhook_url() == "https://discord.com/api/webhooks/4/w"
+
+
+def test_delivery_resolution(monkeypatch, tmp_path):
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_DELIVERY", raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(tmp_path))
+    monkeypatch.delenv("DIGITAL_ME_CONFIG_PATH", raising=False)
+    # nothing configured: webhook when a URL resolved, else openclaw when the CLI exists, else webhook (so the
+    # error message points at the no-gateway path)
+    assert config.resolve_delivery(webhook_url="https://x", openclaw_cli="/usr/bin/openclaw") == "webhook"
+    assert config.resolve_delivery(webhook_url=None, openclaw_cli="/usr/bin/openclaw") == "openclaw"
+    assert config.resolve_delivery(webhook_url=None, openclaw_cli=None) == "webhook"
+    # explicit wins: arg → env → config.yaml
+    assert config.resolve_delivery("openclaw", webhook_url="https://x") == "openclaw"
+    monkeypatch.setenv("DIGITAL_ME_DIGEST_DELIVERY", "Webhook")
+    assert config.resolve_delivery(webhook_url=None, openclaw_cli="/usr/bin/openclaw") == "webhook"
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_DELIVERY")
+    (tmp_path / "config.yaml").write_text("digest:\n  delivery: openclaw\n")
+    assert config.resolve_delivery(webhook_url="https://x") == "openclaw"
+    with pytest.raises(ValueError):
+        config.resolve_delivery("carrier-pigeon")
+
+
+def test_load_paths_carries_delivery_and_webhook(monkeypatch, tmp_path):
+    monkeypatch.setenv("DIGITAL_ME_DIGEST_WEBHOOK_URL", "https://discord.com/api/webhooks/5/v")
+    monkeypatch.delenv("DIGITAL_ME_DIGEST_DELIVERY", raising=False)
+    p = config.load_paths(wiki_root=tmp_path)
+    assert p.delivery == "webhook"
+    assert p.webhook_url == "https://discord.com/api/webhooks/5/v"

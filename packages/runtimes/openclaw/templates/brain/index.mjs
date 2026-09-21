@@ -77,8 +77,24 @@ import {
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite");
 
+// brain.db location — the same rule every digital-me reader applies
+// (@digital-me/contracts resolveBrainDbPath): DIGITAL_ME_BRAIN_DB →
+// <wiki-root>/.data/brain.db → the legacy ~/.openclaw/data/brain.db while
+// only that file exists → <wiki-root>/.data/brain.db. Inlined here so the
+// template stays a single file with no workspace import at gateway load.
+function defaultBrainDbPath() {
+  const explicit = (process.env.DIGITAL_ME_BRAIN_DB ?? "").trim();
+  if (explicit !== "") return explicit;
+  const wikiRoot = process.env.DIGITAL_ME_WIKI_ROOT ?? path.join(os.homedir(), "digital-me");
+  const canonical = path.join(wikiRoot, ".data", "brain.db");
+  const legacy = path.join(process.env.OPENCLAW_HOME ?? path.join(os.homedir(), ".openclaw"), "data", "brain.db");
+  if (fs.existsSync(canonical)) return canonical;
+  if (fs.existsSync(legacy)) return legacy;
+  return canonical;
+}
+
 const DEFAULTS = {
-  dbPath: path.join(os.homedir(), ".openclaw", "data", "brain.db"),
+  dbPath: defaultBrainDbPath(),
   stallThresholdMs: 60 * 60 * 1000, // 1h
   tickIntervalMs: 60 * 1000, // 1min
 };
@@ -109,12 +125,19 @@ export default definePluginEntry({
       api.pluginConfig?.stallThresholdMs || DEFAULTS.stallThresholdMs;
     const tickIntervalMs =
       api.pluginConfig?.tickIntervalMs || DEFAULTS.tickIntervalMs;
-    // Single-ticker rule: exactly one process may tick a brain.db. Set
-    // `plugins.entries.digital-me-brain.config.scheduler: false` (or env
-    // DIGITAL_ME_OPENCLAW_SCHEDULER=off) once brain-host owns the tick.
+    // Single-ticker rule: exactly one process may tick a brain.db. brain-host
+    // is the hub and owns the tick wherever it is installed (its bearer token
+    // file exists), so this plugin ticks only on a gateway-only machine —
+    // or when `plugins.entries.digital-me-brain.config.scheduler: true` says
+    // so explicitly. `scheduler: false` / DIGITAL_ME_OPENCLAW_SCHEDULER=off
+    // always win.
+    const brainHostTokenFile =
+      process.env.DIGITAL_ME_BRAIN_TOKEN_FILE || path.join(wikiRoot, ".data", "brain-host.token");
+    const brainHostInstalled = fs.existsSync(brainHostTokenFile);
     const schedulerEnabled =
       api.pluginConfig?.scheduler !== false &&
-      (process.env.DIGITAL_ME_OPENCLAW_SCHEDULER ?? "on").toLowerCase() !== "off";
+      (process.env.DIGITAL_ME_OPENCLAW_SCHEDULER ?? "on").toLowerCase() !== "off" &&
+      (api.pluginConfig?.scheduler === true || !brainHostInstalled);
 
     const configPath = path.join(wikiRoot, "config.yaml");
     let cliExecAliases = {};
@@ -303,7 +326,9 @@ export default definePluginEntry({
     //    instead.
     if (!schedulerEnabled) {
       api.logger.info(
-        "digital-me-brain: scheduler tick DISABLED (config.scheduler=false or DIGITAL_ME_OPENCLAW_SCHEDULER=off); another host owns the tick",
+        brainHostInstalled && api.pluginConfig?.scheduler !== false
+          ? `digital-me-brain: scheduler tick DISABLED — brain-host is installed (${brainHostTokenFile}) and owns the tick; set config.scheduler=true to tick here anyway`
+          : "digital-me-brain: scheduler tick DISABLED (config.scheduler=false or DIGITAL_ME_OPENCLAW_SCHEDULER=off); another host owns the tick",
       );
     }
     const tickHandle = !schedulerEnabled ? null : setInterval(async () => {

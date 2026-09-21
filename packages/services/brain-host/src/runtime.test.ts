@@ -143,6 +143,15 @@ describe("BrainHostRuntime with orchestrator", () => {
     const rt = new BrainHostRuntime({ config, offline: true, openDb: (p) => new DatabaseSync(p), orchestrator: true });
     expect((rt.health() as { orchestrator: { scheduler: string } }).orchestrator.scheduler).toBe("off");
   });
+
+  it("warns once at mount when brain.db still sits at the legacy openclaw location, and reports the source on /health", () => {
+    const logs: string[] = [];
+    const config = { ...fixture(), brainDbPath: join(dir, "brain.db"), brainDbSource: "legacy-openclaw" as const };
+    const rt = new BrainHostRuntime({ config, offline: true, openDb: (p) => new DatabaseSync(p), orchestrator: true, log: (l) => logs.push(l) });
+    expect(logs.filter((l) => l.includes("legacy openclaw location"))).toHaveLength(1);
+    expect((rt.health() as { orchestrator: { brainDbSource: string } }).orchestrator.brainDbSource).toBe("legacy-openclaw");
+    rt.close();
+  });
 });
 
 describe("selectEmbedder", () => {

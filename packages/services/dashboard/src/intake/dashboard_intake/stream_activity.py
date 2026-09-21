@@ -21,7 +21,8 @@ overlapping window never duplicate cards):
                 so this stream reads the filesystem and runs even with no brain)
 
 Path resolution (tiered, per the decouple-filesystem-paths pattern):
-  --brain-db   ARG  >  $OPENCLAW_BRAIN_DB    >  ~/.openclaw/data/brain.db
+  --brain-db   ARG  >  $DIGITAL_ME_BRAIN_DB (or $OPENCLAW_BRAIN_DB)  >  <wiki-root>/.data/brain.db
+               >  legacy ~/.openclaw/data/brain.db (only while that alone exists)
   --wiki-dir   ARG  >  $DIGITAL_ME_WIKI_DIR  >  ~/digital-me/wiki
   --tastes-dir ARG  >  <wiki-dir>/../tastes  (i.e. ~/digital-me/tastes)
 
@@ -49,7 +50,7 @@ from typing import Optional
 
 import yaml
 
-from . import db_path
+from . import brain_db_path, db_path
 from .db import (
     connect,
     prune_legacy_captured_rows,
@@ -67,12 +68,8 @@ MAX_ATTACHMENTS = 20
 
 
 def _resolve_brain_db(arg: Optional[Path]) -> Path:
-    if arg is not None:
-        return arg
-    override = os.environ.get("OPENCLAW_BRAIN_DB")
-    if override:
-        return Path(override).expanduser()
-    return Path.home() / ".openclaw" / "data" / "brain.db"
+    # One rule for every brain.db reader (see dashboard_intake.brain_db_path).
+    return brain_db_path(arg)
 
 
 def _resolve_wiki_root(arg: Optional[Path]) -> Path:
@@ -500,8 +497,9 @@ def _parse_args(argv: Optional[list[str]]) -> argparse.Namespace:
         description=__doc__.split("\n", 1)[0],
     )
     p.add_argument("--brain-db", type=Path, default=None,
-                   help="Path to the openclaw brain DB. Default $OPENCLAW_BRAIN_DB "
-                        "or ~/.openclaw/data/brain.db.")
+                   help="Path to brain.db. Default $DIGITAL_ME_BRAIN_DB (or $OPENCLAW_BRAIN_DB), "
+                        "else <wiki-root>/.data/brain.db, else the legacy ~/.openclaw/data/brain.db "
+                        "while only that exists.")
     p.add_argument("--db", type=Path, default=None,
                    help="Dashboard DB to upsert into. Default DASHBOARD_DB or the "
                         "canonical ~/digital-me/.data/dashboard.db.")

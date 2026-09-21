@@ -65,20 +65,23 @@ search p50 0.20 s including the query embedding call.
 
 ```bash
 # one-time / incremental (only changed files are re-embedded)
-node --env-file=~/.openclaw/.env packages/services/brain-host/bin/brain-host.mjs index
+node --env-file-if-exists=~/digital-me/.data/.env packages/services/brain-host/bin/brain-host.mjs index
 
 # ad hoc query
-node --env-file=~/.openclaw/.env packages/services/brain-host/bin/brain-host.mjs search "kanban goals vanished" --limit 5
+node --env-file-if-exists=~/digital-me/.data/.env packages/services/brain-host/bin/brain-host.mjs search "kanban goals vanished" --limit 5
 
 # serve (token from <wiki-root>/.data/brain-host.token, or DIGITAL_ME_BRAIN_TOKEN_FILE / DIGITAL_ME_BRAIN_TOKEN)
-node --env-file=~/.openclaw/.env \
+node --env-file-if-exists=~/digital-me/.data/.env \
   packages/services/brain-host/bin/brain-host.mjs serve --port 18791
 ```
 
 `serve` mounts the orchestrator unless `--no-orchestrator` is passed.
 
-Environment: `DIGITAL_ME_BRAIN_DB` (default `<OPENCLAW_HOME or ~/.openclaw>/data/brain.db`
-until the Phase 3 move), `DIGITAL_ME_BRAIN_SCHEDULER` (`on`|`off`, default off),
+Environment: `DIGITAL_ME_BRAIN_DB` (default `<wiki-root>/.data/brain.db`; the legacy
+`<OPENCLAW_HOME or ~/.openclaw>/data/brain.db` is used while only that file exists —
+`/health` reports which as `orchestrator.brainDbSource`, and `digital-me brain-db migrate`
+moves it), `DIGITAL_ME_ENV_FILE` (provider keys; default `<wiki-root>/.data/.env`, legacy
+`~/.openclaw/.env`), `DIGITAL_ME_BRAIN_SCHEDULER` (`on`|`off`, default off),
 `DIGITAL_ME_TICK_MS` (60000), `DIGITAL_ME_STALL_MS` (3600000),
 `DIGITAL_ME_WIKI_ROOT` (default `~/digital-me`),
 `DIGITAL_ME_RETRIEVAL_DB` (default `<wiki-root>/.data/retrieval.db`),

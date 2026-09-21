@@ -96,49 +96,86 @@ describe("runDoctor", () => {
     if (c.ok) expect(c.note).toBe("$HOME/wiki");
   });
 
-  it("finds the openclaw config at the canonical location", () => {
+  it("brain endpoint: a brain-host install (token file) is the hub, no openclaw needed", () => {
+    const r = runDoctor(
+      makeDeps({
+        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "$HOME/digital-me" },
+        fileExists: (p) => p === "/home/u/digital-me/.data/brain-host.token",
+      }),
+      [],
+    );
+    const c = r.checks.find((x) => x.label === "brain endpoint")!;
+    expect(c.ok).toBe(true);
+    if (c.ok) expect(c.note).toMatch(/^brain-host \(token file \/home\/u\/digital-me\/.data\/brain-host.token\)/);
+    // the openclaw config row is not a global prerequisite any more
+    expect(r.checks.find((x) => x.label === "openclaw config")).toBeUndefined();
+  });
+
+  it("brain endpoint: honours DIGITAL_ME_BRAIN_TOKEN_FILE and defaults the wiki root to ~/digital-me", () => {
+    const custom = runDoctor(
+      makeDeps({
+        env: { HOME: "/home/u", DIGITAL_ME_BRAIN_TOKEN_FILE: "$HOME/tok" },
+        fileExists: (p) => p === "/home/u/tok",
+      }),
+      [],
+    );
+    expect(custom.checks.find((x) => x.label === "brain endpoint")!.ok).toBe(true);
+    const noRoot = runDoctor(
+      makeDeps({
+        env: { HOME: "/home/u" },
+        fileExists: (p) => p === "/home/u/digital-me/.data/brain-host.token",
+      }),
+      [],
+    );
+    expect(noRoot.checks.find((x) => x.label === "brain endpoint")!.ok).toBe(true);
+  });
+
+  it("brain endpoint: falls back to an openclaw gateway config (legacy hub) with an install hint", () => {
     const r = runDoctor(
       makeDeps({
         fileExists: (p) => p === "/home/u/.openclaw/openclaw.json",
       }),
       [],
     );
-    const c = r.checks.find((x) => x.label === "openclaw config")!;
+    const c = r.checks.find((x) => x.label === "brain endpoint")!;
     expect(c.ok).toBe(true);
-    if (c.ok) expect(c.note).toBe("/home/u/.openclaw/openclaw.json");
+    if (c.ok) expect(c.note).toMatch(/openclaw gateway \(legacy hub; config \/home\/u\/.openclaw\/openclaw.json\).*install --runtime brain-host/);
   });
 
-  it("falls back to the legacy ~/.clawdbot path if newer is missing", () => {
-    const r = runDoctor(
-      makeDeps({
-        fileExists: (p) => p === "/home/u/.clawdbot/openclaw.json",
-      }),
-      [],
-    );
-    const c = r.checks.find((x) => x.label === "openclaw config")!;
-    expect(c.ok).toBe(true);
+  it("brain endpoint: FAILs when neither brain-host nor an openclaw config exists", () => {
+    const r = runDoctor(makeDeps(), []);
+    const c = r.checks.find((x) => x.label === "brain endpoint")!;
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.reason).toMatch(/install --runtime brain-host/);
   });
 
-  it("honors DIGITAL_ME_OPENCLAW_CONFIG override when set", () => {
-    const r = runDoctor(
+  it("openclaw config: reported only when the openclaw runtime is enabled — canonical, legacy ~/.clawdbot, override, missing", () => {
+    const canonical = runDoctor(
+      makeDeps({ fileExists: (p) => p === "/home/u/.openclaw/openclaw.json" }),
+      ["openclaw"],
+    ).checks.find((x) => x.label === "openclaw config")!;
+    expect(canonical.ok).toBe(true);
+    if (canonical.ok) expect(canonical.note).toBe("/home/u/.openclaw/openclaw.json");
+
+    const legacy = runDoctor(
+      makeDeps({ fileExists: (p) => p === "/home/u/.clawdbot/openclaw.json" }),
+      ["openclaw"],
+    ).checks.find((x) => x.label === "openclaw config")!;
+    expect(legacy.ok).toBe(true);
+
+    const override = runDoctor(
       makeDeps({
-        env: {
-          HOME: "/home/u",
-          DIGITAL_ME_OPENCLAW_CONFIG: "$HOME/custom-openclaw.json",
-        },
+        env: { HOME: "/home/u", DIGITAL_ME_OPENCLAW_CONFIG: "$HOME/custom-openclaw.json" },
         fileExists: (p) => p === "/home/u/custom-openclaw.json",
       }),
-      [],
-    );
-    const c = r.checks.find((x) => x.label === "openclaw config")!;
-    expect(c.ok).toBe(true);
-    if (c.ok) expect(c.note).toBe("/home/u/custom-openclaw.json");
-  });
+      ["openclaw"],
+    ).checks.find((x) => x.label === "openclaw config")!;
+    expect(override.ok).toBe(true);
+    if (override.ok) expect(override.note).toBe("/home/u/custom-openclaw.json");
 
-  it("flags missing openclaw config when no candidate exists", () => {
-    const r = runDoctor(makeDeps(), []);
-    const c = r.checks.find((x) => x.label === "openclaw config")!;
-    expect(c.ok).toBe(false);
+    const missing = runDoctor(makeDeps(), ["openclaw"]).checks.find((x) => x.label === "openclaw config")!;
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.reason).toMatch(/Not found at any of/);
   });
 
   it("reports brain-mcp-proxy bin OK when the path exists", () => {
@@ -604,7 +641,63 @@ describe("runDoctor", () => {
     );
     const auth = r.checks.find((c) => c.label === "dream-cycle: LLM auth")!;
     expect(auth.ok).toBe(false);
-    if (!auth.ok) expect(auth.reason).toMatch(/GEMINI_API_KEY is not set/);
+    if (!auth.ok) expect(auth.reason).toMatch(/GEMINI_API_KEY is not set \(checked the shell and \/home\/u\/digital-me\/.data\/.env\)/);
+  });
+
+  it("dream-cycle: LLM auth — OK when the key is defined in the brain-host env file instead of the shell", () => {
+    const probe = (_cmd: string, args: readonly string[]) => {
+      const src = args[1] ?? "";
+      if (args[0] === "--version") return { status: 0, stdout: "Python 3.12.1\n", stderr: "" };
+      if (src.includes("import dream_cycle;")) return { status: 0, stdout: "/x/dream_cycle.py", stderr: "" };
+      if (src.includes("from dream_cycle.config")) return { status: 0, stdout: "standalone\tGEMINI_API_KEY\n", stderr: "" };
+      return { status: 1, stdout: "", stderr: "?" };
+    };
+    const envFile = "/home/u/digital-me/.data/.env";
+    const run = (content: string | undefined, exists = true) =>
+      runDoctor(
+        makeDeps({
+          env: { HOME: "/home/u" },
+          which: () => "/usr/bin/python3",
+          execCommand: probe,
+          fileExists: (p) => exists && p === envFile,
+          readFile: (p) => {
+            if (content === undefined) throw new Error("unreadable");
+            return p === envFile ? content : "";
+          },
+        }),
+        ["dream-cycle"],
+      ).checks.find((c) => c.label === "dream-cycle: LLM auth")!;
+
+    const ok = run("OPENAI_API_KEY=x\nexport GEMINI_API_KEY=\"abc\"\n");
+    expect(ok.ok).toBe(true);
+    if (ok.ok) expect(ok.note).toBe(`engine=standalone, GEMINI_API_KEY set in ${envFile}`);
+    expect(run("GEMINI_API_KEY=\n").ok).toBe(false); // blank value
+    expect(run("GEMINI_API_KEY=''\n").ok).toBe(false); // quoted empty
+    expect(run("# GEMINI_API_KEY=abc\n").ok).toBe(false); // commented out
+    expect(run(undefined).ok).toBe(false); // unreadable file
+    expect(run("GEMINI_API_KEY=abc\n", false).ok).toBe(false); // file absent
+
+    // no HOME in the doctor's env: the env-file path degrades to a relative default instead of throwing
+    const noHome = runDoctor(
+      makeDeps({ env: {}, which: () => "/usr/bin/python3", execCommand: probe, fileExists: () => false }),
+      ["dream-cycle"],
+    ).checks.find((c) => c.label === "dream-cycle: LLM auth")!;
+    expect(noHome.ok).toBe(false);
+    if (!noHome.ok) expect(noHome.reason).toMatch(/checked the shell and digital-me\/.data\/.env/);
+
+    // legacy ~/.openclaw/.env is honoured while it is the only env file
+    const legacy = runDoctor(
+      makeDeps({
+        env: { HOME: "/home/u" },
+        which: () => "/usr/bin/python3",
+        execCommand: probe,
+        fileExists: (p) => p === "/home/u/.openclaw/.env",
+        readFile: () => "GEMINI_API_KEY=abc\n",
+      }),
+      ["dream-cycle"],
+    ).checks.find((c) => c.label === "dream-cycle: LLM auth")!;
+    expect(legacy.ok).toBe(true);
+    if (legacy.ok) expect(legacy.note).toMatch(/set in \/home\/u\/.openclaw\/.env/);
   });
 
   it("dream-cycle: LLM auth — defers to openclaw.json for engine=openclaw", () => {

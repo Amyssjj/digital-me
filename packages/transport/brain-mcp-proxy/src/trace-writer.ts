@@ -22,8 +22,9 @@
  * carries the rest (toolName, query, hitCount, isError).
  */
 
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import path from "node:path";
+import { resolveBrainDbPath } from "@digital-me/contracts";
 import type { ToolCallTrace, TraceWriter } from "./handler.js";
 import { PROXY_TRACE_KIND } from "./tools.js";
 
@@ -106,9 +107,18 @@ export function createSqliteTraceWriter(
   };
 }
 
-/** Default brain.db path: `~/.openclaw/data/brain.db` (mirrors digital-me-brain). */
-export function defaultBrainDbPath(homedir: string): string {
-  return path.join(homedir, ".openclaw", "data", "brain.db");
+/**
+ * Default brain.db path — the contracts rule every reader shares:
+ * `DIGITAL_ME_BRAIN_DB` → `<wiki-root>/.data/brain.db` → the legacy
+ * `<openclaw-home>/data/brain.db` while only that one exists → canonical.
+ * (The proxy-specific `BRAIN_DB_PATH` override is applied by the callers.)
+ */
+export function defaultBrainDbPath(
+  homedir: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  exists: (p: string) => boolean = existsSync,
+): string {
+  return resolveBrainDbPath({ env, home: homedir, exists }).path;
 }
 
 function randomTraceId(): string {

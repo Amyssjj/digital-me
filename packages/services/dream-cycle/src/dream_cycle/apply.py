@@ -42,8 +42,11 @@ def _arg(argv: list[str], flag: str) -> Optional[str]:
 
 
 def _brain_db_path() -> Path:
-    home = os.environ.get("OPENCLAW_HOME") or os.path.expanduser("~/.openclaw")
-    return Path(home) / "data" / "brain.db"
+    # One resolver for every dream-cycle brain reader (env → <wiki-root>/.data
+    # → legacy ~/.openclaw); imported lazily so apply stays importable alone.
+    from dream_cycle.brain_learnings import resolve_brain_db_path
+
+    return resolve_brain_db_path()
 
 
 def _wanted(obj) -> bool:

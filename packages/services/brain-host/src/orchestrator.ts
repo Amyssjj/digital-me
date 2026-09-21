@@ -54,7 +54,7 @@ import {
   type WorkflowInstantiateResult,
   type WorkflowsStore,
 } from "@digital-me/brain-orchestrator";
-import { createOpenClawAliasResolver, createOpenClawDispatcher, type CliAliasConfig } from "@digital-me/runtime-openclaw";
+import { createOpenClawAliasResolver, createOpenClawDispatcher, defaultArtifactRoot, type CliAliasConfig } from "@digital-me/runtime-openclaw";
 import * as YAML from "yaml";
 import { errorMessage } from "./errors.js";
 import { execRun as defaultExecRun, type ExecRunArgs, type ExecRunResult } from "./exec-run.js";
@@ -202,9 +202,13 @@ export class Orchestrator {
     };
 
     const io = { exists: opts.exists ?? existsSync, readFile: opts.readFile ?? ((p: string) => readFileSync(p, "utf-8")) };
+    // Per-task artifact dirs (spec.json, handoff.json) follow the shared
+    // rule anchored at THIS host's wiki root: <wiki-root>/.data/task-artifacts,
+    // or the legacy ~/.openclaw/task-artifacts while only that dir exists.
     this.aliasResolver = createOpenClawAliasResolver({
       aliases: loadCliExecAliases(opts.wikiRoot, this.log, io),
       defaultCwd: opts.wikiRoot,
+      artifactRoot: defaultArtifactRoot(undefined, { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot }, io.exists),
     });
 
     const deps: BrainOrchestratorPluginDeps & { readonly aliasResolver: AliasResolver } = {

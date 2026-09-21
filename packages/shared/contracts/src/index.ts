@@ -14,6 +14,16 @@ export {
 
 export type { EnvKey } from "./env.js";
 
+export {
+  resolveBrainDbPath,
+  resolveEnvFilePath,
+  wikiRootOf,
+  openclawHomeOf,
+  brainDataDirOf,
+} from "./paths.js";
+
+export type { BrainPathDeps, BrainPathSource, ResolvedBrainPath } from "./paths.js";
+
 export type {
   InjectionRule,
   InjectionRulesConfig,

@@ -98,6 +98,18 @@ const REGISTRY = {
     description: "File holding the bearer token for DIGITAL_ME_BRAIN_URL, read when DIGITAL_ME_BRAIN_TOKEN is unset. Default: <DIGITAL_ME_WIKI_ROOT>/.data/brain-host.token (written by `digital-me install --runtime brain-host`).",
     required: false,
   },
+  DIGITAL_ME_BRAIN_DB: {
+    default: null, // resolved by resolveBrainDbPath(): <wiki-root>/.data/brain.db, else the legacy <OPENCLAW_HOME>/data/brain.db while only that exists
+    description:
+      "Path to brain.db (goals, tasks, traces, learnings). When unset, every reader applies the same rule: <DIGITAL_ME_WIKI_ROOT>/.data/brain.db if it exists, else the legacy <OPENCLAW_HOME>/data/brain.db if it exists, else the canonical <DIGITAL_ME_WIKI_ROOT>/.data/brain.db.",
+    required: false,
+  },
+  DIGITAL_ME_ENV_FILE: {
+    default: null, // resolved by resolveEnvFilePath(): <wiki-root>/.data/.env, else the legacy <OPENCLAW_HOME>/.env while only that exists
+    description:
+      "Env file holding provider keys (GEMINI_API_KEY, …), loaded by the brain-host service and inherited by the workers it dispatches. When unset: <DIGITAL_ME_WIKI_ROOT>/.data/.env if it exists, else the legacy <OPENCLAW_HOME>/.env if it exists, else <DIGITAL_ME_WIKI_ROOT>/.data/.env.",
+    required: false,
+  },
   BRAIN_PROXY_PATH: {
     default: null,
     description:

@@ -40,18 +40,34 @@ from typing import Optional
 
 import yaml
 
-from dream_cycle.config import load_config, Config
+from dream_cycle.config import load_config, resolve_wiki_root, Config
 
 
+# Legacy location (the openclaw plugin's home). Kept as the fallback while a
+# pre-move install still has its database there; tests monkeypatch it.
 DEFAULT_BRAIN_DB_PATH = Path.home() / ".openclaw" / "data" / "brain.db"
 
 
 def resolve_brain_db_path() -> Path:
-    """`$DIGITAL_ME_BRAIN_DB` overrides; otherwise default OpenClaw location."""
+    """Where brain.db lives — the rule every digital-me reader shares
+    (Python twin of ``@digital-me/contracts`` ``resolveBrainDbPath``):
+
+    1. ``$DIGITAL_ME_BRAIN_DB``
+    2. ``<wiki-root>/.data/brain.db`` when it exists (the canonical home)
+    3. the legacy ``<OPENCLAW_HOME or ~/.openclaw>/data/brain.db`` when it exists
+    4. the canonical path (a fresh install creates it there)
+    """
     env = os.environ.get("DIGITAL_ME_BRAIN_DB")
     if env:
         return Path(env).expanduser()
-    return DEFAULT_BRAIN_DB_PATH
+    canonical = resolve_wiki_root() / ".data" / "brain.db"
+    if canonical.exists():
+        return canonical
+    oc_home = os.environ.get("OPENCLAW_HOME")
+    legacy = Path(oc_home).expanduser() / "data" / "brain.db" if oc_home else DEFAULT_BRAIN_DB_PATH
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 # Map brain `kind` (which has one extra value, "rejection", relative to the

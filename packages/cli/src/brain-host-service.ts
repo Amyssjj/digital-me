@@ -1,4 +1,6 @@
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { resolveBrainDbPath, resolveEnvFilePath } from "@digital-me/contracts";
 import { resolveServicePath } from "./service-path.js";
 
 /**
@@ -11,6 +13,12 @@ import { resolveServicePath } from "./service-path.js";
  * worktree path. Secrets stay out of the unit file: the bearer token is read
  * by brain-host from `<wiki-root>/.data/brain-host.token`, and provider keys
  * come from an env file loaded with node's `--env-file-if-exists`.
+ *
+ * brain.db and the env file follow the contracts rule (resolveBrainDbPath /
+ * resolveEnvFilePath): explicit env var → `<wiki-root>/.data/…` → the legacy
+ * `~/.openclaw/…` location while only that one exists. The unit bakes the
+ * resolved absolute paths in, so a later move is a re-install, never a
+ * surprise at restart.
  *
  * Single-ticker rule: the scheduler is OFF unless the install explicitly
  * enables it. Exactly one process may tick a brain.db.
@@ -45,22 +53,22 @@ export function resolveBrainHostServiceConfig(
   home: string,
   env: Readonly<Record<string, string | undefined>>,
   nodeBin: string,
-  options: { readonly scheduler?: "on" | "off" } = {},
+  options: { readonly scheduler?: "on" | "off"; readonly exists?: (p: string) => boolean } = {},
 ): BrainHostServiceConfig {
   const wikiRoot = env.DIGITAL_ME_WIKI_ROOT ?? path.join(home, "digital-me");
-  const openclawHome = env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  const pathDeps = { env: { ...env, DIGITAL_ME_WIKI_ROOT: wikiRoot }, home, exists: options.exists ?? existsSync };
   const portRaw = env.DIGITAL_ME_BRAIN_PORT;
   const port = portRaw ? Number.parseInt(portRaw, 10) : BRAIN_HOST_DEFAULT_PORT;
   return {
     label: BRAIN_HOST_SERVICE_LABEL,
     workingDir: path.join(home, ".local", "share", "digital-me", "brain-host"),
     nodeBin,
-    envFile: env.DIGITAL_ME_ENV_FILE ?? path.join(openclawHome, ".env"),
+    envFile: resolveEnvFilePath(pathDeps).path,
     port: Number.isFinite(port) && port > 0 ? port : BRAIN_HOST_DEFAULT_PORT,
     host: env.DIGITAL_ME_BRAIN_HOST ?? "127.0.0.1",
     wikiRoot,
     tokenFile: path.join(wikiRoot, ".data", "brain-host.token"),
-    brainDb: env.DIGITAL_ME_BRAIN_DB ?? path.join(openclawHome, "data", "brain.db"),
+    brainDb: resolveBrainDbPath(pathDeps).path,
     scheduler: options.scheduler ?? (env.DIGITAL_ME_BRAIN_SCHEDULER?.toLowerCase() === "on" ? "on" : "off"),
     home,
     pathEnv: resolveServicePath(home, env, nodeBin),

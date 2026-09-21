@@ -6,6 +6,9 @@ import {
   detectInstalledRuntimes,
   planWikiInit,
   renderStarterConfig,
+  ensureGitignoreEntries,
+  renderWikiGitignore,
+  WIKI_GITIGNORE_ENTRIES,
   type SetupDeps,
 } from "./setup.js";
 
@@ -150,7 +153,9 @@ describe("buildTranscriptSources", () => {
 describe("renderStarterConfig", () => {
   it("emits a yaml-shaped starter config with no aliases when none are passed", () => {
     const out = renderStarterConfig({ wikiRoot: "/x", aliases: {} });
-    expect(out).toContain("engine: openclaw");
+    expect(out).toContain("engine: standalone");
+    expect(out).toContain("api_key_env: GEMINI_API_KEY");
+    expect(out).not.toContain("engine: openclaw");
     expect(out).toContain("sources: []");
     expect(out).not.toContain("cli_exec_aliases");
   });
@@ -233,6 +238,7 @@ describe("planWikiInit", () => {
       "/wiki-root/tastes",
       "/wiki-root/inbox",
       "/wiki-root/.cache",
+      "/wiki-root/.data",
     ]);
   });
 
@@ -240,6 +246,7 @@ describe("planWikiInit", () => {
     const plan = planWikiInit({ wikiRoot: "/r", aliases: {} });
     const paths = plan.filesToCreate.map((f) => f.path).sort();
     expect(paths).toEqual([
+      "/r/.gitignore",
       "/r/config.example.yaml",
       "/r/config.yaml",
       "/r/inbox/.gitkeep",
@@ -258,7 +265,7 @@ describe("planWikiInit", () => {
       (f) => f.path === "/r/config.example.yaml",
     )!;
     expect(live.contents).toBe(example.contents);
-    expect(live.contents).toContain("engine: openclaw");
+    expect(live.contents).toContain("engine: standalone");
   });
 
   it("inlines the rendered starter config in the example yaml", () => {
@@ -273,11 +280,32 @@ describe("planWikiInit", () => {
     expect(yaml.contents).toContain("claude-code-cli:");
   });
 
+  it("seeds a .gitignore that keeps .data/ (token, keys, brain.db) out of the wiki repo, never overwriting an existing one", () => {
+    const plan = planWikiInit({ wikiRoot: "/r", aliases: {} });
+    const gi = plan.filesToCreate.find((f) => f.path === "/r/.gitignore")!;
+    expect(gi.overwrite).toBeUndefined();
+    expect(gi.contents).toBe(renderWikiGitignore());
+    for (const e of WIKI_GITIGNORE_ENTRIES) expect(gi.contents).toContain(`\n${e}\n`);
+  });
+
   it(".gitkeep stubs are empty strings (placeholder files)", () => {
     const plan = planWikiInit({ wikiRoot: "/r", aliases: {} });
     const gitkeeps = plan.filesToCreate.filter((f) =>
       f.path.endsWith(".gitkeep"),
     );
     expect(gitkeeps.every((f) => f.contents === "")).toBe(true);
+  });
+});
+
+describe("ensureGitignoreEntries", () => {
+  it("returns null when every entry is already present (slash variants and blank/comment lines tolerated)", () => {
+    expect(ensureGitignoreEntries(".data/\n.cache/\ninbox/\n")).toBeNull();
+    expect(ensureGitignoreEntries("# x\n\n/.data\n.cache\ninbox/\n")).toBeNull();
+  });
+
+  it("appends only the missing entries under a comment, fixing a missing trailing newline", () => {
+    expect(ensureGitignoreEntries("inbox/")).toBe("inbox/\n# digital-me runtime data (added by digital-me setup)\n.data/\n.cache/\n");
+    expect(ensureGitignoreEntries("")).toBe("# digital-me runtime data (added by digital-me setup)\n.data/\n.cache/\ninbox/\n");
+    expect(ensureGitignoreEntries("node_modules\n", [".data/"])).toBe("node_modules\n# digital-me runtime data (added by digital-me setup)\n.data/\n");
   });
 });
