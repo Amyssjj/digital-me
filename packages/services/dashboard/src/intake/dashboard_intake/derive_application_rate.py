@@ -74,7 +74,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import db_path
+from . import brain_db_path, db_path
 from .db import (
     connect,
     upsert_application_rate,
@@ -256,8 +256,7 @@ def aggregate(
 # ─── Brain.db aggregator (M1 universal protocol) ─────────────────────────
 
 
-# Default brain.db path. Override via DIGITAL_ME_BRAIN_DB env or --brain-db flag.
-DEFAULT_BRAIN_DB = ".openclaw/data/brain.db"
+# brain.db: --brain-db flag, else the shared rule (dashboard_intake.brain_db_path).
 
 
 def aggregate_from_brain(
@@ -510,7 +509,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     p.add_argument(
         "--brain-db", type=Path, default=None,
-        help=f"Path to brain.db (default: ~/{DEFAULT_BRAIN_DB})",
+        help="Path to brain.db (default: $DIGITAL_ME_BRAIN_DB, else <wiki-root>/.data/brain.db, "
+             "else the legacy ~/.openclaw/data/brain.db while only that exists)",
     )
     return p.parse_args(argv)
 
@@ -521,7 +521,7 @@ def main(argv: list[str] | None = None) -> int:
     today = date.today()
     start = today - timedelta(days=args.days - 1)
     db_file = args.db if args.db else db_path()
-    brain_db = args.brain_db if args.brain_db else (home / DEFAULT_BRAIN_DB)
+    brain_db = brain_db_path(args.brain_db)
 
     # Resolve which sources to run for this invocation.
     src = args.source

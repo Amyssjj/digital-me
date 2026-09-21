@@ -11,21 +11,27 @@
  *   GEMINI_API_KEY           embedding provider key (required unless --offline)
  *   DIGITAL_ME_EMBED_MODEL   default gemini-embedding-001
  *   DIGITAL_ME_EMBED_DIMS    default 768
- *   DIGITAL_ME_BRAIN_DB      default <OPENCLAW_HOME or ~/.openclaw>/data/brain.db
+ *   DIGITAL_ME_BRAIN_DB      default <wiki-root>/.data/brain.db; the legacy
+ *                            <OPENCLAW_HOME or ~/.openclaw>/data/brain.db is used
+ *                            while only that file exists (see @digital-me/contracts resolveBrainDbPath)
  *   DIGITAL_ME_BRAIN_SCHEDULER  on|off (default off — one ticker per brain.db)
  *   DIGITAL_ME_TICK_MS       default 60000
  *   DIGITAL_ME_STALL_MS      default 3600000
  *   DIGITAL_ME_INDEX_REFRESH_MS  serve-mode incremental re-index period (default 1800000 = 30 min; 0 disables)
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
+import { resolveBrainDbPath, type BrainPathSource } from "@digital-me/contracts";
+
 export type HostConfig = {
   readonly wikiRoot: string;
-  /** brain.db path (goals, tasks, traces, …). Default: <OPENCLAW_HOME or ~/.openclaw>/data/brain.db until the Phase 3 move. */
+  /** brain.db path (goals, tasks, traces, …): env → <wiki-root>/.data/brain.db → legacy openclaw path (contracts rule). */
   readonly brainDbPath: string;
+  /** Which rule branch produced brainDbPath — "legacy-openclaw" is logged at serve time as a move hint. */
+  readonly brainDbSource: BrainPathSource;
   /** Scheduler tick on/off. OFF by default: exactly one host may tick a brain.db. */
   readonly schedulerEnabled: boolean;
   readonly tickIntervalMs: number;
@@ -49,15 +55,26 @@ export function loadConfig(
   env: Record<string, string | undefined>,
   home: string = homedir(),
   readFile: (path: string) => string = (p) => readFileSync(p, "utf-8"),
+  exists: (path: string) => boolean = existsSync,
 ): HostConfig {
   const wikiRoot = expandHome(env.DIGITAL_ME_WIKI_ROOT ?? join(home, "digital-me"), home);
   const tokenFile = expandHome(env.DIGITAL_ME_BRAIN_TOKEN_FILE ?? join(wikiRoot, ".data", "brain-host.token"), home);
   const port = Number.parseInt(env.DIGITAL_ME_BRAIN_PORT ?? "", 10);
   const dims = Number.parseInt(env.DIGITAL_ME_EMBED_DIMS ?? "", 10);
   const openclawHome = expandHome(env.OPENCLAW_HOME ?? join(home, ".openclaw"), home);
+  const brainDb = resolveBrainDbPath({
+    env: {
+      DIGITAL_ME_BRAIN_DB: env.DIGITAL_ME_BRAIN_DB === undefined ? undefined : expandHome(env.DIGITAL_ME_BRAIN_DB, home),
+      DIGITAL_ME_WIKI_ROOT: wikiRoot,
+      OPENCLAW_HOME: openclawHome,
+    },
+    home,
+    exists,
+  });
   return {
     wikiRoot,
-    brainDbPath: expandHome(env.DIGITAL_ME_BRAIN_DB ?? join(openclawHome, "data", "brain.db"), home),
+    brainDbPath: brainDb.path,
+    brainDbSource: brainDb.source,
     schedulerEnabled: (env.DIGITAL_ME_BRAIN_SCHEDULER ?? "off").toLowerCase() === "on",
     tickIntervalMs: positiveInt(env.DIGITAL_ME_TICK_MS, 60_000),
     stallThresholdMs: positiveInt(env.DIGITAL_ME_STALL_MS, 60 * 60 * 1000),

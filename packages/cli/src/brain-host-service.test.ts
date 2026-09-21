@@ -89,19 +89,29 @@ describe("resolveBrainCallerEnv", () => {
 
 describe("resolveBrainHostServiceConfig", () => {
   it("anchors at the stable install symlink with safe defaults and the scheduler OFF", () => {
-    const cfg = resolveBrainHostServiceConfig(HOME, {}, "/opt/homebrew/bin/node");
+    const cfg = resolveBrainHostServiceConfig(HOME, {}, "/opt/homebrew/bin/node", { exists: () => false });
     expect(cfg.workingDir).toBe("/home/t/.local/share/digital-me/brain-host");
     expect(cfg.port).toBe(BRAIN_HOST_DEFAULT_PORT);
     expect(cfg.host).toBe("127.0.0.1");
     expect(cfg.wikiRoot).toBe("/home/t/digital-me");
     expect(cfg.tokenFile).toBe("/home/t/digital-me/.data/brain-host.token");
-    expect(cfg.brainDb).toBe("/home/t/.openclaw/data/brain.db");
-    expect(cfg.envFile).toBe("/home/t/.openclaw/.env");
+    expect(cfg.brainDb).toBe("/home/t/digital-me/.data/brain.db");
+    expect(cfg.envFile).toBe("/home/t/digital-me/.data/.env");
     expect(cfg.scheduler).toBe("off");
     expect(cfg.pathEnv).toBe(
       "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:/home/t/.local/bin:/home/t/Library/pnpm",
     );
     expect(cfg.label).toBe(BRAIN_HOST_SERVICE_LABEL);
+  });
+
+  it("keeps a pre-move install on the legacy ~/.openclaw brain.db + .env while only those exist (real fs probe by default)", () => {
+    const legacyOnly = (p: string) => p === "/home/t/.openclaw/data/brain.db" || p === "/home/t/.openclaw/.env";
+    const cfg = resolveBrainHostServiceConfig(HOME, {}, "/usr/bin/node", { exists: legacyOnly });
+    expect(cfg.brainDb).toBe("/home/t/.openclaw/data/brain.db");
+    expect(cfg.envFile).toBe("/home/t/.openclaw/.env");
+    expect(resolveBrainHostServiceConfig(HOME, { OPENCLAW_HOME: "/oc" }, "/usr/bin/node", { exists: (p) => p === "/oc/data/brain.db" }).brainDb).toBe("/oc/data/brain.db");
+    // default probe is the real filesystem: a nonexistent HOME resolves canonical
+    expect(resolveBrainHostServiceConfig("/nonexistent-home-xyz", {}, "/usr/bin/node").brainDb).toBe("/nonexistent-home-xyz/digital-me/.data/brain.db");
   });
 
   it("builds PATH deterministically: node's dir first, ambient PATH ignored, only DIGITAL_ME_SERVICE_PATH overrides", () => {
@@ -135,12 +145,12 @@ describe("resolveBrainHostServiceConfig", () => {
 });
 
 describe("unit generators", () => {
-  const cfg = resolveBrainHostServiceConfig(HOME, { DIGITAL_ME_WIKI_ROOT: "/w&x" }, "/opt/homebrew/bin/node", { scheduler: "on" });
+  const cfg = resolveBrainHostServiceConfig(HOME, { DIGITAL_ME_WIKI_ROOT: "/w&x" }, "/opt/homebrew/bin/node", { scheduler: "on", exists: () => false });
 
   it("launchd plist runs node with the env file, KeepAlive, no secrets, scheduler flag", () => {
     const plist = buildBrainHostLaunchdPlist(cfg);
     expect(plist).toContain("<string>/opt/homebrew/bin/node</string>");
-    expect(plist).toContain("<string>--env-file-if-exists=/home/t/.openclaw/.env</string>");
+    expect(plist).toContain("<string>--env-file-if-exists=/w&amp;x/.data/.env</string>");
     expect(plist).toContain("<string>/home/t/.local/share/digital-me/brain-host/bin/brain-host.mjs</string>");
     expect(plist).toContain("<string>serve</string>");
     expect(plist).toContain("<key>KeepAlive</key><true/>");
@@ -153,7 +163,7 @@ describe("unit generators", () => {
   it("systemd unit restarts always and carries the same env", () => {
     const unit = buildBrainHostSystemdUnit(cfg);
     expect(unit).toContain("Restart=always");
-    expect(unit).toContain("ExecStart=/opt/homebrew/bin/node --env-file-if-exists=/home/t/.openclaw/.env /home/t/.local/share/digital-me/brain-host/bin/brain-host.mjs serve");
+    expect(unit).toContain("ExecStart=/opt/homebrew/bin/node --env-file-if-exists=/w&x/.data/.env /home/t/.local/share/digital-me/brain-host/bin/brain-host.mjs serve");
     expect(unit).toContain("Environment=DIGITAL_ME_BRAIN_SCHEDULER=on");
     expect(brainHostServiceEnv(cfg).DIGITAL_ME_BRAIN_PORT).toBe("18791");
   });

@@ -106,8 +106,26 @@ export const DEFAULT_WORKER_SCRIPT = path.join(
   "cli-exec-worker.mjs",
 );
 
-export function defaultArtifactRoot(home: string = process.env.HOME ?? ""): string {
-  return path.join(home, ".openclaw", "task-artifacts");
+/**
+ * Where exec workers write their per-task artifact dirs (spec, handoff.json,
+ * logs). Same shape as the brain.db rule: `DIGITAL_ME_TASK_ARTIFACTS` →
+ * `<wiki-root>/.data/task-artifacts` → the legacy `~/.openclaw/task-artifacts`
+ * while only that dir exists → canonical. Existing tasks keep the absolute
+ * paths baked into their specs, so switching the root only affects new ones.
+ */
+export function defaultArtifactRoot(
+  home: string = process.env.HOME ?? "",
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  exists: (p: string) => boolean = fs.existsSync,
+): string {
+  const explicit = (env.DIGITAL_ME_TASK_ARTIFACTS ?? "").trim();
+  if (explicit !== "") return explicit;
+  const wikiRoot = env.DIGITAL_ME_WIKI_ROOT ?? path.join(home, "digital-me");
+  const canonical = path.join(wikiRoot, ".data", "task-artifacts");
+  const legacy = path.join(env.OPENCLAW_HOME ?? path.join(home, ".openclaw"), "task-artifacts");
+  if (exists(canonical)) return canonical;
+  if (exists(legacy)) return legacy;
+  return canonical;
 }
 
 export function createOpenClawAliasResolver(

@@ -18,6 +18,7 @@
  */
 
 import JSON5 from "json5";
+import { resolveEnvFilePath } from "@digital-me/contracts";
 import {
   CONVERSATION_HOOK_PLUGIN_IDS,
   KEY_OPTIONAL_EMBEDDING_PROVIDERS,
@@ -202,7 +203,11 @@ export function runDoctor(
     });
   }
 
-  // openclaw config (canonical path first, then legacy fallbacks)
+  // The brain endpoint every adapter talks to. brain-host is the hub: its
+  // bearer token file marks an install (the service unit + callers are wired
+  // from it). An openclaw gateway is the legacy hub and still counts — but
+  // only as a fallback, and its config check is reported under the openclaw
+  // runtime, not as a global prerequisite.
   const openclawCandidates = [
     deps.env.DIGITAL_ME_OPENCLAW_CONFIG,
     "$HOME/.openclaw/openclaw.json",
@@ -212,18 +217,42 @@ export function runDoctor(
   const foundOpenclaw = openclawCandidates
     .map((p) => expand(deps.env, p))
     .find((p) => deps.fileExists(p));
-  if (foundOpenclaw) {
+  const brainHostTokenFile = expand(
+    deps.env,
+    deps.env.DIGITAL_ME_BRAIN_TOKEN_FILE ??
+      `${wikiRoot ?? "$HOME/digital-me"}/.data/brain-host.token`,
+  );
+  if (deps.fileExists(brainHostTokenFile)) {
     checks.push({
       ok: true,
-      label: "openclaw config",
-      note: foundOpenclaw,
+      label: "brain endpoint",
+      note: `brain-host (token file ${brainHostTokenFile})`,
+    });
+  } else if (foundOpenclaw) {
+    checks.push({
+      ok: true,
+      label: "brain endpoint",
+      note: `openclaw gateway (legacy hub; config ${foundOpenclaw}). Install the hub with 'digital-me install --runtime brain-host'.`,
     });
   } else {
     checks.push({
       ok: false,
-      label: "openclaw config",
-      reason: `Not found at any of: ${openclawCandidates.join(", ")}`,
+      label: "brain endpoint",
+      reason:
+        "No brain-host install (token file missing) and no openclaw gateway config. " +
+        "Run 'digital-me install --runtime brain-host' (or 'digital-me setup').",
     });
+  }
+  if (enabledRuntimes.includes("openclaw")) {
+    checks.push(
+      foundOpenclaw
+        ? { ok: true, label: "openclaw config", note: foundOpenclaw }
+        : {
+            ok: false,
+            label: "openclaw config",
+            reason: `Not found at any of: ${openclawCandidates.join(", ")}`,
+          },
+    );
   }
 
   // brain MCP proxy bin
@@ -901,11 +930,41 @@ export function runLlmAuthCheck(deps: DoctorDeps, python: string): CheckResult {
       note: `engine=${engine}, $${envName} set`,
     };
   }
+  // Not in the doctor's shell — the nightly workers get their keys from the
+  // brain-host env file (contracts rule: DIGITAL_ME_ENV_FILE →
+  // <wiki-root>/.data/.env → legacy ~/.openclaw/.env), so a key defined
+  // there is the normal, supported configuration.
+  const envFile = resolveEnvFilePath({
+    env: deps.env,
+    home: deps.env.HOME ?? "",
+    exists: deps.fileExists,
+  }).path;
+  if (envFileDefines(deps, envFile, envName)) {
+    return {
+      ok: true,
+      label: "dream-cycle: LLM auth",
+      note: `engine=${engine}, ${envName} set in ${envFile}`,
+    };
+  }
   return {
     ok: false,
     label: "dream-cycle: LLM auth",
-    reason: `engine=${engine}: $${envName} is not set. Export it before running dream-cycle.`,
+    reason: `engine=${engine}: $${envName} is not set (checked the shell and ${envFile}). Add \`${envName}=…\` to ${envFile} — brain-host loads it and every worker inherits it.`,
   };
+}
+
+/** True when `<envFile>` has a non-blank `NAME=value` line for `name`. */
+function envFileDefines(deps: DoctorDeps, envFile: string, name: string): boolean {
+  if (!deps.readFile || !deps.fileExists(envFile)) return false;
+  let text: string;
+  try {
+    text = deps.readFile(envFile);
+  } catch {
+    return false;
+  }
+  const re = new RegExp(`^\\s*(?:export\\s+)?${name}\\s*=\\s*(\\S.*)$`, "m");
+  const value = re.exec(text)?.[1] ?? "";
+  return value.replace(/^["']|["']$/g, "").trim().length > 0;
 }
 
 /**

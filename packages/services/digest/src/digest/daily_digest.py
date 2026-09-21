@@ -98,6 +98,11 @@ DISCORD_CHANNEL = _PATHS.discord_channel
 CHANNEL_PLATFORM = _PATHS.channel_platform
 # Optional[str]: resolved from $OPENCLAW_CLI / PATH / ~/.local/bin; None if absent.
 OPENCLAW_CLI = _PATHS.openclaw_cli
+# "webhook" (POST straight to a Discord webhook — no gateway) | "openclaw"
+# (legacy: `openclaw message send`). See config.resolve_delivery.
+DELIVERY = _PATHS.delivery
+# The webhook URL is a secret read from a file; never print it.
+WEBHOOK_URL = _PATHS.webhook_url
 TZ = ZoneInfo("America/Los_Angeles")
 
 # `tone` values supported by openclaw message send --presentation:
@@ -1262,7 +1267,94 @@ def render_components(s: dict) -> dict:
     }
 
 
-def post_discord(presentation: dict, fallback_text: str, *, dry_run: bool) -> None:
+# Discord embed accent per presentation tone (left border colour).
+_TONE_COLORS = {
+    "success": 0x2ECC71,
+    "info": 0x3498DB,
+    "warning": 0xF1C40F,
+    "danger": 0xE74C3C,
+}
+_EMBED_TITLE_MAX = 256
+_EMBED_DESCRIPTION_MAX = 4096
+
+
+def _webhook_payloads(batches: list[dict]) -> list[dict]:
+    """Map the openclaw-shaped presentation batches onto Discord webhook JSON.
+
+    One embed per batch: the batch title (first batch only) becomes the embed
+    title, its text blocks join into the description (dividers render as a
+    thin rule), the tone picks the accent colour. Same batching as the
+    openclaw path, so a long section never exceeds an embed's limits.
+    ``allowed_mentions.parse = []`` guarantees the digest can never ping
+    anyone, whatever a summary contains.
+    """
+    payloads: list[dict] = []
+    for batch in batches:
+        parts: list[str] = []
+        for block in batch.get("blocks") or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "divider":
+                parts.append("───")
+                continue
+            text = _block_text(block).strip()
+            if text:
+                parts.append(text)
+        description = "\n\n".join(parts)[:_EMBED_DESCRIPTION_MAX] or "\u200b"
+        embed: dict = {"description": description}
+        title = batch.get("title")
+        if title:
+            embed["title"] = str(title)[:_EMBED_TITLE_MAX]
+        color = _TONE_COLORS.get(str(batch.get("tone") or ""))
+        if color is not None:
+            embed["color"] = color
+        payloads.append({"embeds": [embed], "allowed_mentions": {"parse": []}})
+    return payloads
+
+
+def _post_webhook(url: str, payload: dict, *, urlopen=None, index: int, total: int) -> None:
+    """POST one payload to the Discord webhook; fail loudly on any non-2xx."""
+    import urllib.error
+    import urllib.request
+
+    opener = urlopen or urllib.request.urlopen
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "User-Agent": "digital-me-digest"},
+        method="POST",
+    )
+    try:
+        with opener(req, timeout=30) as resp:
+            status = getattr(resp, "status", 200)
+    except urllib.error.HTTPError as e:
+        body = ""
+        try:
+            body = e.read().decode("utf-8", "replace")[:500]
+        except Exception:
+            pass
+        raise SystemExit(
+            f"[daily-digest] webhook post failed (batch {index}/{total}, HTTP {e.code}): {body}"
+        ) from None
+    except (urllib.error.URLError, OSError) as e:
+        raise SystemExit(
+            f"[daily-digest] webhook post failed (batch {index}/{total}): {e}"
+        ) from None
+    if status not in (200, 204):
+        raise SystemExit(
+            f"[daily-digest] webhook post failed (batch {index}/{total}, HTTP {status})"
+        )
+
+
+def post_discord(
+    presentation: dict,
+    fallback_text: str,
+    *,
+    dry_run: bool,
+    delivery: Optional[str] = None,
+    webhook_url: Optional[str] = None,
+    urlopen=None,
+) -> None:
     # --message is CLI-required but renders ABOVE the presentation card on
     # Discord, so passing the title duplicates it visually. Use a zero-width
     # space so the field is non-empty but invisible in the rendered message.
@@ -1281,14 +1373,36 @@ def post_discord(presentation: dict, fallback_text: str, *, dry_run: bool) -> No
             "blocks": [{"type": "text", "text": f"_{title}: nothing to report._"}],
         }
     batches = list(_presentation_batches(presentation))
+    mode = delivery or DELIVERY
     if dry_run:
-        print("[dry-run] presentation payload batches:")
+        print(f"[dry-run] delivery={mode}; presentation payload batches:")
         print(json.dumps(batches, indent=2))
+        if mode == "webhook":
+            print("[dry-run] webhook payloads:")
+            print(json.dumps(_webhook_payloads(batches), indent=2))
+        return
+    if mode == "webhook":
+        url = webhook_url or WEBHOOK_URL
+        if not url:
+            raise SystemExit(
+                "[daily-digest] delivery=webhook but no Discord webhook URL configured — "
+                "write it to <wiki-root>/.data/digest-webhook.url (mode 600), or set "
+                "$DIGITAL_ME_DIGEST_WEBHOOK_URL_FILE / config.yaml digest.webhook_url_file; "
+                "set digest.delivery=openclaw to use the legacy `openclaw message send` transport instead"
+            )
+        payloads = _webhook_payloads(batches)
+        for index, payload in enumerate(payloads, start=1):
+            _post_webhook(url, payload, urlopen=urlopen, index=index, total=len(payloads))
+        print(
+            f"[daily-digest] Posted via Discord webhook "
+            f"({len(presentation.get('blocks', []))} blocks in {len(payloads)} messages)"
+        )
         return
     if not OPENCLAW_CLI:
         raise SystemExit(
-            "[daily-digest] openclaw CLI not found — set $OPENCLAW_CLI or "
-            "install openclaw on PATH"
+            "[daily-digest] delivery=openclaw but the openclaw CLI was not found — set $OPENCLAW_CLI, "
+            "install openclaw on PATH, or switch to webhook delivery "
+            "(write the Discord webhook URL to <wiki-root>/.data/digest-webhook.url)"
         )
     if not DISCORD_CHANNEL:
         raise SystemExit(

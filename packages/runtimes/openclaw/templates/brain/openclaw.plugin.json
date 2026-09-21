@@ -27,7 +27,7 @@
       },
       "dbPath": {
         "type": "string",
-        "description": "Path to the brain SQLite database. Defaults to ~/.openclaw/data/brain.db."
+        "description": "Path to the brain SQLite database. Default: $DIGITAL_ME_BRAIN_DB, else <wiki-root>/.data/brain.db, else the legacy ~/.openclaw/data/brain.db while only that exists."
       },
       "stallThresholdMs": {
         "type": "number",
@@ -39,7 +39,7 @@
       },
       "scheduler": {
         "type": "boolean",
-        "description": "Run the scheduler tick in this gateway (default true). Set false once another host (digital-me brain-host) owns the tick — exactly one process may tick a brain.db."
+        "description": "Run the scheduler tick in this gateway. Default: true on a gateway-only machine, false as soon as digital-me brain-host is installed (its token file exists) — brain-host is the hub and owns the tick; exactly one process may tick a brain.db. true forces the tick here; false always disables it."
       }
     }
   }

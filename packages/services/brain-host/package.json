@@ -30,6 +30,7 @@
   },
   "dependencies": {
     "@digital-me/brain-orchestrator": "workspace:*",
+    "@digital-me/contracts": "workspace:*",
     "@digital-me/runtime-openclaw": "workspace:*",
     "yaml": "^2.9.0"
   },

@@ -16,7 +16,8 @@ describe("loadConfig", () => {
     expect(c.geminiApiKey).toBeUndefined();
     expect(c.embedModel).toBe("gemini-embedding-001");
     expect(c.embedDims).toBe(768);
-    expect(c.brainDbPath).toBe("/home/j/.openclaw/data/brain.db");
+    expect(c.brainDbPath).toBe("/home/j/digital-me/.data/brain.db");
+    expect(c.brainDbSource).toBe("canonical");
     expect(c.schedulerEnabled).toBe(false);
     expect(c.tickIntervalMs).toBe(60_000);
     expect(c.stallThresholdMs).toBe(3_600_000);
@@ -29,13 +30,23 @@ describe("loadConfig", () => {
     expect(loadConfig({ DIGITAL_ME_INDEX_REFRESH_MS: "nope" }, "/h").indexRefreshMs).toBe(1_800_000);
   });
 
-  it("derives brain.db from OPENCLAW_HOME and parses scheduler settings", () => {
-    const c = loadConfig({ OPENCLAW_HOME: "~/oc", DIGITAL_ME_BRAIN_SCHEDULER: "ON", DIGITAL_ME_TICK_MS: "5000", DIGITAL_ME_STALL_MS: "0" }, "/h");
+  it("falls back to the legacy OPENCLAW_HOME brain.db only while the canonical file is absent, and parses scheduler settings", () => {
+    const legacyOnly = (p: string) => p === "/h/oc/data/brain.db";
+    const c = loadConfig(
+      { OPENCLAW_HOME: "~/oc", DIGITAL_ME_BRAIN_SCHEDULER: "ON", DIGITAL_ME_TICK_MS: "5000", DIGITAL_ME_STALL_MS: "0" },
+      "/h",
+      undefined,
+      legacyOnly,
+    );
     expect(c.brainDbPath).toBe("/h/oc/data/brain.db");
+    expect(c.brainDbSource).toBe("legacy-openclaw");
+    const both = (p: string) => p === "/h/oc/data/brain.db" || p === "/h/digital-me/.data/brain.db";
+    expect(loadConfig({ OPENCLAW_HOME: "~/oc" }, "/h", undefined, both).brainDbPath).toBe("/h/digital-me/.data/brain.db");
     expect(c.schedulerEnabled).toBe(true);
     expect(c.tickIntervalMs).toBe(5000);
     expect(c.stallThresholdMs).toBe(3_600_000);
     expect(loadConfig({ DIGITAL_ME_BRAIN_DB: "~/b.db" }, "/h").brainDbPath).toBe("/h/b.db");
+    expect(loadConfig({ DIGITAL_ME_BRAIN_DB: "~/b.db" }, "/h").brainDbSource).toBe("env");
   });
 
   it("honours every override and expands ~", () => {

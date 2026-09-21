@@ -183,9 +183,16 @@ describe("createSqliteTraceWriter", () => {
 });
 
 describe("defaultBrainDbPath", () => {
-  it("points at ~/.openclaw/data/brain.db", () => {
-    expect(defaultBrainDbPath("/home/u")).toBe(
-      path.join("/home/u", ".openclaw", "data", "brain.db"),
-    );
+  it("follows the contracts rule: canonical <wiki-root>/.data/brain.db, legacy ~/.openclaw/data/brain.db only while that alone exists", () => {
+    const canonical = path.join("/home/u", "digital-me", ".data", "brain.db");
+    const legacy = path.join("/home/u", ".openclaw", "data", "brain.db");
+    expect(defaultBrainDbPath("/home/u", {}, () => false)).toBe(canonical);
+    expect(defaultBrainDbPath("/home/u", {}, (p) => p === legacy)).toBe(legacy);
+    expect(defaultBrainDbPath("/home/u", {}, (p) => p === legacy || p === canonical)).toBe(canonical);
+    expect(defaultBrainDbPath("/home/u", { DIGITAL_ME_BRAIN_DB: "/x.db" }, () => false)).toBe("/x.db");
+  });
+
+  it("uses process.env and the real filesystem by default", () => {
+    expect(typeof defaultBrainDbPath("/home/u")).toBe("string");
   });
 });

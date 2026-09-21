@@ -190,6 +190,9 @@ importers:
       '@digital-me/brain-orchestrator':
         specifier: workspace:*
         version: link:../../plugins/brain-orchestrator
+      '@digital-me/contracts':
+        specifier: workspace:*
+        version: link:../../shared/contracts
       '@digital-me/runtime-openclaw':
         specifier: workspace:*
         version: link:../../runtimes/openclaw

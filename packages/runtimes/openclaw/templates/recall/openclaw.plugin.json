@@ -44,7 +44,7 @@
       },
       "brainDbPath": {
         "type": "string",
-        "description": "Path to brain.db for Hook D observability writes. Defaults to ~/.openclaw/data/brain.db."
+        "description": "Path to brain.db for Hook D observability writes. Default: $DIGITAL_ME_BRAIN_DB, else <wiki-root>/.data/brain.db, else the legacy ~/.openclaw/data/brain.db while only that exists."
       },
       "appRateFlushIntervalMs": {
         "type": "number",

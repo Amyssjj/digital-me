@@ -92,13 +92,29 @@ function conversationAccessGranted(api, pluginId) {
 const require = createRequire(import.meta.url);
 const { DatabaseSync } = require("node:sqlite");
 
+// brain.db location — the same rule every digital-me reader applies
+// (@digital-me/contracts resolveBrainDbPath): DIGITAL_ME_BRAIN_DB →
+// <wiki-root>/.data/brain.db → the legacy ~/.openclaw/data/brain.db while
+// only that file exists → <wiki-root>/.data/brain.db. Inlined here so the
+// template stays a single file with no workspace import at gateway load.
+function defaultBrainDbPath() {
+  const explicit = (process.env.DIGITAL_ME_BRAIN_DB ?? "").trim();
+  if (explicit !== "") return explicit;
+  const wikiRoot = process.env.DIGITAL_ME_WIKI_ROOT ?? path.join(os.homedir(), "digital-me");
+  const canonical = path.join(wikiRoot, ".data", "brain.db");
+  const legacy = path.join(process.env.OPENCLAW_HOME ?? path.join(os.homedir(), ".openclaw"), "data", "brain.db");
+  if (fs.existsSync(canonical)) return canonical;
+  if (fs.existsSync(legacy)) return legacy;
+  return canonical;
+}
+
 const DEFAULTS = {
   wikiRoot: path.join(os.homedir(), "digital-me", "wiki"),
   indexPath: path.join(os.homedir(), "digital-me", "_INDEX.md"),
   protocolsDir: path.join(os.homedir(), ".openclaw", "shared_protocols"),
   recallMaxResults: 5,
   recallGraphDepth: 1,
-  brainDbPath: path.join(os.homedir(), ".openclaw", "data", "brain.db"),
+  brainDbPath: defaultBrainDbPath(),
 };
 
 const DIGITAL_ME_PROTOCOL = `You are connected to the Digital Me ecosystem — a Living Knowledge wiki
