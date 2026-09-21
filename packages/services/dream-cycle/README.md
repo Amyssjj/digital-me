@@ -154,7 +154,7 @@ src/dream_cycle/
   drift_check.py          LLM citation-drift audit (configurable code roots)
   index.py                _INDEX.md / _STATS.md
   crosslink.py            _GRAPH.md cross-link generation
-  citations.py            citation tracking from traces
+  citations.py            citation tracking from brain-DB traces (same DB as brain_learnings)
   lint.py                 frontmatter / structure checks
   bundles.py              skill-bundle packaging
   brain_learnings.py      materialize learnings from brain MCP
