@@ -22,12 +22,16 @@ export {
   PACKAGE_ROOT,
   SECTION_BEGIN,
   SECTION_END,
+  SHELL_ENV_POLICY_HEADER,
+  SHELL_ENV_POLICY_SET_HEADER,
   TEMPLATES_DIR,
+  brainHookEnv,
   buildCodexHooksManifest,
   buildCodexMcpConfig,
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  mergeShellEnvPolicySet,
 } from "./installer.js";
 export type {
   CodexHookHandler,

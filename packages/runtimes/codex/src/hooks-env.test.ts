@@ -5,13 +5,15 @@
  * dm_m1_emit.py (the M1 emitter, also spawned by the inject + Stop hooks) must
  * resolve its endpoint with the same precedence as brain-mcp-proxy/config.ts:
  *
- *   DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN   (brain-host; both required)
+ *   DIGITAL_ME_BRAIN_URL (brain-host) with the token from DIGITAL_ME_BRAIN_TOKEN,
+ *     else the trimmed contents of DIGITAL_ME_BRAIN_TOKEN_FILE, else of
+ *     <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token
  *   > OPENCLAW_GATEWAY_URL | OPENCLAW_GATEWAY_HOST/PORT + OPENCLAW_GATEWAY_TOKEN
  *   > $HOME/.openclaw/openclaw.json  (gateway.auth.token)
  *
  * A node http stub stands in for the backend so each test proves WHERE the
- * request went and which bearer it carried — and that a URL without a token
- * never falls back to the gateway. Spawns start from a scrubbed env with an
+ * request went and which bearer it carried — and that a URL with no resolvable
+ * token never falls back to the gateway. Spawns start from a scrubbed env with an
  * isolated HOME, so nothing from the developer's shell or ~/.openclaw leaks in
  * and the M1 WAL lands under the temp dir, never in the real one.
  *
@@ -132,6 +134,18 @@ function writeOpenclawJson(token: string): void {
   );
 }
 
+/** The default brain-host token file for the isolated HOME (no DIGITAL_ME_WIKI_ROOT). */
+function defaultTokenFile(wikiRoot = path.join(home, "digital-me")): string {
+  return path.join(wikiRoot, ".data", "brain-host.token");
+}
+
+/** Write a token file the way `digital-me install --runtime brain-host` does (trailing newline). */
+function writeTokenFile(file: string, contents: string): string {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, contents);
+  return file;
+}
+
 // ─── dm_m1_emit.py ─────────────────────────────────────────────────────────
 
 async function runEmit(env: Record<string, string>, extraArgs: string[] = []) {
@@ -185,7 +199,7 @@ describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
     expect(seen[0]!.auth).toBe("Bearer t-brain");
   });
 
-  it("DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN is a hard error: no request, no gateway-token fallback, WAL still written", async () => {
+  it("DIGITAL_ME_BRAIN_URL with no token anywhere is a hard error: no request, no gateway-token fallback, WAL still written, stderr names both token vars", async () => {
     writeOpenclawJson("file-tok"); // available gateway tokens must NOT be used
     const r = await runEmit({
       DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
@@ -193,8 +207,69 @@ describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
     });
     expect(r.status).toBe(3); // exit-code contract: WAL written, but brain misconfigured → 3
     expect(seen).toHaveLength(0);
-    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN");
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN,");
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE");
+    expect(r.stderr).toContain(defaultTokenFile()); // where it looked
     expect(r.stderr).toContain("kept in WAL only");
+    expect(r.walLines).toHaveLength(1);
+  });
+
+  it("DIGITAL_ME_BRAIN_URL + the default token file (<HOME>/digital-me/.data/brain-host.token) → bearer is the trimmed file contents", async () => {
+    writeTokenFile(defaultTokenFile(), "  file-secret\n");
+    const r = await runEmit({ DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke` });
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.auth).toBe("Bearer file-secret");
+    expect(r.stdout).toContain("brain=ok");
+  });
+
+  it("DIGITAL_ME_WIKI_ROOT relocates the default token file", async () => {
+    const wikiRoot = path.join(home, "elsewhere");
+    writeTokenFile(defaultTokenFile(wikiRoot), "relocated-secret\n");
+    writeTokenFile(defaultTokenFile(), "wrong-secret\n"); // the ~/digital-me default must be ignored
+    const r = await runEmit({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_WIKI_ROOT: wikiRoot,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen[0]!.auth).toBe("Bearer relocated-secret");
+  });
+
+  it("DIGITAL_ME_BRAIN_TOKEN_FILE names an explicit file that beats the default one", async () => {
+    writeTokenFile(defaultTokenFile(), "default-secret\n");
+    const explicit = writeTokenFile(path.join(home, "custom.token"), "explicit-secret\n");
+    const r = await runEmit({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: explicit,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen[0]!.auth).toBe("Bearer explicit-secret");
+  });
+
+  it("DIGITAL_ME_BRAIN_TOKEN (env) wins over both token files", async () => {
+    writeTokenFile(defaultTokenFile(), "default-secret\n");
+    const explicit = writeTokenFile(path.join(home, "custom.token"), "explicit-secret\n");
+    const r = await runEmit({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_BRAIN_TOKEN: "env-secret",
+      DIGITAL_ME_BRAIN_TOKEN_FILE: explicit,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen[0]!.auth).toBe("Bearer env-secret");
+  });
+
+  it("an empty token file counts as no token: exit 3, no request, stderr names DIGITAL_ME_BRAIN_TOKEN_FILE and the file", async () => {
+    const explicit = writeTokenFile(path.join(home, "empty.token"), "  \n");
+    writeOpenclawJson("file-tok");
+    const r = await runEmit({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: explicit,
+      OPENCLAW_GATEWAY_TOKEN: "t-gateway",
+    });
+    expect(r.status).toBe(3);
+    expect(seen).toHaveLength(0);
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE");
+    expect(r.stderr).toContain(explicit);
     expect(r.walLines).toHaveLength(1);
   });
 
@@ -371,7 +446,7 @@ describe(`${RUNTIME} dm_memory_search_inject.sh — endpoint, token and score ga
     expect(parseContext(r.stdout)).toContain("score=52/100");
   });
 
-  it("DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN: no request anywhere, fail-open with a stderr diagnostic", async () => {
+  it("DIGITAL_ME_BRAIN_URL with no token anywhere: no request, fail-open with a stderr diagnostic naming both token vars", async () => {
     const { wikiRoot, entryPath } = seedWiki();
     writeOpenclawJson("file-tok"); // a gateway token IS available — it must not be used
     cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
@@ -382,7 +457,72 @@ describe(`${RUNTIME} dm_memory_search_inject.sh — endpoint, token and score ga
     });
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
-    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN");
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN,");
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE");
+    expect(r.stderr).toContain(defaultTokenFile(wikiRoot));
+    expect(seen).toHaveLength(0);
+  });
+
+  it("brain-host env with the token in the default file (<DIGITAL_ME_WIKI_ROOT>/.data/brain-host.token): search + both M1 events carry the file bearer", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    writeTokenFile(defaultTokenFile(wikiRoot), "file-secret\n");
+    cannedSearch = { results: [hit(entryPath, { score: 0.042, vectorScore: 0.77 })] };
+    const r = await runInject({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_WIKI_ROOT: wikiRoot,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    expect(parseContext(r.stdout)).toContain("score=77/100");
+    expect(seen.map((s) => s.body.tool)).toEqual(["memory_search", "m1_event_record", "m1_event_record"]);
+    for (const s of seen) expect(s.auth).toBe("Bearer file-secret");
+  });
+
+  it("DIGITAL_ME_BRAIN_TOKEN_FILE names an explicit file (trimmed) that beats the default one", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    writeTokenFile(defaultTokenFile(wikiRoot), "default-secret\n");
+    const explicit = writeTokenFile(path.join(home, "custom.token"), "\n  explicit-secret  \n");
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const r = await runInject({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: explicit,
+      DIGITAL_ME_WIKI_ROOT: wikiRoot,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    parseContext(r.stdout);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const s of seen) expect(s.auth).toBe("Bearer explicit-secret");
+  });
+
+  it("DIGITAL_ME_BRAIN_TOKEN (env) wins over the token file", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const explicit = writeTokenFile(path.join(home, "custom.token"), "explicit-secret\n");
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const r = await runInject({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_BRAIN_TOKEN: "env-secret",
+      DIGITAL_ME_BRAIN_TOKEN_FILE: explicit,
+      DIGITAL_ME_WIKI_ROOT: wikiRoot,
+    });
+    expect(r.status, r.stderr).toBe(0);
+    parseContext(r.stdout);
+    for (const s of seen) expect(s.auth).toBe("Bearer env-secret");
+  });
+
+  it("an empty token file counts as no token: no request, stderr names DIGITAL_ME_BRAIN_TOKEN_FILE and the file", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const explicit = writeTokenFile(path.join(home, "empty.token"), "   \n\n");
+    writeOpenclawJson("file-tok");
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const r = await runInject({
+      DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: explicit,
+      OPENCLAW_GATEWAY_TOKEN: "g",
+      DIGITAL_ME_WIKI_ROOT: wikiRoot,
+    });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE");
+    expect(r.stderr).toContain(explicit);
     expect(seen).toHaveLength(0);
   });
 

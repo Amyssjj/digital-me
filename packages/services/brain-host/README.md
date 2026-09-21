@@ -64,8 +64,8 @@ node --env-file=~/.openclaw/.env packages/services/brain-host/bin/brain-host.mjs
 # ad hoc query
 node --env-file=~/.openclaw/.env packages/services/brain-host/bin/brain-host.mjs search "kanban goals vanished" --limit 5
 
-# serve
-DIGITAL_ME_BRAIN_TOKEN=<secret> node --env-file=~/.openclaw/.env \
+# serve (token from <wiki-root>/.data/brain-host.token, or DIGITAL_ME_BRAIN_TOKEN_FILE / DIGITAL_ME_BRAIN_TOKEN)
+node --env-file=~/.openclaw/.env \
   packages/services/brain-host/bin/brain-host.mjs serve --port 18791
 ```
 
@@ -76,6 +76,7 @@ until the Phase 3 move), `DIGITAL_ME_BRAIN_SCHEDULER` (`on`|`off`, default off),
 `DIGITAL_ME_TICK_MS` (60000), `DIGITAL_ME_STALL_MS` (3600000),
 `DIGITAL_ME_WIKI_ROOT` (default `~/digital-me`),
 `DIGITAL_ME_RETRIEVAL_DB` (default `<wiki-root>/.data/retrieval.db`),
+`DIGITAL_ME_BRAIN_TOKEN_FILE` (default `<wiki-root>/.data/brain-host.token`) or
 `DIGITAL_ME_BRAIN_TOKEN`, `DIGITAL_ME_BRAIN_PORT` (18791),
 `DIGITAL_ME_BRAIN_HOST` (127.0.0.1), `GEMINI_API_KEY`, `DIGITAL_ME_EMBED_MODEL`,
 `DIGITAL_ME_EMBED_DIMS`. `--offline` swaps in a deterministic hash embedder for
@@ -114,14 +115,33 @@ so ~0.05 at most); it is exposed for diagnostics and must never be gated on.
 
 ## Pointing callers at brain-host
 
-Every caller resolves its endpoint the same way: `DIGITAL_ME_BRAIN_URL` +
-`DIGITAL_ME_BRAIN_TOKEN` (both required together — a URL without a token is a
-configuration error, never a silent fallback), then
-`OPENCLAW_GATEWAY_HOST` / `OPENCLAW_GATEWAY_PORT` / `OPENCLAW_GATEWAY_TOKEN`,
-then `gateway.auth.token` from `openclaw.json`. `digital-me install --runtime
-claude-code` writes the two `DIGITAL_ME_BRAIN_*` variables into
-`~/.claude/settings.json` `env` once the brain-host token file exists, so the
-hooks reach brain-host without a shell export.
+Every caller (brain-mcp-proxy, the Claude Code / Codex hooks, the Hermes
+recall plugin and `m1_backfill.py`, dream-cycle's brain client) resolves its
+endpoint the same way:
+
+1. `DIGITAL_ME_BRAIN_URL` — brain-host. Its bearer token is
+   `DIGITAL_ME_BRAIN_TOKEN` when non-empty, else the trimmed contents of
+   `DIGITAL_ME_BRAIN_TOKEN_FILE`, else of the default token file
+   `<DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token` (the
+   mode-600 file `digital-me install --runtime brain-host` writes). An empty
+   or unreadable file counts as no token, and a URL with no resolvable token
+   is a configuration error — never a silent fallback to the gateway.
+2. `OPENCLAW_GATEWAY_URL`, or `OPENCLAW_GATEWAY_HOST` / `OPENCLAW_GATEWAY_PORT`,
+   with `OPENCLAW_GATEWAY_TOKEN`.
+3. `gateway.auth.token` from `openclaw.json`.
+
+**Recommend `DIGITAL_ME_BRAIN_TOKEN_FILE` over `DIGITAL_ME_BRAIN_TOKEN`**: a
+registration or service unit then carries a path, not the secret. That is what
+the installers write once the brain-host token file exists:
+
+| Installer | Where | What it writes |
+|---|---|---|
+| `install --runtime claude-code` | `~/.claude/settings.json` `env` (hooks) and the `claude mcp add` registration | `DIGITAL_ME_BRAIN_URL` + `DIGITAL_ME_BRAIN_TOKEN_FILE`; a `DIGITAL_ME_BRAIN_TOKEN` an earlier install wrote is removed |
+| `install --runtime codex` | `~/.codex/config.toml` `[mcp_servers.openclaw-brain]` env (proxy) and `[shell_environment_policy.set]` (hooks run in the shell env, not the MCP env) | same pair; the MCP stanza is replaced wholesale, so an old inline `DIGITAL_ME_BRAIN_TOKEN` disappears; other keys in `[shell_environment_policy.set]` are preserved |
+| `install --runtime hermes` | `~/.hermes/config.yaml` `openclaw-brain` stanza `env:` (via `hermes mcp add --env`) | same pair |
+
+Only the URL is needed on a machine that uses the default token path; set
+`DIGITAL_ME_BRAIN_TOKEN_FILE` when the file lives elsewhere.
 
 ## Quality gate
 

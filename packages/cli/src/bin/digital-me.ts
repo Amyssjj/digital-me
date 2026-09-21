@@ -58,15 +58,18 @@ import {
   CODEX_MD_TEMPLATE,
   HOOK_NAMES as CODEX_HOOK_NAMES,
   HOOKS_DIR as CODEX_HOOKS_DIR,
+  brainHookEnv,
   buildCodexMcpConfig,
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  mergeShellEnvPolicySet,
 } from "@digital-me/runtime-codex";
 import { BIN_PATH as BRAIN_MCP_PROXY_BIN } from "@digital-me/brain-mcp-proxy";
 import { stabilizeRegistration } from "../stable-registration.js";
 import {
   SOUL_MD_TEMPLATE,
+  buildHermesMcpEnv,
   mergeSoulMd,
   RECALL_PLUGIN_NAME as HERMES_RECALL_PLUGIN_NAME,
   RECALL_PLUGIN_SRC_DIR as HERMES_RECALL_PLUGIN_SRC_DIR,
@@ -96,6 +99,7 @@ import {
 } from "../dashboard-service.js";
 import {
   BRAIN_HOST_SERVICE_LABEL,
+  type BrainCallerEnv,
   brainHostInvokeUrl,
   brainHostServiceUnitPath,
   buildBrainHostServiceUnit,
@@ -585,24 +589,31 @@ function installClaudeCode(home: string): void {
   // minted a bearer token, point the hooks at brain-host through settings.json
   // `env` (Claude Code exports it to every hook process). Without this the
   // hooks keep talking to the openclaw gateway after the cutover, silently.
-  // Both DIGITAL_ME_BRAIN_* keys are written together — a URL without a token
-  // is a hard error in every caller, never a fallback.
+  // Only DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE are written — the
+  // secret stays in the mode-600 token file and every hook reads it itself;
+  // a DIGITAL_ME_BRAIN_TOKEN an earlier install wrote is removed. A URL with
+  // no resolvable token is a hard error in every caller, never a fallback.
   const brainCfg = resolveBrainHostServiceConfig(home, process.env, process.execPath);
+  const brainCaller = resolveBrainCallerEnv(process.env, brainCfg, readTokenFileIfExists);
   let brainNote = "";
-  if (existsSync(brainCfg.tokenFile)) {
-    const brainToken = readFileSync(brainCfg.tokenFile, "utf-8").trim();
-    if (brainToken !== "") {
-      const brainUrl = brainHostInvokeUrl(brainCfg);
-      merged = mergeBrainEnvIntoSettings(merged, { url: brainUrl, token: brainToken });
-      brainNote = ` + env DIGITAL_ME_BRAIN_URL=${brainUrl} (token from ${brainCfg.tokenFile})`;
-    }
+  if (brainCaller !== undefined) {
+    merged = mergeBrainEnvIntoSettings(merged, {
+      url: brainCaller.brainUrl,
+      tokenFile: brainCaller.brainTokenFile,
+    });
+    brainNote = ` + env DIGITAL_ME_BRAIN_URL=${brainCaller.brainUrl} DIGITAL_ME_BRAIN_TOKEN_FILE=${brainCaller.brainTokenFile}`;
   }
   writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
   // Reference the manifest so this gets imported (tree-shake protection):
   void buildClaudeHooksManifest;
   console.log(`[OK] installed claude-code: hooks + skill + settings.json merged${brainNote}`);
   // Register the openclaw-brain MCP server in Claude Code's CLI registry
-  installClaudeCodeMcp();
+  installClaudeCodeMcp(brainCaller);
+}
+
+/** Token-file reader for resolveBrainCallerEnv: contents when present, else undefined. */
+function readTokenFileIfExists(file: string): string | undefined {
+  return existsSync(file) ? readFileSync(file, "utf-8") : undefined;
 }
 
 function installCodex(home: string): void {
@@ -627,16 +638,16 @@ function installCodex(home: string): void {
     console.log(`     codex MCP: ${note}`);
   }
   // Backend for the proxy Codex spawns. Codex does not forward this shell's
-  // env to MCP servers, so DIGITAL_ME_BRAIN_URL/TOKEN must be baked into the
-  // stanza: this process's env first, else the always-on brain-host service
-  // (token file on disk), else the stanza stays on the openclaw gateway.
+  // env to MCP servers, so DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE
+  // (the path — never the secret) must be baked into the stanza: this
+  // process's env first, else the always-on brain-host service (token file on
+  // disk), else the stanza stays on the openclaw gateway. Re-installing drops
+  // a DIGITAL_ME_BRAIN_TOKEN an earlier version wrote (the block is replaced).
   const brainHostCfg = resolveBrainHostServiceConfig(home, process.env, codexStable.nodePath);
-  const brainCaller = resolveBrainCallerEnv(process.env, brainHostCfg, (file) =>
-    existsSync(file) ? readFileSync(file, "utf-8") : undefined,
-  );
+  const brainCaller = resolveBrainCallerEnv(process.env, brainHostCfg, readTokenFileIfExists);
   console.log(
     brainCaller
-      ? `     codex MCP: proxy env → brain-host at ${brainCaller.brainUrl}`
+      ? `     codex MCP: proxy env → brain-host at ${brainCaller.brainUrl} (token file ${brainCaller.brainTokenFile})`
       : `     codex MCP: proxy env → openclaw gateway (no brain-host token at ${brainHostCfg.tokenFile}; run 'digital-me install --runtime brain-host' to switch)`,
   );
   const tomlFragment = buildCodexMcpConfig({
@@ -645,17 +656,28 @@ function installCodex(home: string): void {
     openclawHome,
     agentId: "codex",
     brainUrl: brainCaller?.brainUrl,
-    brainToken: brainCaller?.brainToken,
+    brainTokenFile: brainCaller?.brainTokenFile,
   });
   const tomlTarget = path.join(codexDir, "config.toml");
   const tomlExisting = existsSync(tomlTarget)
     ? readFileSync(tomlTarget, "utf-8")
     : "";
-  writeFileSync(
-    tomlTarget,
-    mergeMcpServer(tomlExisting, tomlFragment),
-    "utf-8",
-  );
+  let tomlMerged = mergeMcpServer(tomlExisting, tomlFragment);
+  // Codex hooks run in the shell environment, not the MCP server env, so the
+  // inject / Stop hooks need the same two variables via
+  // [shell_environment_policy.set] (merged; other keys in that table are kept).
+  if (brainCaller) {
+    try {
+      tomlMerged = mergeShellEnvPolicySet(tomlMerged, brainHookEnv(brainCaller));
+      console.log(`     codex hooks: [shell_environment_policy.set] → brain-host at ${brainCaller.brainUrl}`);
+    } catch (err) {
+      console.error(
+        `[WARN] codex hooks: could not merge [shell_environment_policy.set] (${err instanceof Error ? err.message : String(err)}). ` +
+          `Set DIGITAL_ME_BRAIN_URL and DIGITAL_ME_BRAIN_TOKEN_FILE there by hand so the hooks reach brain-host.`,
+      );
+    }
+  }
+  writeFileSync(tomlTarget, tomlMerged, "utf-8");
   // Lifecycle hooks: copy the scripts into ~/.codex/hooks/ and merge the
   // wiring stanzas into ~/.codex/hooks.json. Codex hooks are I/O-compatible
   // with Claude Code's, so this mirrors installClaudeCode's hook step.
@@ -684,9 +706,12 @@ function installCodex(home: string): void {
 /**
  * Register the openclaw-brain MCP server with Claude Code's CLI registry
  * via `claude mcp add`. Idempotent — if a server with the same name
- * exists, remove it first.
+ * exists, remove it first (which also drops any DIGITAL_ME_BRAIN_TOKEN an
+ * earlier registration carried). With `brainCaller` the registration's env
+ * gets DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE (the path, never
+ * the secret) so the proxy Claude Code spawns talks to brain-host.
  */
-function installClaudeCodeMcp(): void {
+function installClaudeCodeMcp(brainCaller: BrainCallerEnv | undefined): void {
   if (!which("claude")) {
     console.log(
       "[SKIP] claude-code MCP: 'claude' CLI not on PATH. Install Claude Code, then re-run.",
@@ -708,9 +733,15 @@ function installClaudeCodeMcp(): void {
   // openclaw.json from this path to discover the gateway port + auth token.
   const openclawHome =
     process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
-  const env = {
+  const env: Record<string, string> = {
     OPENCLAW_HOME: openclawHome,
     OPENCLAW_AGENT_ID: "claude-code",
+    ...(brainCaller
+      ? {
+          DIGITAL_ME_BRAIN_URL: brainCaller.brainUrl,
+          DIGITAL_ME_BRAIN_TOKEN_FILE: brainCaller.brainTokenFile,
+        }
+      : {}),
   };
   // Install at user scope so the server is available across all
   // projects, not just the current cwd's project-local scope.
@@ -862,7 +893,7 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
     console.error(
       `install dream-cycle: workflow import returned exit ${wfResult.status ?? "?"}. ` +
         `The venv is ready, but workflows aren't imported. ` +
-        `Common causes: the brain endpoint is unreachable — with brain-host, set DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN; ` +
+        `Common causes: the brain endpoint is unreachable — with brain-host, set DIGITAL_ME_BRAIN_URL (+ DIGITAL_ME_BRAIN_TOKEN_FILE if the token is not at the default path); ` +
         `with the openclaw gateway, it is not running or the auth token is missing in ~/.openclaw/openclaw.json. ` +
         `Re-run later with: ${venvPython} -m dream_cycle.install_workflows`,
     );
@@ -1379,6 +1410,17 @@ function installHermesMcp(home: string): void {
   for (const note of hermesStable.notes) {
     console.log(`     hermes MCP: ${note}`);
   }
+  // Backend for the proxy Hermes spawns: same detection as codex / claude-code.
+  // The stanza's `env:` in ~/.hermes/config.yaml carries DIGITAL_ME_BRAIN_URL +
+  // DIGITAL_ME_BRAIN_TOKEN_FILE (the path, never the secret) when the
+  // brain-host token file exists; otherwise the proxy stays on the gateway.
+  const hermesBrainCfg = resolveBrainHostServiceConfig(home, process.env, hermesStable.nodePath);
+  const hermesBrain = resolveBrainCallerEnv(process.env, hermesBrainCfg, readTokenFileIfExists);
+  console.log(
+    hermesBrain
+      ? `     hermes MCP: proxy env → brain-host at ${hermesBrain.brainUrl} (token file ${hermesBrain.brainTokenFile})`
+      : `     hermes MCP: proxy env → openclaw gateway (no brain-host token at ${hermesBrainCfg.tokenFile}; run 'digital-me install --runtime brain-host' to switch)`,
+  );
   const args = [
     "mcp",
     "add",
@@ -1391,8 +1433,7 @@ function installHermesMcp(home: string): void {
     // as positional arguments and NO environment at all (config showed
     // `env: None`). Keep --env first and --args strictly last.
     "--env",
-    `OPENCLAW_HOME=${openclawHome}`,
-    `OPENCLAW_AGENT_ID=hermes`,
+    ...buildHermesMcpEnv({ openclawHome, agentId: "hermes", brain: hermesBrain }),
     "--args",
     hermesStable.binPath,
   ];
@@ -2531,7 +2572,9 @@ async function setupBrainHostService(home: string): Promise<number> {
     `[OK] brain-host is always-on at ${brainHostInvokeUrl(cfg)} (scheduler ${cfg.scheduler}).\n` +
       `     Point callers at it with:\n` +
       `       export DIGITAL_ME_BRAIN_URL=${brainHostInvokeUrl(cfg)}\n` +
-      `       export DIGITAL_ME_BRAIN_TOKEN="$(cat ${cfg.tokenFile})"`,
+      `     (the bearer token is read from ${cfg.tokenFile}; set DIGITAL_ME_BRAIN_TOKEN_FILE only if you move it —\n` +
+      `      never export the secret itself). Re-run 'digital-me install --runtime claude-code|codex|hermes' to bake\n` +
+      `      the URL + token-file path into each client's registration.`,
   );
   return 0;
 }

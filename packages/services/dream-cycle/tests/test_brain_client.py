@@ -116,20 +116,121 @@ def test_load_gateway_brain_url_wins_over_openclaw_env(tmp_path: Path) -> None:
 
 
 def test_load_gateway_brain_url_without_token_errors(tmp_path: Path) -> None:
-    """URL without token is a hard error — never a silent fallback to openclaw,
-    even when openclaw.json would have supplied a working token."""
+    """URL with no resolvable token is a hard error — never a silent fallback to
+    openclaw, even when openclaw.json would have supplied a working token. HOME
+    is pinned to tmp_path so the default token file cannot exist either; the
+    error names both token variables and the file it looked in."""
     (tmp_path / "openclaw.json").write_text(
         json.dumps({"gateway": {"auth": {"token": "file-tok"}}})
     )
-    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_TOKEN is not"):
-        load_gateway(env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL}, openclaw_home=tmp_path)
+    with pytest.raises(BrainClientError, match="no token was found") as excinfo:
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "HOME": str(tmp_path)},
+            openclaw_home=tmp_path,
+        )
+    msg = str(excinfo.value)
+    assert "DIGITAL_ME_BRAIN_TOKEN," in msg and "DIGITAL_ME_BRAIN_TOKEN_FILE" in msg
+    assert str(tmp_path / "digital-me" / ".data" / "brain-host.token") in msg
 
 
 def test_load_gateway_brain_url_blank_token_errors(tmp_path: Path) -> None:
-    """A whitespace-only token counts as unset."""
-    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_TOKEN is not"):
+    """A whitespace-only token counts as unset (and no token file exists)."""
+    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_TOKEN_FILE"):
         load_gateway(
-            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN": "   "},
+            env={
+                "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+                "DIGITAL_ME_BRAIN_TOKEN": "   ",
+                "DIGITAL_ME_WIKI_ROOT": str(tmp_path),
+            },
+            openclaw_home=tmp_path,
+        )
+
+
+# ── load_gateway: token from DIGITAL_ME_BRAIN_TOKEN_FILE / the default file ───
+
+
+def _write_token(path: Path, contents: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents, encoding="utf-8")
+    return path
+
+
+def test_load_gateway_brain_token_from_default_file_under_wiki_root(tmp_path: Path) -> None:
+    """No env token → the trimmed contents of <DIGITAL_ME_WIKI_ROOT>/.data/brain-host.token."""
+    _write_token(tmp_path / "wiki-root" / ".data" / "brain-host.token", "  file-secret\n")
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_WIKI_ROOT": str(tmp_path / "wiki-root")},
+        openclaw_home=tmp_path,
+    )
+    assert (gw.url, gw.token) == (BRAIN_URL, "file-secret")
+
+
+def test_load_gateway_brain_token_default_file_falls_back_to_home(tmp_path: Path) -> None:
+    """Without DIGITAL_ME_WIKI_ROOT the default file lives under $HOME/digital-me."""
+    _write_token(tmp_path / "digital-me" / ".data" / "brain-host.token", "home-secret\n")
+    gw = load_gateway(
+        env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "HOME": str(tmp_path)},
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "home-secret"
+
+
+def test_load_gateway_brain_token_default_file_uses_path_home_when_env_lacks_home(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An env mapping with neither DIGITAL_ME_WIKI_ROOT nor HOME resolves through
+    Path.home() (which itself follows $HOME), the way os.environ would."""
+    monkeypatch.setenv("HOME", str(tmp_path))
+    _write_token(tmp_path / "digital-me" / ".data" / "brain-host.token", "path-home-secret\n")
+    gw = load_gateway(env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL}, openclaw_home=tmp_path)
+    assert gw.token == "path-home-secret"
+
+
+def test_load_gateway_brain_token_explicit_file_beats_default(tmp_path: Path) -> None:
+    _write_token(tmp_path / "wiki-root" / ".data" / "brain-host.token", "default-secret\n")
+    explicit = _write_token(tmp_path / "custom.token", "explicit-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+            "DIGITAL_ME_BRAIN_TOKEN_FILE": str(explicit),
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path / "wiki-root"),
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "explicit-secret"
+
+
+def test_load_gateway_brain_env_token_beats_file(tmp_path: Path) -> None:
+    explicit = _write_token(tmp_path / "custom.token", "explicit-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+            "DIGITAL_ME_BRAIN_TOKEN": "env-secret",
+            "DIGITAL_ME_BRAIN_TOKEN_FILE": str(explicit),
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "env-secret"
+
+
+@pytest.mark.parametrize("contents", ["", "   \n\n"])
+def test_load_gateway_brain_empty_token_file_errors(tmp_path: Path, contents: str) -> None:
+    """An empty / whitespace-only token file counts as no token — hard error,
+    and the openclaw.json token is never consulted."""
+    (tmp_path / "openclaw.json").write_text(json.dumps({"gateway": {"auth": {"token": "file-tok"}}}))
+    blank = _write_token(tmp_path / "blank.token", contents)
+    with pytest.raises(BrainClientError, match=str(blank)):
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN_FILE": str(blank)},
+            openclaw_home=tmp_path,
+        )
+
+
+def test_load_gateway_brain_unreadable_token_file_errors(tmp_path: Path) -> None:
+    """A path that cannot be read as a file (here: a directory) is no token."""
+    with pytest.raises(BrainClientError, match="no token was found"):
+        load_gateway(
+            env={"DIGITAL_ME_BRAIN_URL": BRAIN_URL, "DIGITAL_ME_BRAIN_TOKEN_FILE": str(tmp_path)},
             openclaw_home=tmp_path,
         )
 
@@ -203,8 +304,9 @@ def test_load_gateway_blank_brain_url_falls_through_to_openclaw(tmp_path: Path) 
 
 def test_load_gateway_token_error_mentions_brain_host(tmp_path: Path) -> None:
     """The no-token hint must name the brain-host env contract, not only openclaw."""
-    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_URL"):
+    with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_URL") as excinfo:
         load_gateway(env={}, openclaw_home=tmp_path)
+    assert "DIGITAL_ME_BRAIN_TOKEN_FILE" in str(excinfo.value)
 
 
 def test_gateway_endpoint_url_prefers_invoke_url() -> None:

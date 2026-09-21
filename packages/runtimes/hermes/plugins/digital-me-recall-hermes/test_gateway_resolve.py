@@ -1,6 +1,7 @@
 """Unit tests for the Hermes recall plugin's brain-endpoint resolution and
 score gate — the pieces that decide whether recall reaches digital-me
-brain-host (DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN) or the openclaw
+brain-host (DIGITAL_ME_BRAIN_URL with the token from DIGITAL_ME_BRAIN_TOKEN,
+DIGITAL_ME_BRAIN_TOKEN_FILE or the default token file) or the openclaw
 gateway, and whether brain-host's RRF-fused `score` survives MIN_SCORE.
 
 Run standalone (the plugin dir name has a hyphen so it isn't an importable
@@ -33,6 +34,8 @@ _spec.loader.exec_module(dmrh)
 _ENV_KEYS = (
     "DIGITAL_ME_BRAIN_URL",
     "DIGITAL_ME_BRAIN_TOKEN",
+    "DIGITAL_ME_BRAIN_TOKEN_FILE",
+    "DIGITAL_ME_WIKI_ROOT",
     "OPENCLAW_GATEWAY_URL",
     "OPENCLAW_GATEWAY_TOKEN",
     "OPENCLAW_GATEWAY_HOST",
@@ -50,28 +53,32 @@ BRAIN_HOST_TASTE_PATH = f"{FAKE_DATA_ROOT}/tastes/design/no-italics.md"
 
 
 @contextlib.contextmanager
-def _env(**overrides: Optional[str]) -> Iterator[None]:
+def _env(**overrides: Optional[str]) -> Iterator[Path]:
     """Clear every endpoint-related variable, apply `overrides`, restore after.
     Also resets the plugin's cached token + one-shot error flag so each test
-    resolves from scratch."""
+    resolves from scratch, and pins DIGITAL_ME_WIKI_ROOT to a scratch dir
+    (yielded) so the default brain-host token file under a real ~/digital-me
+    can never leak into a "no token" assertion."""
     saved = {k: os.environ.get(k) for k in _ENV_KEYS}
     for k in _ENV_KEYS:
         os.environ.pop(k, None)
-    for k, v in overrides.items():
-        if v is not None:
-            os.environ[k] = v
-    dmrh._GATEWAY_TOKEN = None
-    dmrh._BRAIN_TOKEN_MISSING_LOGGED = False
-    try:
-        yield
-    finally:
-        for k, v in saved.items():
-            if v is None:
-                os.environ.pop(k, None)
-            else:
+    with tempfile.TemporaryDirectory() as scratch:
+        os.environ["DIGITAL_ME_WIKI_ROOT"] = scratch
+        for k, v in overrides.items():
+            if v is not None:
                 os.environ[k] = v
         dmrh._GATEWAY_TOKEN = None
         dmrh._BRAIN_TOKEN_MISSING_LOGGED = False
+        try:
+            yield Path(scratch)
+        finally:
+            for k, v in saved.items():
+                if v is None:
+                    os.environ.pop(k, None)
+                else:
+                    os.environ[k] = v
+            dmrh._GATEWAY_TOKEN = None
+            dmrh._BRAIN_TOKEN_MISSING_LOGGED = False
 
 
 def _reset_session(session_id: str) -> None:
@@ -149,7 +156,10 @@ def test_brain_host_url_without_token_never_falls_back():
             DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke",
             OPENCLAW_GATEWAY_TOKEN="gw-secret",
             DIGITAL_ME_OPENCLAW_CONFIG=str(cfg),
-        ):
+        ) as wiki_root:
+            # No env token and no default token file under the scratch wiki root.
+            assert dmrh._brain_token_file() == wiki_root / ".data" / "brain-host.token"
+            assert not dmrh._brain_token_file().exists()
             assert dmrh._resolve_gateway_url() == "http://brain.test:18791/tools/invoke"
             assert dmrh._load_gateway_token() is None
             assert dmrh._get_token() is None
@@ -158,6 +168,78 @@ def test_brain_host_url_without_token_never_falls_back():
             assert dmrh._load_gateway_token() is None
             # And _invoke_gateway refuses to call without a token.
             assert dmrh._invoke_gateway("memory_search", {"query": "x"}) is None
+
+
+def test_brain_host_error_log_names_both_token_vars():
+    import logging
+
+    class _Capture(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.messages: List[str] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.messages.append(record.getMessage())
+
+    handler = _Capture()
+    dmrh.logger.addHandler(handler)
+    try:
+        with _env(DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke") as wiki_root:
+            assert dmrh._load_gateway_token() is None
+            assert len(handler.messages) == 1, handler.messages
+            msg = handler.messages[0]
+            assert "DIGITAL_ME_BRAIN_TOKEN," in msg and "DIGITAL_ME_BRAIN_TOKEN_FILE" in msg, msg
+            assert str(wiki_root / ".data" / "brain-host.token") in msg, msg
+    finally:
+        dmrh.logger.removeHandler(handler)
+
+
+def test_brain_host_token_from_default_file():
+    with _env(DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke", OPENCLAW_GATEWAY_TOKEN="gw-secret") as wiki_root:
+        token_file = wiki_root / ".data" / "brain-host.token"
+        token_file.parent.mkdir(parents=True)
+        token_file.write_text("  file-brain-secret\n")
+        assert dmrh._load_gateway_token() == "file-brain-secret"   # trimmed
+        assert dmrh._get_token() == "file-brain-secret"
+        assert dmrh._BRAIN_TOKEN_MISSING_LOGGED is False
+
+
+def test_brain_host_token_from_explicit_file_beats_default():
+    with _env(DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke") as wiki_root:
+        default_file = wiki_root / ".data" / "brain-host.token"
+        default_file.parent.mkdir(parents=True)
+        default_file.write_text("default-secret\n")
+        explicit = wiki_root / "custom.token"
+        explicit.write_text("explicit-secret\n")
+        os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(explicit)
+        assert dmrh._brain_token_file() == explicit
+        assert dmrh._load_gateway_token() == "explicit-secret"
+        # An empty DIGITAL_ME_BRAIN_TOKEN_FILE counts as unset → default file.
+        os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = ""
+        assert dmrh._load_gateway_token() == "default-secret"
+
+
+def test_brain_host_env_token_beats_file():
+    with _env(DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN="env-secret") as wiki_root:
+        explicit = wiki_root / "custom.token"
+        explicit.write_text("explicit-secret\n")
+        os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(explicit)
+        assert dmrh._load_gateway_token() == "env-secret"
+
+
+def test_brain_host_empty_or_unreadable_token_file_is_no_token():
+    with _env(DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke", OPENCLAW_GATEWAY_TOKEN="gw-secret") as wiki_root:
+        blank = wiki_root / "blank.token"
+        blank.write_text("   \n\n")
+        os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(blank)
+        assert dmrh._load_gateway_token() is None
+        assert dmrh._BRAIN_TOKEN_MISSING_LOGGED is True
+        # A directory is unreadable as a file → also "no token".
+        dmrh._BRAIN_TOKEN_MISSING_LOGGED = False
+        os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(wiki_root)
+        assert dmrh._load_gateway_token() is None
+        assert dmrh._read_brain_token_file(wiki_root) is None
+        assert dmrh._read_brain_token_file(wiki_root / "missing.token") is None
 
 
 def test_empty_brain_url_counts_as_unset():

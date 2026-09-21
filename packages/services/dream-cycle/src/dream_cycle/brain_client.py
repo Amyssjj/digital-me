@@ -18,10 +18,15 @@ Two reasons we shell out via HTTP rather than via the MCP stdio proxy:
 Brain endpoint discovery mirrors `packages/transport/brain-mcp-proxy/src/config.ts`
 (and the claude-code hooks `dm_memory_search_inject.sh` / `dm_m1_emit.py`):
 
-  1. $DIGITAL_ME_BRAIN_URL + $DIGITAL_ME_BRAIN_TOKEN  — the digital-me brain-host.
-     BOTH are required: a URL without a token is a hard error, never a silent
-     fallback to openclaw. The URL is used verbatim as the /tools/invoke
-     endpoint and ~/.openclaw is never read on this path.
+  1. $DIGITAL_ME_BRAIN_URL — the digital-me brain-host. Its bearer token is
+     $DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed contents of
+     $DIGITAL_ME_BRAIN_TOKEN_FILE, else of the default token file
+     <$DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token (the
+     mode-600 file `digital-me install --runtime brain-host` writes). An
+     empty or unreadable file is "no token"; a URL with no resolvable token
+     is a hard error, never a silent fallback to openclaw. The URL is used
+     verbatim as the /tools/invoke endpoint and ~/.openclaw is never read on
+     this path.
 
   2. Otherwise the openclaw gateway:
      Token:  $OPENCLAW_GATEWAY_TOKEN  →  ~/.openclaw/openclaw.json:gateway.auth.token
@@ -84,12 +89,33 @@ def _read_openclaw_file(openclaw_home: Path) -> dict[str, Any]:
         raise BrainClientError(f"failed to read {path}: {e}") from e
 
 
+def _default_brain_token_file(env_: dict[str, str]) -> Path:
+    """`<DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token` — the
+    mode-600 file `digital-me install --runtime brain-host` writes. Mirrors
+    brain-mcp-proxy/config.ts `defaultBrainTokenFile`. HOME is taken from the
+    same env mapping so callers (and tests) can isolate it."""
+    wiki_root = (env_.get("DIGITAL_ME_WIKI_ROOT") or "").strip()
+    if not wiki_root:
+        home = (env_.get("HOME") or "").strip() or str(Path.home())
+        wiki_root = str(Path(home) / "digital-me")
+    return Path(wiki_root) / ".data" / "brain-host.token"
+
+
+def _read_brain_token_file(path: Path) -> str:
+    """Trimmed file contents; "" when the file is missing, unreadable or blank."""
+    try:
+        return path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
 def load_gateway(
     env: Optional[dict[str, str]] = None,
     openclaw_home: Optional[Path] = None,
 ) -> GatewayEndpoint:
-    """Resolve the brain endpoint: DIGITAL_ME_BRAIN_URL/TOKEN (brain-host)
-    > OPENCLAW_GATEWAY_* env > openclaw.json > defaults."""
+    """Resolve the brain endpoint: DIGITAL_ME_BRAIN_URL (brain-host; token from
+    DIGITAL_ME_BRAIN_TOKEN, else DIGITAL_ME_BRAIN_TOKEN_FILE, else the default
+    token file) > OPENCLAW_GATEWAY_* env > openclaw.json > defaults."""
     env_ = dict(os.environ if env is None else env)
 
     # digital-me brain-host takes precedence over the openclaw gateway when it
@@ -97,12 +123,19 @@ def load_gateway(
     # corrupt openclaw.json can never break a brain-host deployment.
     brain_url = (env_.get("DIGITAL_ME_BRAIN_URL") or "").strip()
     if brain_url:
+        token_file = Path(
+            (env_.get("DIGITAL_ME_BRAIN_TOKEN_FILE") or "").strip()
+            or _default_brain_token_file(env_)
+        )
         brain_token = (env_.get("DIGITAL_ME_BRAIN_TOKEN") or "").strip()
         if not brain_token:
+            brain_token = _read_brain_token_file(token_file)
+        if not brain_token:
             raise BrainClientError(
-                "DIGITAL_ME_BRAIN_URL is set but DIGITAL_ME_BRAIN_TOKEN is not — "
-                "set both to use brain-host, or unset the URL to fall back to "
-                "the openclaw gateway"
+                "DIGITAL_ME_BRAIN_URL is set but no token was found — set "
+                "DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a "
+                f"readable token file (looked in {token_file}), or unset the URL "
+                "to fall back to the openclaw gateway"
             )
         parts = urllib.parse.urlsplit(brain_url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -151,8 +184,9 @@ def load_gateway(
     if not token:
         raise BrainClientError(
             "gateway auth token not found — set DIGITAL_ME_BRAIN_URL + "
-            "DIGITAL_ME_BRAIN_TOKEN (brain-host), or OPENCLAW_GATEWAY_TOKEN, or "
-            "populate gateway.auth.token in ~/.openclaw/openclaw.json"
+            "DIGITAL_ME_BRAIN_TOKEN or DIGITAL_ME_BRAIN_TOKEN_FILE (brain-host), or "
+            "OPENCLAW_GATEWAY_TOKEN, or populate gateway.auth.token in "
+            "~/.openclaw/openclaw.json"
         )
 
     return GatewayEndpoint(host=host, port=port, token=token)
