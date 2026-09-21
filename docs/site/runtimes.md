@@ -6,7 +6,39 @@ relevant knowledge into prompts going in, and captures learnings coming out.
 per-runtime reference for what gets installed and how to verify it.
 
 All adapters are installed idempotently — re-running merges into your
-existing settings and never clobbers other hooks.
+existing settings and never clobbers other hooks. Every adapter talks to the
+same endpoint: **brain-host**, the hub below, which `setup` installs before
+any adapter so each registration carries its URL and token-file path.
+
+## brain-host (the hub)
+
+```bash
+digital-me install --runtime brain-host       # setup does this first
+digital-me service brain-host status
+```
+
+The brain itself: one always-on Node service on `127.0.0.1:18791` serving
+`memory_search` / `memory_get` / `wiki` from a retriever over your `wiki/` +
+`tastes/` (hybrid full-text + embeddings, incremental re-index every 30 min)
+and the brain-orchestrator tools (`tasks`, `agent_identify`, `learning_capture`,
+`traces_record`, `traces_query`, `m1_event_record`, `m1_score`) on one
+bearer-gated `POST /tools/invoke` wire. It owns `brain.db` and the scheduler
+tick that fires your workflows. Installed as a `launchd` (macOS) /
+`systemd --user` (Linux) service so it survives reboots.
+
+What lands:
+
+- `~/.local/share/digital-me/brain-host` — stable install link (the service's
+  working directory)
+- `~/digital-me/.data/brain-host.token` — bearer token (mode 600); adapters
+  carry this *path*, never the secret
+- `~/digital-me/.data/retrieval.db` — the index; `~/digital-me/.data/brain.db`
+  — goals, tasks, traces, learnings
+- `~/digital-me/.data/.env` — where you put `GEMINI_API_KEY`; the service loads
+  it and every worker it dispatches inherits it
+
+Verify: `curl -s http://127.0.0.1:18791/health` reports the index size, the
+scheduler state and which `brain.db` it opened.
 
 ## Claude Code
 
@@ -20,7 +52,8 @@ What lands:
   matching wiki knowledge; Stop captures session learnings)
 - `~/.claude/skills/digital-me/` — the protocol skill
 - merged `settings.json` — hook registrations alongside whatever you already
-  had
+  had, plus the `openclaw-brain` MCP server entry (the name is historical —
+  it is `brain-mcp-proxy` forwarding to brain-host)
 
 Verify: start a session and ask about a topic you know is in your wiki — the
 prompt context will show a `[Digital Me]` injection block.
@@ -34,8 +67,8 @@ digital-me install --runtime codex
 What lands:
 
 - `~/.codex/CODEX.md` — protocol instructions
-- openclaw-brain MCP entry in `~/.codex/config.toml` (via the
-  `brain-mcp-proxy` stdio↔HTTP transport)
+- the `openclaw-brain` MCP entry in `~/.codex/config.toml` (historical name;
+  `brain-mcp-proxy` stdio↔HTTP transport to brain-host)
 - `~/.codex/hooks/*` wired through `~/.codex/hooks.json` — UserPromptSubmit /
   Stop / PreToolUse, with M1 application-rate tracking
 
@@ -45,21 +78,26 @@ What lands:
 digital-me install --runtime hermes
 ```
 
-What lands: `~/.hermes/SOUL.md` gains the digital-me protocol section, and
-the chat protocol bundle registers the brain tools.
+What lands: `~/.hermes/SOUL.md` gains the digital-me protocol section, the
+recall plugin injects matching knowledge at prompt time, and the MCP stanza in
+`~/.hermes/config.yaml` registers the brain tools.
 
-## openclaw
+## openclaw (optional)
 
 ```bash
 digital-me install --runtime openclaw
 ```
 
-This is the foundation install: it materializes an **additive plugin overlay**
-named `digital-me-brain` into your openclaw extensions directory — stock
-openclaw plus an overlay, no fork, no rebase. The overlay registers the brain
-tools (`tasks`, `agent_identify`, `learning_capture`, `traces_record`,
-`traces_query`, `m1_event_record`, `m1_score`) and hosts the
-proactive-learning rule engine.
+Only if you also run [openclaw](https://github.com/openclaw/openclaw) agents —
+it is a runtime like the others, not a prerequisite. The install materializes
+an **additive plugin overlay** (`digital-me-brain` + `digital-me-recall`) into
+your openclaw extensions directory — stock openclaw plus an overlay, no fork,
+no rebase. The overlay registers the brain tools (`tasks`, `agent_identify`,
+`learning_capture`, `traces_record`, `traces_query`, `m1_event_record`,
+`m1_score`) with the gateway, injects wiki knowledge at prompt time, and hosts
+the proactive-learning rule engine. It opens the same `brain.db` as brain-host
+and leaves the scheduler tick to brain-host whenever brain-host is installed
+(exactly one process ticks a brain).
 
 Keep openclaw current without losing the overlay:
 
@@ -96,8 +134,23 @@ digital-me dream-cycle                        # run it manually
 Working on the pipeline itself? Install it editable from the repo instead:
 `pip install -e "packages/services/dream-cycle[dev]"`.
 
-The nightly schedule (`dream-cycle-nightly`, 3am) is registered with the
-orchestrator at install time — no manual cron needed.
+The nightly schedule (`dream-cycle-nightly`, 3am) is registered with
+brain-host's orchestrator at install time — no manual cron needed. The LLM key
+comes from `~/digital-me/.data/.env` (`engine: standalone`, the default
+`config.yaml`); `digital-me doctor` checks it there.
+
+## Digest (optional, Python)
+
+```bash
+digital-me install --runtime digest
+```
+
+The 07:00 activity digest — what every agent did yesterday, what the
+dream-cycle distilled — posted to Discord. Delivery is a **Discord webhook**
+(no gateway needed): write the webhook URL to
+`~/digital-me/.data/digest-webhook.url` (mode 600). Machines that still run an
+openclaw gateway can keep `digest.delivery: openclaw` in `config.yaml` to send
+through `openclaw message send` instead.
 
 ## Dispatching work to your CLIs
 

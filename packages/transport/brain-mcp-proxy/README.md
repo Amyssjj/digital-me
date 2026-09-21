@@ -1,18 +1,18 @@
 # @digital-me/brain-mcp-proxy
 
-Stdio MCP server that forwards tool calls to openclaw's HTTP gateway. Lets any MCP-capable CLI (Claude Code, Codex, Hermes, future ones) reach the openclaw-brain without each CLI implementing the HTTP gateway protocol directly.
+Stdio MCP server that forwards tool calls to the brain's HTTP wire — brain-host (`DIGITAL_ME_BRAIN_URL`, the hub) or, on installs that predate it, a legacy openclaw gateway. Lets any MCP-capable CLI (Claude Code, Codex, Hermes, future ones) reach the brain without each CLI implementing the `/tools/invoke` protocol directly. The MCP server is registered under the historical name `openclaw-brain`.
 
 ## What it does
 
 ```
 ┌──────────────┐    stdio MCP    ┌─────────────────────┐    HTTP POST    ┌────────────────────────┐
-│  CLI client  │ ──────────────► │ brain-mcp-proxy     │ ──────────────► │  openclaw gateway      │
+│  CLI client  │ ──────────────► │ brain-mcp-proxy     │ ──────────────► │  brain-host :18791     │
 └──────────────┘                 └─────────────────────┘                 └────────────────────────┘
 ```
 
 The proxy:
 - Speaks stdio MCP JSON-RPC to its parent (the CLI)
-- Forwards every CallTool request to `POST $OPENCLAW_GATEWAY_HOST:$OPENCLAW_GATEWAY_PORT/tools/invoke` with bearer-token auth
+- Forwards every CallTool request to `POST $DIGITAL_ME_BRAIN_URL` (brain-host's `/tools/invoke`; token from `DIGITAL_ME_BRAIN_TOKEN_FILE`) — or, when that is unset, to the legacy `POST $OPENCLAW_GATEWAY_HOST:$OPENCLAW_GATEWAY_PORT/tools/invoke` — with bearer-token auth
 - Auto-injects `agent_id` from `OPENCLAW_AGENT_ID` env or `--agent-id=<id>` argv flag when the caller didn't set one
 - Translates gateway responses back to MCP `CallToolResult` shape, stripping the `details` field that strict clients reject
 - Caps each call at 1 hour (configurable in source) to prevent hangs

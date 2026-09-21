@@ -48,21 +48,32 @@ All machine-specific values resolve via `arg → env → default` (see
 | Value | Env var | `config.yaml` key | Default |
 |---|---|---|---|
 | Wiki root | `DIGITAL_ME_WIKI_ROOT` | — | `~/digital-me` |
-| Brain DB | `DIGITAL_ME_BRAIN_DB` | — | `~/.openclaw/data/brain.db` |
-| Channel target | `DIGITAL_ME_DIGEST_CHANNEL` | `digest.discord_channel` | **none** (required for a real publish) |
-| Channel platform | `DIGITAL_ME_DIGEST_PLATFORM` | `digest.channel_platform` | `discord` |
-| openclaw CLI | `OPENCLAW_CLI` | — | `openclaw` on `PATH` |
+| Brain DB | `DIGITAL_ME_BRAIN_DB` | — | `<wiki-root>/.data/brain.db`, else legacy `~/.openclaw/data/brain.db` while only that exists |
+| Delivery | `DIGITAL_ME_DIGEST_DELIVERY` | `digest.delivery` | `webhook` when a webhook URL resolves, else `openclaw` when the CLI exists |
+| Webhook URL file | `DIGITAL_ME_DIGEST_WEBHOOK_URL_FILE` | `digest.webhook_url_file` | `<wiki-root>/.data/digest-webhook.url` |
+| Webhook URL (inline) | `DIGITAL_ME_DIGEST_WEBHOOK_URL` | — | none (prefer the file — the URL is a secret) |
+| Channel target (`openclaw` delivery) | `DIGITAL_ME_DIGEST_CHANNEL` | `digest.discord_channel` | **none** (required for an openclaw publish) |
+| Channel platform (`openclaw` delivery) | `DIGITAL_ME_DIGEST_PLATFORM` | `digest.channel_platform` | `discord` |
+| openclaw CLI (`openclaw` delivery) | `OPENCLAW_CLI` | — | `openclaw` on `PATH` |
 | Secondary memory log | `DIGITAL_ME_DIGEST_MEMORY_DIR` | — | none (skipped) |
 
-### Discord, Slack, or anything else
+### Delivery: Discord webhook (default) or openclaw
 
-The digest is **platform-agnostic**: it never speaks a chat protocol directly —
-it delegates delivery to `openclaw message send --channel <platform> --target
-<channel>`. To switch from Discord to Slack you change **config, not code**:
+**Webhook** — no gateway, no bot: create a webhook on the Discord channel, write
+its URL to `~/digital-me/.data/digest-webhook.url` (mode 600), done. The
+publisher maps each presentation batch to one embed (title, tone colour, text
+blocks; dividers render as a rule), never pings anyone
+(`allowed_mentions.parse = []`), and fails loudly on any non-2xx.
+
+**openclaw** — set `digest.delivery: openclaw` to delegate to
+`openclaw message send --channel <platform> --target <channel>`. This is the
+transport for machines that still run an openclaw gateway, and the one that
+reaches other platforms:
 
 ```yaml
 # config.yaml
 digest:
+  delivery: openclaw
   channel_platform: slack          # the --channel value openclaw routes on
   discord_channel: "<slack target>"  # your Slack channel/target id
 ```

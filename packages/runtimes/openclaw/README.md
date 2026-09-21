@@ -6,8 +6,10 @@ descriptors into openclaw's plugin SDK, implements the `Dispatcher` interface on
 top of openclaw's subagent + exec runtime, and hosts the proactive-learning rule
 engine.
 
-This is the package the top-level README points at for "installing the brain
-into openclaw."
+openclaw is an optional runtime: the brain itself runs in
+[`@digital-me/brain-host`](../../services/brain-host), and this adapter lets
+openclaw agents share it. brain-host also reuses this package's cli-exec alias
+resolver and dispatcher for its own exec tasks.
 
 ## What gets installed
 

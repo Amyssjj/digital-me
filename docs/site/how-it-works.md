@@ -13,12 +13,14 @@ wiki of knowledge, one set of tastes, one task board, one trace history.
 hub-spoke
 ```
 
-The hub is not a metaphor: it's an [openclaw](https://github.com/openclaw/openclaw)
-gateway daemon running on your machine. Two plugins make it a brain —
-`memory-core` (retrieval: `memory_search`, `memory_get`, owned by upstream
-openclaw) and `brain-orchestrator` (operations: `tasks`, `learning_capture`,
-`traces_*`, owned by this repo). Each spoke is a thin runtime adapter that
-wires one CLI to those tools.
+The hub is not a metaphor: it's **brain-host**, a small always-on service
+running on your machine (`127.0.0.1:18791`, installed by `digital-me setup`).
+Two cores make it a brain — the **retriever** (`memory_search`, `memory_get`:
+hybrid full-text + embedding search over your wiki and tastes, one hit per
+entry) and **brain-orchestrator** (operations: `tasks`, `learning_capture`,
+`traces_*`, the scheduler that fires your workflows). Both ship in this repo.
+Each spoke is a thin runtime adapter that wires one CLI — Claude Code, Codex,
+Hermes, or openclaw — to those tools over one bearer-gated HTTP wire.
 
 ## The lifecycle, in every agent
 
@@ -61,17 +63,20 @@ Each package has one job, categorized by **where it runs and who triggers it**:
 
 | Where it runs | Who triggers it | Package role |
 |---|---|---|
-| inside the openclaw gateway | a tool call from an agent | `plugins/` — brain-orchestrator |
-| inside an agent CLI process | you starting your CLI | `runtimes/` — claude-code, codex, hermes, openclaw |
-| in a CLI process, forwarding to openclaw | the runtime adapter | `transport/` — brain-mcp-proxy (stdio↔HTTP) |
-| on the host, beside openclaw | a scheduler or you | `services/` — dashboard, dream-cycle |
+| inside brain-host | a tool call from an agent | `plugins/` — brain-orchestrator (the operations core) |
+| on the host, always-on or scheduled | launchd/systemd, the scheduler tick, or you | `services/` — **brain-host** (the hub), dashboard, dream-cycle, digest |
+| inside an agent CLI process | you starting your CLI | `runtimes/` — claude-code, codex, hermes, openclaw (optional) |
+| in a CLI process, forwarding to brain-host | the runtime adapter | `transport/` — brain-mcp-proxy (stdio↔HTTP) |
 | on the host, transiently | you typing `digital-me <cmd>` | `cli/` — installer/orchestrator |
-| imported by other packages | other packages | `shared/` — env contracts, schemas |
+| imported by other packages | other packages | `shared/` — env contracts, the brain-path rule, schemas |
 
 ## Your data stays yours
 
-This repo contains **no personal data**. Your wiki, inbox, and config live in
-a separate local directory (`~/digital-me/`, ideally a private git repo),
-loaded at runtime through the documented
-[environment contract](/docs/configuration). Knowledge is plain markdown
-files — no opaque vector store, nothing you can't read, diff, or delete.
+This repo contains **no personal data**. Your wiki, tastes, inbox, and config
+live in a separate local directory (`~/digital-me/`, ideally a private git
+repo), loaded at runtime through the documented
+[environment contract](/docs/configuration). The brain's own state — `brain.db`,
+the retrieval index, the bearer token, your provider key — sits beside them in
+`~/digital-me/.data/`, git-ignored, on your machine only. Knowledge is plain
+markdown files — no opaque vector store, nothing you can't read, diff, or
+delete.
