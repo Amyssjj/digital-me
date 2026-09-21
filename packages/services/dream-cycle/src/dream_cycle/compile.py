@@ -761,7 +761,9 @@ A. CANDIDATE — the transcript reveals a NEW principle in a domain.
 B. EVIDENCE — the transcript adds a 2nd+ evidence record to a principle
    that already exists (either in `_holding/` or as a promoted leaf).
    You MUST match against the principles manifest before choosing this.
-   Set `matched_existing_fingerprint` to the existing fingerprint verbatim.
+   Set `matched_existing_fingerprint` to the existing fingerprint verbatim —
+   that field is what the apply step uses to locate the leaf;
+   `principle_fingerprint` may be null for evidence.
 
 C. NEITHER — the transcript reveals no new taste signal (default).
    Most conversations land here. Polluting the rubric is much harder
@@ -877,8 +879,8 @@ If outcome is CANDIDATE or EVIDENCE:
 {
   "outcome": "candidate" | "evidence",
   "domain": "infra" | "knowledge" | "storytelling" | "design",
-  "principle_fingerprint": "<one-sentence rule, surface-stripped>",
-  "matched_existing_fingerprint": "<copy of existing fingerprint verbatim if outcome=evidence, else null>",
+  "principle_fingerprint": "<one-sentence rule, surface-stripped — REQUIRED for candidate; may be null for evidence>",
+  "matched_existing_fingerprint": "<REQUIRED for evidence: copy of the existing fingerprint verbatim; null for candidate>",
   "evidence_record": {
     "project_id": "...",
     "date": "<YYYY-MM-DD>",
@@ -1144,6 +1146,16 @@ def apply_skill_outcome(outcome: dict) -> Optional[tuple[Path, str]]:
                             evidence record. Flip status:promoted if the
                             count crosses 2.
 
+    Fingerprint contract (must agree with REVERSE_ENGINEER_PROMPT_SYSTEM and
+    the nightly classifier template):
+      - candidate → `principle_fingerprint` is REQUIRED (the new rule).
+      - evidence  → `matched_existing_fingerprint` is CANONICAL (verbatim copy
+                    of a manifest fingerprint); `principle_fingerprint` is
+                    optional and MAY be null. The classifier routinely emits
+                    `principle_fingerprint: null` for evidence, so resolution
+                    is matched_existing_fingerprint OR principle_fingerprint,
+                    whichever is non-empty — never require both.
+
     Returns (path_written, action_tag) where action_tag is one of:
       "candidate-new", "candidate-merged", "evidence-appended", "promoted-to-leaf"
     or None on neither/invalid input.
@@ -1158,7 +1170,15 @@ def apply_skill_outcome(outcome: dict) -> Optional[tuple[Path, str]]:
     if domain not in VALID_DOMAINS:
         return None
 
-    fingerprint = (outcome.get("principle_fingerprint") or "").strip()
+    principle_fp = (outcome.get("principle_fingerprint") or "").strip()
+    claimed = (outcome.get("matched_existing_fingerprint") or "").strip()
+    if kind == "evidence":
+        # Evidence outcomes name the EXISTING principle via
+        # matched_existing_fingerprint; principle_fingerprint is optional and
+        # the classifier usually leaves it null. Accept either field.
+        fingerprint = claimed or principle_fp
+    else:
+        fingerprint = principle_fp
     if not fingerprint:
         return None
 
@@ -1177,8 +1197,7 @@ def apply_skill_outcome(outcome: dict) -> Optional[tuple[Path, str]]:
     target_fm: Optional[dict] = None
 
     if kind == "evidence":
-        claimed = (outcome.get("matched_existing_fingerprint") or "").strip()
-        for fp in (claimed, fingerprint):
+        for fp in (claimed, principle_fp):
             if not fp:
                 continue
             found = _find_existing_principle(fp)

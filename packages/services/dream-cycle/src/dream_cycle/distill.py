@@ -115,7 +115,7 @@ def taste_distill(
           "rubric_item_candidates": list,
           "near_miss_observed": str | None,
           "fire_signature_hints": list,
-          "matched_existing_fingerprint": str | None,
+          "matched_existing_fingerprint": str | None,   # canonical locator for outcome=evidence
           "surface_matched_leaves": [{slug, fingerprint, ...}],
           "apply_action": str | None,
           "applied_path": str | None,
