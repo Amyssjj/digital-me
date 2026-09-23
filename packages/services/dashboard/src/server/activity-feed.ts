@@ -19,8 +19,10 @@
  * (producer).
  */
 
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { Router } from "express";
+
+import { withReadonlyDb } from "./sqlite-readonly.js";
 
 export type ActivityKind = "captured" | "applied" | "workflow" | "taste";
 
@@ -155,14 +157,7 @@ export function queryActivityFeed(
  *  request (better-sqlite3 open is ~1ms; keeps WAL handling sane). */
 export function buildActivityFeedRouter(dbPath: string): Router {
   const router = Router();
-  const withDb = <T,>(fn: (db: Database.Database) => T): T => {
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      return fn(db);
-    } finally {
-      db.close();
-    }
-  };
+  const withDb = <T,>(fn: (db: Database.Database) => T): T => withReadonlyDb(dbPath, fn);
   router.get("/", (req, res) => {
     try {
       const raw = req.query.limit;

@@ -22,8 +22,10 @@
  * Response shapes mirror frontend/hooks/useKanban.ts.
  */
 
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { Router } from "express";
+
+import { withReadonlyDb } from "./sqlite-readonly.js";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** Terminal-goal window when the caller sends no `days` (the brain board's
@@ -531,14 +533,9 @@ export function queryWorkflowRunStats(db: Database.Database): Map<string, Workfl
   return out;
 }
 
-/** Read helper for callers outside a request: open readonly, query, close. */
+/** Open brain.db readonly (it must exist — never create one), query, close. */
 export function withBrainDb<T>(brainDbPath: string, fn: (db: Database.Database) => T): T {
-  const db = new Database(brainDbPath, { readonly: true, fileMustExist: true });
-  try {
-    return fn(db);
-  } finally {
-    db.close();
-  }
+  return withReadonlyDb(brainDbPath, fn, { fileMustExist: true });
 }
 
 function parseIntParam(raw: unknown): number | undefined {
