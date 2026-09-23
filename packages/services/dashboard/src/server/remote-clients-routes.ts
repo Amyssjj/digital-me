@@ -12,7 +12,8 @@
  *      command the agent-card grid uses (data.ts). Injected as `listRosterIds`
  *      so tests supply a stub instead of shelling out.
  *
- * brain.db is opened readonly per request (better-sqlite3 open is ~1ms). A read
+ * brain.db is opened readonly per request (better-sqlite3 open is ~1ms; via
+ * withReadonlyDb, which keeps statements alive until close). A read
  * failure (brain.db absent, table missing, openclaw CLI unavailable) degrades
  * to `{ clients: [], error }` with HTTP 200 — the panel renders an empty state
  * rather than 500-ing the whole view, matching the dashboard's "start even when
@@ -21,10 +22,10 @@
 
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import Database from "better-sqlite3";
 import { Router } from "express";
 
 import { queryRemoteClients } from "./remote-clients.js";
+import { withReadonlyDb } from "./sqlite-readonly.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -142,15 +143,13 @@ export function buildRemoteClientsRouter(
     const limit = parsePositiveInt(req.query.limit, DEFAULT_LIMIT, MAX_LIMIT);
     const sinceMs = now() - days * MS_PER_DAY;
 
-    let db: Database.Database | null = null;
     try {
       const rosterAgentIds = [...(await listRosterIds())];
-      db = new Database(brainDbPath, { readonly: true, fileMustExist: true });
-      const clients = queryRemoteClients(db, {
-        rosterAgentIds,
-        sinceMs,
-        limit,
-      });
+      const clients = withReadonlyDb(
+        brainDbPath,
+        (db) => queryRemoteClients(db, { rosterAgentIds, sinceMs, limit }),
+        { fileMustExist: true },
+      );
       res.json({
         clients,
         window_days: days,
@@ -163,8 +162,6 @@ export function buildRemoteClientsRouter(
         generated_at: new Date(now()).toISOString(),
         error: err instanceof Error ? err.message : String(err),
       });
-    } finally {
-      db?.close();
     }
   });
 

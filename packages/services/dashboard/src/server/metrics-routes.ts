@@ -12,7 +12,7 @@
  *   GET /api/metrics/distribution[?topN=N]
  */
 
-import Database from "better-sqlite3";
+import type Database from "better-sqlite3";
 import { Router } from "express";
 
 import {
@@ -21,6 +21,7 @@ import {
   queryKnowledgeTasteChanges,
   querySessionsByAgent,
 } from "./metrics-queries.js";
+import { withReadonlyDb } from "./sqlite-readonly.js";
 
 const DEFAULT_DAYS = 60;
 const DEFAULT_TOP_N = 8;
@@ -41,14 +42,8 @@ export function buildMetricsRouter(dbPath: string): Router {
 
   // Helper: open + close per request keeps WAL handling sane under
   // concurrent reads. better-sqlite3 connection open is ~1ms.
-  const withDb = <T,>(fn: (db: Database.Database) => T): T => {
-    const db = new Database(dbPath, { readonly: true });
-    try {
-      return fn(db);
-    } finally {
-      db.close();
-    }
-  };
+  // withReadonlyDb keeps statements alive until close (see sqlite-readonly.ts).
+  const withDb = <T,>(fn: (db: Database.Database) => T): T => withReadonlyDb(dbPath, fn);
 
   router.get("/sessions-by-agent", (req, res) => {
     try {
