@@ -63,7 +63,30 @@ if (( ${#CALLERS[@]} == 0 )); then
   exit 1
 fi
 
+# Files that SERVE or DOCUMENT the endpoint rather than call it. The heuristic
+# below (the path plus a `tool:` key) matches them, but they build no outbound
+# request: brain-host's own tool surface answers /tools/invoke, and the docs
+# generator only writes the endpoint's name into prose. Every entry is
+# reviewed by hand — a new one needs the same justification, because an
+# exemption here is exactly how a real caller would slip past this check.
+NOT_CALLERS=(
+  "packages/services/brain-host/src/tools.ts"
+  "scripts/gen-docs.mjs"
+)
+
+is_not_caller() {
+  local candidate
+  for candidate in "${NOT_CALLERS[@]}"; do
+    [[ "$1" == "$candidate" ]] && return 0
+  done
+  return 1
+}
+
 for f in "${CALLERS[@]}"; do
+  if is_not_caller "$f"; then
+    note "skip    $f (serves or documents the endpoint)"
+    continue
+  fi
   # A file that only names the URL (a constants module) is not a caller.
   if ! grep -qE '"tool"|tool:|\{tool' "$f" 2>/dev/null; then
     note "skip    $f (references the endpoint but builds no request)"
