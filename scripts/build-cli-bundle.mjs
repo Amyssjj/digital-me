@@ -23,6 +23,14 @@ const cliRoot = path.join(repoRoot, "packages", "cli");
 const outDir = path.join(cliRoot, "npm-dist");
 const srcPkg = JSON.parse(readFileSync(path.join(cliRoot, "package.json"), "utf-8"));
 
+// The unscoped product name the CLI is published under (`npm i -g
+// digital-me`); the workspace package keeps its internal @digital-me/cli
+// name. Declared first on purpose: the docs-truth sweep
+// (health-sweep/profiles/docs.json, packageJsonPath) takes the FIRST `name:`
+// in this file as the README's package-name ground truth, so a manifest
+// written above publishPkg (the brain-host one below) must not come first.
+const PUBLISHED = { name: "digital-me" };
+
 rmSync(outDir, { recursive: true, force: true });
 mkdirSync(path.join(outDir, "bin"), { recursive: true });
 
@@ -149,9 +157,7 @@ chmodSync(path.join(outDir, "bin", "brain-mcp-proxy.mjs"), 0o755);
 // Trimmed, registry-ready manifest: workspace:* deps are inlined into the
 // bundle, so the published package only needs esbuild at install time.
 const publishPkg = {
-  // Published as the unscoped product name (`npm i -g digital-me`); the
-  // workspace package keeps its internal @digital-me/cli name.
-  name: "digital-me",
+  name: PUBLISHED.name,
   version: srcPkg.version,
   description: srcPkg.description,
   license: srcPkg.license,
