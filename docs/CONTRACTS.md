@@ -20,9 +20,9 @@ A required variable has no default — the package errors at startup if it's not
 | `OPENCLAW_GATEWAY_HOST` | no | `127.0.0.1` | openclaw | `transport/brain-mcp-proxy` |
 | `OPENCLAW_GATEWAY_PORT` | no | `18789` | openclaw | `transport/brain-mcp-proxy` |
 | `OPENCLAW_GATEWAY_TOKEN` | no | (read from `$OPENCLAW_HOME/openclaw.json`) | openclaw | `transport/brain-mcp-proxy` |
-| `DIGITAL_ME_BRAIN_URL` | no | (unset — callers use the openclaw gateway) | brain-host | `transport/brain-mcp-proxy`, `runtimes/claude-code` + `runtimes/codex` hooks, `runtimes/hermes` recall plugin + `m1_backfill.py`, `services/dream-cycle` brain client. The brain-host `/tools/invoke` endpoint (e.g. `http://127.0.0.1:18791/tools/invoke`); when set it takes precedence over every `OPENCLAW_GATEWAY_*` value and **a bearer token must resolve** — from `DIGITAL_ME_BRAIN_TOKEN`, else `DIGITAL_ME_BRAIN_TOKEN_FILE`, else the default token file. A URL with no resolvable token is a configuration error, never a silent fallback to the gateway token. |
+| `DIGITAL_ME_BRAIN_URL` | no | (unset — callers use the openclaw gateway) | brain-host | `transport/brain-mcp-proxy`, `runtimes/claude-code` + `runtimes/codex` hooks, `runtimes/hermes` recall plugin + `m1_backfill.py`, `services/dream-cycle` brain client. The brain-host `/tools/invoke` endpoint (e.g. `http://127.0.0.1:18791/tools/invoke`); when set it takes precedence over every `OPENCLAW_GATEWAY_*` value and **a bearer token must resolve** — from `DIGITAL_ME_BRAIN_TOKEN`, else `DIGITAL_ME_BRAIN_TOKEN_FILE`, else the default token file. A URL with no resolvable token is a configuration error, never a silent fallback to the gateway token. When it is not in their environment, the hooks and the Hermes recall plugin read it from the [brain sidecar](#brain-sidecar-digital-me-brainenv). |
 | `DIGITAL_ME_BRAIN_TOKEN` | no | — | brain-host | same consumers as `DIGITAL_ME_BRAIN_URL`. Bearer token for brain-host, inline. Prefer `DIGITAL_ME_BRAIN_TOKEN_FILE`: the installers never write this variable (and remove one they wrote earlier), so the secret stays on disk. |
-| `DIGITAL_ME_BRAIN_TOKEN_FILE` | no | `$DIGITAL_ME_WIKI_ROOT/.data/brain-host.token` (`~/digital-me/.data/brain-host.token`) | brain-host | same consumers as `DIGITAL_ME_BRAIN_URL`, plus `services/brain-host` itself. File holding the bearer token, read (trimmed) when `DIGITAL_ME_BRAIN_TOKEN` is unset; an empty or unreadable file counts as no token. `digital-me install --runtime brain-host` writes it (mode 600); `install --runtime claude-code | codex | hermes` write this path — not the token — into `~/.claude/settings.json` `env`, the MCP registrations, `~/.codex/config.toml` (`[mcp_servers.openclaw-brain]` env + `[shell_environment_policy.set]` for the hooks) and `~/.hermes/config.yaml`. |
+| `DIGITAL_ME_BRAIN_TOKEN_FILE` | no | `$DIGITAL_ME_WIKI_ROOT/.data/brain-host.token` (`~/digital-me/.data/brain-host.token`) | brain-host | same consumers as `DIGITAL_ME_BRAIN_URL`, plus `services/brain-host` itself. File holding the bearer token, read (trimmed) when `DIGITAL_ME_BRAIN_TOKEN` is unset; an empty or unreadable file counts as no token. `digital-me install --runtime brain-host` writes it (mode 600); `install --runtime claude-code | codex | hermes` write this path — not the token — into `~/.claude/settings.json` `env`, the MCP registrations, `~/.codex/config.toml` (`[mcp_servers.openclaw-brain]` env for the proxy + `[shell_environment_policy.set]`, which reaches only commands Codex runs through its shell tool, not hooks), `~/.hermes/config.yaml`, and the [brain sidecar](#brain-sidecar-digital-me-brainenv) the hooks and the Hermes recall plugin read. |
 | `BRAIN_PROXY_PATH` | no | `$(which digital-me-brain-mcp-proxy)` | this repo | runtime adapters |
 | `ORCHESTRATOR_DB_PATH` | no | `$OPENCLAW_DATA_DIR/orchestrator.db` | brain-orchestrator | **deprecated** — registry entry with no live consumer; the live orchestrator store is `$OPENCLAW_DATA_DIR/brain.db` |
 | `OPENCLAW_BRAIN_DB` | no | (alias of `DIGITAL_ME_BRAIN_DB`, lower precedence) | brain-orchestrator | `services/dashboard` intake ETL — legacy name, still honoured |
@@ -59,6 +59,21 @@ code actually reads; `DIGITAL_ME_HOME` is retained only so existing
 3. Default declared in the contract
 
 This means a user can override anything either via env vars (for one-off testing) or via their `config.yaml` (for persistent local configuration).
+
+## Brain sidecar (`digital-me-brain.env`)
+
+An env var reaches a hook only if its host passes it on. Claude Code exports settings.json `env` to its hooks; Codex runs hooks with its own process environment (`[shell_environment_policy.set]` does not apply to them), and the Hermes recall plugin runs inside the Hermes gateway process, which never sees the MCP stanza's `env:`. So `digital-me install --runtime claude-code | codex | hermes` also writes `digital-me-brain.env` next to the installed hooks (`~/.claude/hooks/`, `~/.codex/hooks/`) and into the recall plugin dir (`~/.hermes/plugins/digital-me-recall-hermes/`, or under `$HERMES_HOME`):
+
+```
+# Written by `digital-me install` — brain endpoint for the Digital Me hooks. …
+DIGITAL_ME_BRAIN_URL=http://127.0.0.1:18791/tools/invoke
+DIGITAL_ME_BRAIN_TOKEN_FILE=/home/<you>/digital-me/.data/brain-host.token
+```
+
+- Written only when the installer resolves brain-host (the same `DIGITAL_ME_BRAIN_URL` / token-file detection as the registrations); removed when it does not, so no hook points at a brain-host that is gone. The URL and the token-file path only — never the token.
+- Readers — `dm_memory_search_inject.sh` and `dm_m1_emit.py` (claude-code, codex) and the Hermes recall plugin — read the file next to themselves only when `DIGITAL_ME_BRAIN_URL` is unset in their environment, and each key fills in only what the environment leaves unset: an exported value always wins.
+- When it supplies the URL it beats `OPENCLAW_GATEWAY_*` and `openclaw.json` (it records the installer's decision that brain-host is the brain); the token rules above apply unchanged, so a URL whose token file is unreadable is still a configuration error, never a gateway fallback.
+- Parsed line by line, never sourced: only `DIGITAL_ME_BRAIN_URL` and `DIGITAL_ME_BRAIN_TOKEN_FILE` are honoured, blank lines, `#` comments and other keys are ignored, one pair of surrounding quotes is stripped, and a missing or unreadable file changes nothing. The TypeScript side of the contract is `@digital-me/contracts` `renderBrainSidecar`.
 
 ## Adding a new variable
 

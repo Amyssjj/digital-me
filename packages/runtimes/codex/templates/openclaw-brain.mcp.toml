@@ -21,9 +21,12 @@
 # Omit both DIGITAL_ME_BRAIN_* keys to stay on the openclaw gateway.
 # Prefer the FILE path: config.toml then never carries the secret itself.
 #
-# Codex hooks (~/.codex/hooks.json) run in the shell env, not the MCP env, so
-# `digital-me install --runtime codex` also sets the same two variables in
-# `[shell_environment_policy.set]` (merged into your existing table).
+# Codex hooks (~/.codex/hooks.json) see neither this env table nor
+# `[shell_environment_policy.set]` (that one only reaches commands Codex runs
+# through its shell tool). `digital-me install --runtime codex` therefore
+# writes the same two variables to ~/.codex/hooks/digital-me-brain.env, which
+# the hooks read when DIGITAL_ME_BRAIN_URL is not in their environment, and
+# also merges them into `[shell_environment_policy.set]` for shell commands.
 
 [mcp_servers.openclaw-brain]
 command = "digital-me-brain-proxy"

@@ -24,6 +24,7 @@ import {
   type BrainGoal,
   type BrainWorkflowTemplate,
 } from "./brain-client.mc.js";
+import type { WorkflowRunStats } from "./brain-kanban.js";
 
 /** The flag we look for inside a workflow's top-level `display` block.
  *  Permissive shape — workflows authored without it just rely on the
@@ -46,17 +47,33 @@ function isMechanismEligible(w: MechanismWorkflow): boolean {
   return steps.length >= 3;
 }
 
-export function buildMechanismRouter(): Router {
+/** Per-workflow run stats keyed by workflow id (brain-kanban.ts reads them
+ *  from brain.db). The brain's `workflow_list` carries none, so without this
+ *  every card showed "0 runs". */
+export type RunStatsSource = () => ReadonlyMap<string, WorkflowRunStats>;
+
+export function buildMechanismRouter(deps: { readonly runStats?: RunStatsSource } = {}): Router {
   const router = Router();
 
   router.get("/workflows", async (_req, res) => {
     try {
       const templates = (await brainWorkflowList()) as MechanismWorkflow[];
       const eligible = templates.filter(isMechanismEligible);
+      // Stats are an enrichment: an unreadable brain.db degrades to whatever
+      // the template carries rather than failing the whole view.
+      let runStats: ReadonlyMap<string, WorkflowRunStats> = new Map();
+      if (deps.runStats) {
+        try {
+          runStats = deps.runStats();
+        } catch (err) {
+          console.error("[/api/mechanism/workflows] run stats unavailable:", err);
+        }
+      }
       // Surface the rule so the UI can render a tooltip/badge explaining
       // why each workflow shows.
       const rows = eligible.map((w) => {
         const steps = w.steps ?? [];
+        const stats = runStats.get(w.id);
         return {
           id: w.id,
           name: w.name,
@@ -73,9 +90,9 @@ export function buildMechanismRouter(): Router {
                 : [],
             sortOrder: s.sortOrder ?? s.sort_order ?? i,
           })),
-          latestRun: w.latestRun ?? null,
-          totalRuns: w.totalRuns ?? 0,
-          successRate: w.successRate ?? null,
+          latestRun: stats?.latestRun ?? w.latestRun ?? null,
+          totalRuns: stats?.totalRuns ?? w.totalRuns ?? 0,
+          successRate: stats?.successRate ?? w.successRate ?? null,
           // Echo the inclusion reason — explicit flag vs auto-default.
           mechanismVisibility: {
             explicit: typeof w.display?.mechanism_view === "boolean",

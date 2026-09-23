@@ -378,18 +378,13 @@ def main(argv: list[str] | None = None) -> int:
                 created=counts["created"],
                 updated=counts["updated"],
             )
-        # Scrub stale short-domain rows written by pre-alias scans.
-        # Without this, upgraded DBs keep the old (tastes, infra) and
-        # (tastes, knowledge) primary keys alongside the new canonical
-        # ones, and queryDistribution reads all rows, so the radar still
-        # shows duplicate axes even after the alias map is in effect.
-        if TASTE_DOMAIN_ALIASES:
-            placeholders = ",".join("?" * len(TASTE_DOMAIN_ALIASES))
-            conn.execute(
-                f"DELETE FROM knowledge_taste_distribution"
-                f" WHERE tree = 'tastes' AND domain IN ({placeholders})",
-                list(TASTE_DOMAIN_ALIASES.keys()),
-            )
+        # The distribution is a snapshot of the trees as they are now, so
+        # replace it wholesale. Upserting alone kept every (tree, domain)
+        # key a scan ever emitted: renamed or emptied domains, the
+        # pre-alias (tastes, infra) / (tastes, knowledge) keys, and the
+        # ~/digital-me-wide junk domains the 2026-09 root misread wrote —
+        # queryDistribution reads all rows, so the totals kept them too.
+        conn.execute("DELETE FROM knowledge_taste_distribution")
         for (tree, domain), total in sorted(distribution.items()):
             upsert_knowledge_taste_distribution(
                 conn,

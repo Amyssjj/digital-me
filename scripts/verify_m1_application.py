@@ -34,6 +34,16 @@ from pathlib import Path
 
 RUNTIMES = ("claude-code", "openclaw", "hermes")
 
+# End-to-end harnesses stamp their events `e2e-<name>` (e.g. the 2026-09-20
+# brain-host cutover wrote runtime "e2e-brain-host" into the live brain). That
+# is test exhaust, not a runtime with a recall path: it is reported, but it
+# can neither fail the window check nor go STALLED.
+SYNTHETIC_PREFIX = "e2e-"
+
+
+def _synthetic(runtime: str) -> bool:
+    return runtime.startswith(SYNTHETIC_PREFIX)
+
 # Signals the M1 scorer counts as "the assistant acknowledged the surfaced
 # context" — must match brain-orchestrator handlers/m1.ts ACK_SIGNALS_THAT_COUNT.
 COUNTING_ACK_SIGNALS = {"explicit_path", "title_match", "no_applicable"}
@@ -160,7 +170,9 @@ def main(argv=None) -> int:
         a = len(acked_turns.get(rt, set()))
         rate = (a / s) if s else None
         rate_str = f"{rate*100:5.1f}%" if rate is not None else "   n/a"
-        if s > 0 and a == 0:
+        if _synthetic(rt):
+            status = "synthetic (test traffic, not checked)"
+        elif s > 0 and a == 0:
             status = "FAIL (surfaces but never acks)"
             unhealthy.append(rt)
         elif s == 0:
@@ -208,7 +220,7 @@ def main(argv=None) -> int:
                 .astimezone().strftime("%Y-%m-%d %H:%M")
                 if ts else "never"
             )
-            if base > 0 and rec == 0:
+            if base > 0 and rec == 0 and not _synthetic(rt):
                 stalled.append(rt)
                 mark = "  ← STALLED"
             else:

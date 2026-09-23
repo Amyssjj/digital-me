@@ -106,6 +106,7 @@ import {
   resolveBrainCallerEnv,
   resolveBrainHostServiceConfig,
 } from "../brain-host-service.js";
+import { describeBrainSidecar, syncBrainSidecar } from "../brain-sidecar.js";
 import {
   DASHBOARD_COMMAND_USAGE,
   browserOpenCommand,
@@ -626,9 +627,14 @@ function installClaudeCode(home: string): void {
     brainNote = ` + env DIGITAL_ME_BRAIN_URL=${brainCaller.brainUrl} DIGITAL_ME_BRAIN_TOKEN_FILE=${brainCaller.brainTokenFile}`;
   }
   writeFileSync(settingsPath, JSON.stringify(merged, null, 2) + "\n", "utf-8");
+  // The same pair in digital-me-brain.env next to the hooks, which read it
+  // when their environment has no DIGITAL_ME_BRAIN_URL (a hook launched
+  // without settings.json `env`). Removed when brain-host is not configured.
+  const sidecarNote = describeBrainSidecar(syncBrainSidecar(targetHooksDir, brainCaller));
   // Reference the manifest so this gets imported (tree-shake protection):
   void buildClaudeHooksManifest;
   console.log(`[OK] installed claude-code: hooks + skill + settings.json merged${brainNote}`);
+  if (sidecarNote) console.log(`     claude-code hooks: ${sidecarNote}`);
   // Register the openclaw-brain MCP server in Claude Code's CLI registry
   installClaudeCodeMcp(brainCaller);
 }
@@ -707,17 +713,18 @@ function installCodex(home: string): void {
     ? readFileSync(tomlTarget, "utf-8")
     : "";
   let tomlMerged = mergeMcpServer(tomlExisting, tomlFragment);
-  // Codex hooks run in the shell environment, not the MCP server env, so the
-  // inject / Stop hooks need the same two variables via
-  // [shell_environment_policy.set] (merged; other keys in that table are kept).
+  // [shell_environment_policy.set] gives the commands Codex runs through its
+  // shell tool the same two variables (merged; other keys in that table are
+  // kept). It does NOT reach hook processes — the hooks get the pair from the
+  // digital-me-brain.env sidecar written next to them below.
   if (brainCaller) {
     try {
       tomlMerged = mergeShellEnvPolicySet(tomlMerged, brainHookEnv(brainCaller));
-      console.log(`     codex hooks: [shell_environment_policy.set] → brain-host at ${brainCaller.brainUrl}`);
+      console.log(`     codex shell env: [shell_environment_policy.set] → brain-host at ${brainCaller.brainUrl}`);
     } catch (err) {
       console.error(
-        `[WARN] codex hooks: could not merge [shell_environment_policy.set] (${err instanceof Error ? err.message : String(err)}). ` +
-          `Set DIGITAL_ME_BRAIN_URL and DIGITAL_ME_BRAIN_TOKEN_FILE there by hand so the hooks reach brain-host.`,
+        `[WARN] codex shell env: could not merge [shell_environment_policy.set] (${err instanceof Error ? err.message : String(err)}). ` +
+          `Set DIGITAL_ME_BRAIN_URL and DIGITAL_ME_BRAIN_TOKEN_FILE there by hand if commands Codex runs should reach brain-host (the hooks use the sidecar).`,
       );
     }
   }
@@ -732,6 +739,12 @@ function installCodex(home: string): void {
     copyFile(src, dst);
     chmodExec(dst);
   }
+  // Codex runs hooks with its own process environment, which carries no
+  // DIGITAL_ME_BRAIN_URL (config.toml's policy table included), so the hooks
+  // read the pair from digital-me-brain.env next to them. Removed when
+  // brain-host is not configured, so they never point at a removed brain-host.
+  const sidecarNote = describeBrainSidecar(syncBrainSidecar(targetHooksDir, brainCaller));
+  if (sidecarNote) console.log(`     codex hooks: ${sidecarNote}`);
   // Codex does not document `$HOME` expansion in hook command paths, so we
   // wire absolute paths resolved at install time.
   const hooksJsonPath = path.join(codexDir, "hooks.json");
@@ -1390,9 +1403,20 @@ function installHermesRecallPlugin(home: string): void {
       const dst = path.join(targetDir, file);
       writeFileSync(dst, readFileSync(src));
     }
+    // The plugin runs inside the Hermes gateway process, whose env never has
+    // DIGITAL_ME_BRAIN_URL (only the MCP stanza's `env:` does), so it reads
+    // the pair from digital-me-brain.env beside __init__.py — written when
+    // brain-host resolves, removed otherwise. Same detection as the MCP stanza.
+    const brain = resolveBrainCallerEnv(
+      process.env,
+      resolveBrainHostServiceConfig(home, process.env, process.execPath),
+      readTokenFileIfExists,
+    );
+    const sidecarNote = describeBrainSidecar(syncBrainSidecar(targetDir, brain));
     console.log(
       `[OK] hermes plugin: copied ${HERMES_RECALL_PLUGIN_NAME} → ${targetDir}`,
     );
+    if (sidecarNote) console.log(`     hermes plugin: ${sidecarNote}`);
   } catch (err) {
     console.error(
       `[WARN] hermes plugin install failed (${HERMES_RECALL_PLUGIN_NAME}): ` +

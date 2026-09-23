@@ -193,13 +193,15 @@ describe("buildCodexMcpConfig", () => {
     expect(tpl).toContain("DIGITAL_ME_BRAIN_TOKEN_FILE = ");
     expect(tpl).not.toMatch(SECRET_KEY);
     expect(tpl).toContain(SHELL_ENV_POLICY_SET_HEADER);
+    // Hooks get the pair from the sidecar, not from either env table.
+    expect(tpl).toContain("hooks/digital-me-brain.env");
   });
 });
 
 describe("brainHookEnv", () => {
   const brain = { brainUrl: "http://127.0.0.1:18791/tools/invoke", brainTokenFile: "/home/test/digital-me/.data/brain-host.token" };
 
-  it("is exactly the URL + token FILE pair the hooks read", () => {
+  it("is exactly the URL + token FILE pair (the same pair the hooks' sidecar carries)", () => {
     expect(brainHookEnv(brain)).toEqual({
       DIGITAL_ME_BRAIN_URL: brain.brainUrl,
       DIGITAL_ME_BRAIN_TOKEN_FILE: brain.brainTokenFile,

@@ -249,6 +249,9 @@ importers:
         specifier: ^4.0.1
         version: 4.0.1
     devDependencies:
+      '@digital-me/brain-orchestrator':
+        specifier: workspace:*
+        version: link:../../plugins/brain-orchestrator
       '@types/better-sqlite3':
         specifier: ^7.6.13
         version: 7.6.13

@@ -18,9 +18,11 @@ Design notes:
   - MCP calls to openclaw-brain go via direct HTTP to the brain endpoint
     (mirrors dm_memory_search_inject.sh). No PluginLlm needed. The
     endpoint is digital-me brain-host when DIGITAL_ME_BRAIN_URL is set in
-    the Hermes process environment (token from DIGITAL_ME_BRAIN_TOKEN, else
-    DIGITAL_ME_BRAIN_TOKEN_FILE, else the default token file), otherwise
-    the openclaw gateway (see _resolve_gateway_url).
+    the Hermes process environment or, failing that, in the
+    installer-written digital-me-brain.env next to this file (token from
+    DIGITAL_ME_BRAIN_TOKEN, else DIGITAL_ME_BRAIN_TOKEN_FILE, else the
+    default token file), otherwise the openclaw gateway (see
+    _resolve_gateway_url).
   - All I/O is best-effort; any exception is swallowed inside the hook
     so a flaky gateway can never break the agent's turn.
   - Per-session state lives in module-level dicts keyed by session_id.
@@ -81,12 +83,55 @@ APP_RATE_LOG = HOME / ".openclaw" / "data" / "application_rate_hermes.log"
 
 # Brain endpoint precedence (mirrors transport/brain-mcp-proxy config.ts and
 # the claude-code dm_memory_search_inject.sh / dm_m1_emit.py hooks):
-#   1. DIGITAL_ME_BRAIN_URL → brain-host. Token: DIGITAL_ME_BRAIN_TOKEN when
-#      non-empty, else the trimmed contents of DIGITAL_ME_BRAIN_TOKEN_FILE,
-#      else of <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token.
+#   1. DIGITAL_ME_BRAIN_URL (env, else the sidecar below) → brain-host.
+#      Token: DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed contents
+#      of DIGITAL_ME_BRAIN_TOKEN_FILE (env, else the sidecar), else of
+#      <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token.
 #   2. OPENCLAW_GATEWAY_URL, or OPENCLAW_GATEWAY_HOST / OPENCLAW_GATEWAY_PORT
 #   3. the openclaw gateway on localhost:18789
 DEFAULT_GATEWAY_URL = "http://localhost:18789/tools/invoke"
+
+# Brain sidecar: `digital-me install --runtime hermes` writes
+# digital-me-brain.env next to this file because the plugin runs inside the
+# Hermes gateway process, whose env never has DIGITAL_ME_BRAIN_URL (only the
+# MCP stanza's `env:` in ~/.hermes/config.yaml carries it). This file's own
+# dir, symlinks NOT resolved. Module-level so tests can repoint it.
+BRAIN_SIDECAR = Path(os.path.abspath(__file__)).parent / "digital-me-brain.env"
+_BRAIN_SIDECAR_KEYS = ("DIGITAL_ME_BRAIN_URL", "DIGITAL_ME_BRAIN_TOKEN_FILE")
+
+
+def _read_brain_sidecar(path: Path) -> Dict[str, str]:
+    """The sidecar's DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN_FILE.
+    Parsed line by line, never executed: lines without `=` and other keys
+    (so `#` comments too) are skipped, one pair of surrounding quotes is
+    stripped, the last assignment wins. Missing or unreadable → {}."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return {}
+    values: Dict[str, str] = {}
+    for raw in text.splitlines():
+        key, sep, value = raw.partition("=")
+        key = key.strip()
+        if not sep or key not in _BRAIN_SIDECAR_KEYS:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _brain_env(key: str) -> Optional[str]:
+    """Effective DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN_FILE: the
+    process env when non-empty, else — only while the env has no
+    DIGITAL_ME_BRAIN_URL — the sidecar. Explicit env always wins; the sidecar
+    in turn beats every OPENCLAW_GATEWAY_* source, because it records the
+    installer's decision that brain-host is the brain."""
+    value = os.environ.get(key)
+    if value or os.environ.get("DIGITAL_ME_BRAIN_URL"):
+        return value or None
+    return _read_brain_sidecar(BRAIN_SIDECAR).get(key) or None
 
 
 def _default_brain_token_file() -> Path:
@@ -98,8 +143,9 @@ def _default_brain_token_file() -> Path:
 
 
 def _brain_token_file() -> Path:
-    """DIGITAL_ME_BRAIN_TOKEN_FILE when non-empty, else the default file."""
-    return Path(os.environ.get("DIGITAL_ME_BRAIN_TOKEN_FILE") or _default_brain_token_file())
+    """DIGITAL_ME_BRAIN_TOKEN_FILE (env, else the sidecar) when non-empty,
+    else the default file."""
+    return Path(_brain_env("DIGITAL_ME_BRAIN_TOKEN_FILE") or _default_brain_token_file())
 
 
 def _read_brain_token_file(path: Path) -> Optional[str]:
@@ -112,7 +158,7 @@ def _read_brain_token_file(path: Path) -> Optional[str]:
 
 
 def _resolve_gateway_url() -> str:
-    url = os.environ.get("DIGITAL_ME_BRAIN_URL") or os.environ.get("OPENCLAW_GATEWAY_URL")
+    url = _brain_env("DIGITAL_ME_BRAIN_URL") or os.environ.get("OPENCLAW_GATEWAY_URL")
     if url:
         return url
     host = os.environ.get("OPENCLAW_GATEWAY_HOST")
@@ -170,10 +216,11 @@ def _load_gateway_token() -> Optional[str]:
     loader down, which the plugin's fail-open contract forbids.
 
     Otherwise OPENCLAW_GATEWAY_TOKEN wins, then the same openclaw config
-    files the Claude Code hooks read.
+    files the Claude Code hooks read. The URL and the token-file path may
+    come from the sidecar (see _brain_env).
     """
     global _BRAIN_TOKEN_MISSING_LOGGED
-    if os.environ.get("DIGITAL_ME_BRAIN_URL"):
+    if _brain_env("DIGITAL_ME_BRAIN_URL"):
         brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
         if brain_token:
             return brain_token
@@ -183,11 +230,13 @@ def _load_gateway_token() -> Optional[str]:
             return file_token
         if not _BRAIN_TOKEN_MISSING_LOGGED:
             _BRAIN_TOKEN_MISSING_LOGGED = True
+            source = "" if os.environ.get("DIGITAL_ME_BRAIN_URL") else f" (from {BRAIN_SIDECAR})"
             logger.error(
-                "digital-me-recall-hermes: DIGITAL_ME_BRAIN_URL is set but no token "
+                "digital-me-recall-hermes: DIGITAL_ME_BRAIN_URL%s is set but no token "
                 "was found — recall disabled. Set DIGITAL_ME_BRAIN_TOKEN, or point "
                 "DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in %s), "
                 "or unset the URL to fall back to the openclaw gateway.",
+                source,
                 token_file,
             )
         return None

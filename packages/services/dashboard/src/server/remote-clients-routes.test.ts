@@ -5,16 +5,31 @@ import http from "node:http";
 import os from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
-import { execSync } from "node:child_process";
+import { execFile } from "node:child_process";
 import Database from "better-sqlite3";
 
 import {
   buildRemoteClientsRouter,
+  cachedRoster,
   defaultListRosterIds,
 } from "./remote-clients-routes.js";
 
-vi.mock("node:child_process", () => ({ execSync: vi.fn() }));
-const execSyncMock = vi.mocked(execSync);
+vi.mock("node:child_process", () => ({ execFile: vi.fn() }));
+const execFileMock = vi.mocked(execFile);
+
+type ExecCallback = (err: Error | null, out?: { stdout: string; stderr: string }) => void;
+
+/** Make the mocked execFile answer like the real one does under promisify. */
+function cliAnswers(stdout: string): void {
+  execFileMock.mockImplementation(((...args: unknown[]) => {
+    (args[args.length - 1] as ExecCallback)(null, { stdout, stderr: "" });
+  }) as unknown as typeof execFile);
+}
+function cliFails(err: Error): void {
+  execFileMock.mockImplementation(((...args: unknown[]) => {
+    (args[args.length - 1] as ExecCallback)(err);
+  }) as unknown as typeof execFile);
+}
 
 let tmpDir: string;
 let dbPath: string;
@@ -183,37 +198,118 @@ describe("buildRemoteClientsRouter", () => {
   });
 });
 
-describe("defaultListRosterIds", () => {
-  afterEach(() => execSyncMock.mockReset());
+describe("default roster wiring", () => {
+  afterEach(() => execFileMock.mockReset());
 
-  it("parses ids from an { agents: [...] } payload, skipping blanks", () => {
-    execSyncMock.mockReturnValue(
+  it("excludes the openclaw roster when no roster source is injected", async () => {
+    seedBrainDb(dbPath);
+    cliAnswers(JSON.stringify([{ id: "coo" }]));
+    const app = express();
+    app.use("/api/remote-clients", buildRemoteClientsRouter(dbPath));
+    server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    const res = await fetch(`${base}/api/remote-clients?days=3650`);
+    const body = (await res.json()) as { clients: Array<{ agent_id: string }> };
+    expect(body.clients.map((c) => c.agent_id)).not.toContain("coo");
+    expect(body.clients.map((c) => c.agent_id)).toContain("codex-windows");
+  });
+
+  it("awaits an async roster source", async () => {
+    seedBrainDb(dbPath);
+    const app = express();
+    app.use(
+      "/api/remote-clients",
+      buildRemoteClientsRouter(dbPath, async () => new Set(["codex-windows"]), () => NOW),
+    );
+    server = http.createServer(app);
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
+
+    const body = (await (await fetch(`${base}/api/remote-clients?days=30`)).json()) as {
+      clients: Array<{ agent_id: string }>;
+    };
+    expect(body.clients.map((c) => c.agent_id)).toEqual(["coo", "claude-code-windows"]);
+  });
+});
+
+describe("defaultListRosterIds", () => {
+  afterEach(() => execFileMock.mockReset());
+
+  it("runs the openclaw CLI without a shell and parses { agents: [...] }, skipping blanks", async () => {
+    cliAnswers(
       JSON.stringify({
         agents: [{ id: "coo" }, { id: "" }, { name: "no-id" }, { id: "main" }],
       }),
     );
-    expect(defaultListRosterIds()).toEqual(new Set(["coo", "main"]));
+    expect(await defaultListRosterIds()).toEqual(new Set(["coo", "main"]));
+    expect(execFileMock).toHaveBeenCalledWith(
+      "openclaw",
+      ["agents", "list", "--json"],
+      { timeout: 15000, encoding: "utf-8" },
+      expect.any(Function),
+    );
   });
 
-  it("parses ids from a bare array payload", () => {
-    execSyncMock.mockReturnValue(JSON.stringify([{ id: "a1" }, { id: "a2" }]));
-    expect(defaultListRosterIds()).toEqual(new Set(["a1", "a2"]));
+  it("parses ids from a bare array payload", async () => {
+    cliAnswers(JSON.stringify([{ id: "a1" }, { id: "a2" }]));
+    expect(await defaultListRosterIds()).toEqual(new Set(["a1", "a2"]));
   });
 
-  it("returns an empty set for a non-array/agentless object", () => {
-    execSyncMock.mockReturnValue(JSON.stringify({ unrelated: 1 }));
-    expect(defaultListRosterIds().size).toBe(0);
+  it("returns an empty set for a non-array/agentless object", async () => {
+    cliAnswers(JSON.stringify({ unrelated: 1 }));
+    expect((await defaultListRosterIds()).size).toBe(0);
   });
 
-  it("returns an empty set on unparseable output", () => {
-    execSyncMock.mockReturnValue("not json");
-    expect(defaultListRosterIds().size).toBe(0);
+  it("returns an empty set on unparseable output", async () => {
+    cliAnswers("not json");
+    expect((await defaultListRosterIds()).size).toBe(0);
   });
 
-  it("returns an empty set when the openclaw CLI throws", () => {
-    execSyncMock.mockImplementation(() => {
-      throw new Error("command not found: openclaw");
-    });
-    expect(defaultListRosterIds().size).toBe(0);
+  it("returns an empty set when the openclaw CLI fails", async () => {
+    cliFails(new Error("spawn openclaw ENOENT"));
+    expect((await defaultListRosterIds()).size).toBe(0);
+  });
+});
+
+describe("cachedRoster", () => {
+  it("shares one in-flight fetch, then serves the cached roster for 10 minutes", async () => {
+    let t = 0;
+    const fetchIds = vi.fn(async () => new Set(["coo"]));
+    const roster = cachedRoster(fetchIds, () => t);
+
+    const [a, b] = await Promise.all([roster(), roster()]);
+    expect(a).toEqual(new Set(["coo"]));
+    expect(b).toBe(a);
+    expect(fetchIds).toHaveBeenCalledTimes(1);
+
+    t += 10 * 60 * 1000 - 1;
+    expect(roster()).toBe(a); // still cached — returned synchronously
+    expect(fetchIds).toHaveBeenCalledTimes(1);
+
+    t += 1;
+    await roster();
+    expect(fetchIds).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries an empty roster after a minute", async () => {
+    let t = 0;
+    const fetchIds = vi.fn(async () => new Set<string>());
+    const roster = cachedRoster(fetchIds, () => t);
+
+    await roster();
+    t += 59_999;
+    await roster();
+    expect(fetchIds).toHaveBeenCalledTimes(1);
+    t += 1;
+    await roster();
+    expect(fetchIds).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses the wall clock by default", async () => {
+    const roster = cachedRoster(async () => new Set(["x"]));
+    const first = await roster();
+    expect(roster()).toBe(first);
   });
 });

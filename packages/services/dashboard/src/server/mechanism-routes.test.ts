@@ -3,7 +3,7 @@ import express from "express";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { buildKanbanRouter, buildMechanismRouter } from "./mechanism-routes.js";
+import { buildKanbanRouter, buildMechanismRouter, type RunStatsSource } from "./mechanism-routes.js";
 import { brainBoard, brainWorkflowList } from "./brain-client.mc.js";
 
 // The routers import module-level singletons from the legacy brain client —
@@ -148,6 +148,68 @@ describe("buildMechanismRouter (HTTP)", () => {
       const json = (await res.json()) as { error: string };
       expect(json.error).toBe("Failed to fetch mechanism workflows");
       expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
+describe("buildMechanismRouter run stats", () => {
+  let statsServer: http.Server;
+  let statsBase: string;
+
+  async function listenWith(runStats: RunStatsSource): Promise<void> {
+    const app = express();
+    app.use("/api/mechanism", buildMechanismRouter({ runStats }));
+    statsServer = http.createServer(app);
+    await new Promise<void>((r) => statsServer.listen(0, "127.0.0.1", r));
+    statsBase = `http://127.0.0.1:${(statsServer.address() as AddressInfo).port}`;
+  }
+
+  afterEach(async () => {
+    await new Promise((r) => statsServer.close(r));
+  });
+
+  const threeSteps = [{ name: "a" }, { name: "b" }, { name: "c" }];
+
+  it("overlays brain.db run stats on the templates that have runs", async () => {
+    givenWorkflows([
+      { id: "wf-ran", name: "Ran", steps: threeSteps },
+      { id: "wf-idle", name: "Idle", steps: threeSteps, totalRuns: 2, successRate: 50 },
+    ]);
+    const latestRun = {
+      goalId: "g9",
+      status: "completed",
+      startedAt: "2026-09-22T00:00:00.000Z",
+      completedAt: "2026-09-22T00:01:00.000Z",
+      taskStatuses: { a: "completed" },
+    };
+    await listenWith(() => new Map([["wf-ran", { totalRuns: 1440, successRate: 99.9, latestRun }]]));
+
+    const json = (await (await fetch(`${statsBase}/api/mechanism/workflows`)).json()) as {
+      workflows: WorkflowRow[];
+    };
+    expect(json.workflows[0]).toMatchObject({ id: "wf-ran", totalRuns: 1440, successRate: 99.9, latestRun });
+    // No brain.db runs → the template's own values (or the zero default).
+    expect(json.workflows[1]).toMatchObject({ id: "wf-idle", totalRuns: 2, successRate: 50, latestRun: null });
+  });
+
+  it("degrades to template values when the run-stats read fails", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      givenWorkflows([{ id: "wf-ran", name: "Ran", steps: threeSteps }]);
+      await listenWith(() => {
+        throw new Error("brain.db missing");
+      });
+
+      const res = await fetch(`${statsBase}/api/mechanism/workflows`);
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as { workflows: WorkflowRow[] };
+      expect(json.workflows[0]).toMatchObject({ totalRuns: 0, successRate: null, latestRun: null });
+      expect(spy).toHaveBeenCalledWith(
+        "[/api/mechanism/workflows] run stats unavailable:",
+        expect.any(Error),
+      );
     } finally {
       spy.mockRestore();
     }
