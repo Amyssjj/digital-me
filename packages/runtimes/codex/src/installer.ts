@@ -434,16 +434,20 @@ export function buildCodexMcpConfig(inputs: CodexMcpConfigInputs): string {
   ].join("\n");
 }
 
-// ── Hook environment ([shell_environment_policy.set]) ─────────────────────
+// ── Shell-tool environment ([shell_environment_policy.set]) ───────────────
 //
-// Codex runs hooks in the shell environment it derives from
-// `[shell_environment_policy]`, NOT in an MCP server's `env` table, so the
-// brain-host contract the inject / Stop hooks read (dm_memory_search_inject.sh,
-// dm_m1_emit.py) has to be set through `[shell_environment_policy.set]`. As
-// everywhere else only the URL and the token FILE path are written; the
-// secret stays on disk and the hooks read it themselves.
+// `[shell_environment_policy.set]` reaches the commands Codex runs through its
+// shell tool — NOT hook processes. Hooks run with the Codex process's own
+// environment, which has no DIGITAL_ME_BRAIN_URL (verified live 2026-09-22:
+// the app-server env lacked it, so the inject hook fell back to the stopped
+// openclaw gateway and silently injected nothing). The hooks
+// (dm_memory_search_inject.sh, dm_m1_emit.py) read the pair from the
+// `digital-me-brain.env` sidecar the installer writes next to them instead;
+// this table is still written so shell commands the agent runs reach
+// brain-host too. As everywhere else only the URL and the token FILE path are
+// written; the secret stays on disk and every reader loads it itself.
 
-/** The two variables the hooks need; throws on half a contract. */
+/** The two brain-host variables (URL + token-file path); throws on half a contract. */
 export function brainHookEnv(brain: {
   readonly brainUrl: string;
   readonly brainTokenFile: string;

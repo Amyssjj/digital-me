@@ -45,7 +45,8 @@ Exit codes:
   0  WAL append succeeded (brain POST is best-effort, never blocks 0 exit)
   1  Argument error
   2  WAL write failed (rare — disk full / permission)
-  3  Brain misconfigured: DIGITAL_ME_BRAIN_URL set but no token resolves from
+  3  Brain misconfigured: DIGITAL_ME_BRAIN_URL set (env or the
+     digital-me-brain.env sidecar) but no token resolves from
      DIGITAL_ME_BRAIN_TOKEN, DIGITAL_ME_BRAIN_TOKEN_FILE or the default token
      file. The event is kept in the WAL and NO POST is attempted — never a
      silent fallback to the openclaw gateway token.
@@ -69,10 +70,51 @@ HOME = Path.home()
 DEFAULT_WAL = HOME / ".openclaw" / "data" / "m1_events_codex.jsonl"
 DEFAULT_GATEWAY = "http://localhost:18789/tools/invoke"
 
+# Brain sidecar: `digital-me install` writes digital-me-brain.env next to the
+# hooks because Codex runs them with its own process env, which never has
+# DIGITAL_ME_BRAIN_URL. The script's own dir, symlinks NOT resolved (same as
+# the bash hooks' `dirname "$0"`). Module-level so --selftest can repoint it.
+BRAIN_SIDECAR = Path(os.path.abspath(__file__)).parent / "digital-me-brain.env"
+_BRAIN_SIDECAR_KEYS = ("DIGITAL_ME_BRAIN_URL", "DIGITAL_ME_BRAIN_TOKEN_FILE")
+
 
 class BrainConfigError(RuntimeError):
     """DIGITAL_ME_BRAIN_URL is set but no token resolves (env var, token file
     or default token file)."""
+
+
+def _read_brain_sidecar(path: Path) -> Dict[str, str]:
+    """The sidecar's DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN_FILE.
+    Parsed line by line, never executed: lines without `=` and other keys
+    (so `#` comments too) are skipped, one pair of surrounding quotes is
+    stripped, the last assignment wins. Missing or unreadable → {}."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        return {}
+    values: Dict[str, str] = {}
+    for raw in text.splitlines():
+        key, sep, value = raw.partition("=")
+        key = key.strip()
+        if not sep or key not in _BRAIN_SIDECAR_KEYS:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        values[key] = value
+    return values
+
+
+def _brain_env(key: str) -> Optional[str]:
+    """Effective DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN_FILE: the
+    process env when non-empty, else — only while the env has no
+    DIGITAL_ME_BRAIN_URL — the sidecar. Explicit env always wins; the sidecar
+    in turn beats every OPENCLAW_GATEWAY_* source, because it records the
+    installer's decision that brain-host is the brain."""
+    value = os.environ.get(key)
+    if value or os.environ.get("DIGITAL_ME_BRAIN_URL"):
+        return value or None
+    return _read_brain_sidecar(BRAIN_SIDECAR).get(key) or None
 
 
 def _default_brain_token_file() -> Path:
@@ -84,8 +126,9 @@ def _default_brain_token_file() -> Path:
 
 
 def _brain_token_file() -> Path:
-    """DIGITAL_ME_BRAIN_TOKEN_FILE when non-empty, else the default file."""
-    return Path(os.environ.get("DIGITAL_ME_BRAIN_TOKEN_FILE") or _default_brain_token_file())
+    """DIGITAL_ME_BRAIN_TOKEN_FILE (env, else the sidecar) when non-empty,
+    else the default file."""
+    return Path(_brain_env("DIGITAL_ME_BRAIN_TOKEN_FILE") or _default_brain_token_file())
 
 
 def _read_brain_token_file(path: Path) -> Optional[str]:
@@ -99,9 +142,10 @@ def _read_brain_token_file(path: Path) -> Optional[str]:
 
 def _resolve_gateway_url() -> str:
     """Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts and the
-    inject hook): DIGITAL_ME_BRAIN_URL (digital-me brain-host) >
-    OPENCLAW_GATEWAY_URL > OPENCLAW_GATEWAY_HOST/PORT > the default gateway."""
-    brain_url = os.environ.get("DIGITAL_ME_BRAIN_URL")
+    inject hook): DIGITAL_ME_BRAIN_URL (digital-me brain-host; env, else the
+    sidecar) > OPENCLAW_GATEWAY_URL > OPENCLAW_GATEWAY_HOST/PORT > the default
+    gateway."""
+    brain_url = _brain_env("DIGITAL_ME_BRAIN_URL")
     if brain_url:
         return brain_url
     gateway_url = os.environ.get("OPENCLAW_GATEWAY_URL")
@@ -146,8 +190,8 @@ def _load_gateway_token() -> Optional[str]:
     raises BrainConfigError — main() still appends the event to the WAL (for
     backfill), skips the POST, reports on stderr and exits 3. Never a silent
     fallback to an openclaw gateway token that brain-host would reject
-    anyway."""
-    if os.environ.get("DIGITAL_ME_BRAIN_URL"):
+    anyway. The URL may come from the sidecar (see _brain_env)."""
+    if _brain_env("DIGITAL_ME_BRAIN_URL"):
         brain_token = os.environ.get("DIGITAL_ME_BRAIN_TOKEN")
         if brain_token:
             return brain_token
@@ -155,8 +199,9 @@ def _load_gateway_token() -> Optional[str]:
         file_token = _read_brain_token_file(token_file)
         if file_token:
             return file_token
+        source = "" if os.environ.get("DIGITAL_ME_BRAIN_URL") else f" (from {BRAIN_SIDECAR})"
         raise BrainConfigError(
-            "DIGITAL_ME_BRAIN_URL is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, "
+            f"DIGITAL_ME_BRAIN_URL{source} is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, "
             f"or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in {token_file}), "
             "or unset the URL to fall back to the openclaw gateway"
         )
@@ -395,6 +440,9 @@ def run_selftest() -> int:
     print("[selftest] brain endpoint + token precedence")
     _selftest_token_precedence()
 
+    print("[selftest] brain sidecar (digital-me-brain.env)")
+    _selftest_brain_sidecar()
+
     print("[selftest] PASSED")
     return 0
 
@@ -420,7 +468,9 @@ def _selftest_token_precedence() -> None:
     brain URL is set."""
     import tempfile
 
+    global BRAIN_SIDECAR
     saved = {k: os.environ.get(k) for k in _PRECEDENCE_ENV_KEYS}
+    saved_sidecar = BRAIN_SIDECAR
     try:
         for k in _PRECEDENCE_ENV_KEYS:
             os.environ.pop(k, None)
@@ -428,7 +478,9 @@ def _selftest_token_precedence() -> None:
             # Isolate the config-file chain from the machine: an explicit
             # DIGITAL_ME_OPENCLAW_CONFIG is consulted first, and the default
             # brain token file lives under a scratch wiki root (the real
-            # ~/digital-me/.data/brain-host.token may exist on this host).
+            # ~/digital-me/.data/brain-host.token may exist on this host), and
+            # an installed copy of this script sits next to a live sidecar.
+            BRAIN_SIDECAR = Path(td) / "digital-me-brain.env"
             cfg_path = Path(td) / "openclaw.json"
             cfg_path.write_text(json.dumps({"gateway": {"auth": {"token": "file-token"}}}), encoding="utf-8")
             os.environ["DIGITAL_ME_OPENCLAW_CONFIG"] = str(cfg_path)
@@ -495,6 +547,78 @@ def _selftest_token_precedence() -> None:
                 raise AssertionError("a missing token file must count as no token")
             print("  ✓ blank or missing token file is a hard error, never a gateway fallback")
     finally:
+        BRAIN_SIDECAR = saved_sidecar
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
+def _selftest_brain_sidecar() -> None:
+    """Offline: with no DIGITAL_ME_BRAIN_URL in the env the sidecar supplies
+    the URL + token-file path and beats the gateway env and openclaw.json
+    (even under a wrong DIGITAL_ME_WIKI_ROOT); an exported
+    DIGITAL_ME_BRAIN_URL hides the whole sidecar; a missing or garbage
+    sidecar changes nothing."""
+    import tempfile
+
+    global BRAIN_SIDECAR
+    saved = {k: os.environ.get(k) for k in _PRECEDENCE_ENV_KEYS}
+    saved_sidecar = BRAIN_SIDECAR
+    try:
+        for k in _PRECEDENCE_ENV_KEYS:
+            os.environ.pop(k, None)
+        with tempfile.TemporaryDirectory() as td:
+            scratch = Path(td)
+            BRAIN_SIDECAR = scratch / "digital-me-brain.env"
+            cfg_path = scratch / "openclaw.json"
+            cfg_path.write_text(json.dumps({"gateway": {"auth": {"token": "file-token"}}}), encoding="utf-8")
+            os.environ["DIGITAL_ME_OPENCLAW_CONFIG"] = str(cfg_path)
+            # A wrong wiki root (the wiki dir itself): its default token file is absent.
+            os.environ["DIGITAL_ME_WIKI_ROOT"] = str(scratch / "wiki")
+            os.environ["OPENCLAW_GATEWAY_URL"] = "http://gw.local/tools/invoke"
+            os.environ["OPENCLAW_GATEWAY_TOKEN"] = "gateway-token"
+            assert _resolve_gateway_url() == "http://gw.local/tools/invoke"
+            assert _load_gateway_token() == "gateway-token"
+            BRAIN_SIDECAR.write_bytes(b"\xff\xfe not utf-8\nno pair here\n")
+            assert _resolve_gateway_url() == "http://gw.local/tools/invoke"
+            assert _load_gateway_token() == "gateway-token"
+            print("  ✓ missing or garbage sidecar → the gateway chain is untouched")
+
+            token_file = scratch / "brain-host.token"
+            token_file.write_text("sidecar-token\n", encoding="utf-8")
+            BRAIN_SIDECAR.write_text(
+                "# comment line\r\n\nOTHER_KEY=ignored\n"
+                'DIGITAL_ME_BRAIN_URL = "http://127.0.0.1:18791/tools/invoke"\r\n'
+                f"DIGITAL_ME_BRAIN_TOKEN_FILE='{token_file}'\n",
+                encoding="utf-8",
+            )
+            assert _resolve_gateway_url() == "http://127.0.0.1:18791/tools/invoke"
+            assert _load_gateway_token() == "sidecar-token"
+            print("  ✓ sidecar URL + token file beat OPENCLAW_GATEWAY_* and openclaw.json")
+
+            os.environ["DIGITAL_ME_BRAIN_URL"] = "http://env.local/tools/invoke"
+            assert _resolve_gateway_url() == "http://env.local/tools/invoke"
+            try:
+                _load_gateway_token()
+            except BrainConfigError:
+                pass
+            else:
+                raise AssertionError("an exported DIGITAL_ME_BRAIN_URL must not borrow the sidecar's token file")
+            print("  ✓ an exported DIGITAL_ME_BRAIN_URL hides the sidecar (URL and token file)")
+
+            del os.environ["DIGITAL_ME_BRAIN_URL"]
+            token_file.unlink()
+            try:
+                _load_gateway_token()
+            except BrainConfigError as exc:
+                assert str(BRAIN_SIDECAR) in str(exc), exc
+            else:
+                raise AssertionError("a sidecar URL without a readable token file must not fall back")
+            print("  ✓ sidecar URL without a readable token file is a hard error naming the sidecar")
+    finally:
+        BRAIN_SIDECAR = saved_sidecar
         for k, v in saved.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -527,12 +651,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--extra-json", default="{}", help="JSON object of extra fields")
     parser.add_argument("--wal", type=Path, default=DEFAULT_WAL)
     parser.add_argument("--gateway", default=_resolve_gateway_url(),
-                        help="Brain /tools/invoke URL (default: DIGITAL_ME_BRAIN_URL > "
-                             "OPENCLAW_GATEWAY_URL > OPENCLAW_GATEWAY_HOST/PORT > openclaw gateway)")
+                        help="Brain /tools/invoke URL (default: DIGITAL_ME_BRAIN_URL, else the "
+                             "digital-me-brain.env next to this script > OPENCLAW_GATEWAY_URL > "
+                             "OPENCLAW_GATEWAY_HOST/PORT > openclaw gateway)")
     parser.add_argument("--token", default=None,
                         help="Bearer token override (default: DIGITAL_ME_BRAIN_TOKEN, else the "
-                             "DIGITAL_ME_BRAIN_TOKEN_FILE / default token file when DIGITAL_ME_BRAIN_URL "
-                             "is set; else OPENCLAW_GATEWAY_TOKEN, else openclaw.json)")
+                             "DIGITAL_ME_BRAIN_TOKEN_FILE / default token file when a brain URL "
+                             "resolves; else OPENCLAW_GATEWAY_TOKEN, else openclaw.json)")
     parser.add_argument(
         "--skip-if-already-started", action="store_true",
         help="For session_start: exit 0 without emitting if the once-only flag already exists",

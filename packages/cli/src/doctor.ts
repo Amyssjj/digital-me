@@ -181,19 +181,29 @@ export function runDoctor(
 ): DoctorReport {
   const checks: CheckResult[] = [];
 
-  // Wiki root
+  // Digital Me root — the DATA ROOT that holds wiki/, tastes/ and .data/,
+  // never the wiki directory itself. A root that points at …/wiki breaks
+  // every caller that derives <root>/wiki or <root>/.data/brain-host.token.
   const wikiRoot = deps.env.DIGITAL_ME_WIKI_ROOT;
+  const expandedRoot = wikiRoot ? expand(deps.env, wikiRoot).replace(/\/+$/, "") : "";
   if (!wikiRoot) {
     checks.push({
       ok: false,
       label: "DIGITAL_ME_WIKI_ROOT",
-      reason: "Env var not set. Export it to your wiki directory.",
+      reason:
+        "Env var not set. Export it to your Digital Me root — the directory that holds wiki/ and tastes/ (default ~/digital-me).",
     });
-  } else if (!deps.fileExists(expand(deps.env, wikiRoot))) {
+  } else if (!deps.fileExists(expandedRoot)) {
     checks.push({
       ok: false,
       label: "DIGITAL_ME_WIKI_ROOT",
       reason: `Path does not exist: ${wikiRoot}`,
+    });
+  } else if (expandedRoot.endsWith("/wiki") && !deps.fileExists(`${expandedRoot}/wiki`)) {
+    checks.push({
+      ok: false,
+      label: "DIGITAL_ME_WIKI_ROOT",
+      reason: `Points at the wiki directory itself (${wikiRoot}). Set it to the Digital Me root — its parent, ${expandedRoot.slice(0, -"/wiki".length)} — which holds wiki/, tastes/ and .data/.`,
     });
   } else {
     checks.push({

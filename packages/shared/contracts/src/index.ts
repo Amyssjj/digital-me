@@ -24,6 +24,10 @@ export {
 
 export type { BrainPathDeps, BrainPathSource, ResolvedBrainPath } from "./paths.js";
 
+export { BRAIN_SIDECAR_FILE, renderBrainSidecar } from "./brain-sidecar.js";
+
+export type { BrainSidecarValues } from "./brain-sidecar.js";
+
 export type {
   InjectionRule,
   InjectionRulesConfig,

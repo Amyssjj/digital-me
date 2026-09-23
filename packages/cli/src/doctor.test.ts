@@ -86,14 +86,45 @@ describe("runDoctor", () => {
   it("reports DIGITAL_ME_WIKI_ROOT ok when env var set + path exists", () => {
     const r = runDoctor(
       makeDeps({
-        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "$HOME/wiki" },
-        fileExists: (p) => p === "/home/u/wiki",
+        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "$HOME/digital-me" },
+        fileExists: (p) => p === "/home/u/digital-me",
       }),
       [],
     );
     const c = r.checks.find((x) => x.label === "DIGITAL_ME_WIKI_ROOT")!;
     expect(c.ok).toBe(true);
-    if (c.ok) expect(c.note).toBe("$HOME/wiki");
+    if (c.ok) expect(c.note).toBe("$HOME/digital-me");
+  });
+
+  it("the unset hint names the data root, not the wiki directory", () => {
+    const c = runDoctor(makeDeps({ env: { HOME: "/home/u" } }), []).checks.find(
+      (x) => x.label === "DIGITAL_ME_WIKI_ROOT",
+    )!;
+    if (!c.ok) expect(c.reason).toMatch(/holds wiki\/ and tastes\//);
+  });
+
+  it("fails a DIGITAL_ME_WIKI_ROOT that points at the wiki directory itself", () => {
+    const r = runDoctor(
+      makeDeps({
+        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "$HOME/digital-me/wiki/" },
+        fileExists: (p) => p === "/home/u/digital-me/wiki",
+      }),
+      [],
+    );
+    const c = r.checks.find((x) => x.label === "DIGITAL_ME_WIKI_ROOT")!;
+    expect(c.ok).toBe(false);
+    if (!c.ok) expect(c.reason).toMatch(/its parent, \/home\/u\/digital-me —/);
+  });
+
+  it("accepts a root that is itself named wiki when it holds a wiki/ tree", () => {
+    const r = runDoctor(
+      makeDeps({
+        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "$HOME/wiki" },
+        fileExists: (p) => p === "/home/u/wiki" || p === "/home/u/wiki/wiki",
+      }),
+      [],
+    );
+    expect(r.checks.find((x) => x.label === "DIGITAL_ME_WIKI_ROOT")!.ok).toBe(true);
   });
 
   it("brain endpoint: a brain-host install (token file) is the hub, no openclaw needed", () => {
@@ -256,8 +287,8 @@ describe("runDoctor", () => {
   it("falls back to literal $HOME when env.HOME is undefined", () => {
     const r = runDoctor(
       {
-        fileExists: (p) => p === "$HOME/wiki",
-        env: { DIGITAL_ME_WIKI_ROOT: "$HOME/wiki" },
+        fileExists: (p) => p === "$HOME/digital-me",
+        env: { DIGITAL_ME_WIKI_ROOT: "$HOME/digital-me" },
         which: () => undefined,
       },
       [],
@@ -270,8 +301,8 @@ describe("runDoctor", () => {
   it("expands ${HOME} variant (curly brace) in path strings", () => {
     const r = runDoctor(
       {
-        fileExists: (p) => p === "/home/u/wiki",
-        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "${HOME}/wiki" },
+        fileExists: (p) => p === "/home/u/digital-me",
+        env: { HOME: "/home/u", DIGITAL_ME_WIKI_ROOT: "${HOME}/digital-me" },
         which: () => undefined,
       },
       [],

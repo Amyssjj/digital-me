@@ -24,16 +24,58 @@ PROMPT="$(printf '%s' "$STDIN" | jq -r '.prompt // empty' 2>/dev/null)"
 # Session id for per-session dedup. Codex passes `session_id` on stdin.
 SESSION_ID="$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null)"
 
-# Skip for trivial prompts / slash-only messages
+# Slash commands: search on what follows the command, not the command itself.
+# "/goal the dashboard shows no data ..." is a real task prompt; a bare
+# "/clear", "/compact" or "/model opus" leaves < 12 chars and skips below.
+case "$PROMPT" in
+  /*)
+    REST="${PROMPT#*[[:space:]]}"
+    [ "$REST" = "$PROMPT" ] && REST=""  # no whitespace: the command alone
+    PROMPT="${REST#"${REST%%[![:space:]]*}"}"
+    ;;
+esac
+
+# Skip for trivial prompts
 PLEN=${#PROMPT}
 [ "$PLEN" -lt 12 ] && exit 0
-case "$PROMPT" in /*) exit 0 ;; esac
+
+# Brain sidecar: `digital-me install` writes digital-me-brain.env next to this
+# script because Codex runs hooks with its own process env, which never has
+# DIGITAL_ME_BRAIN_URL (config.toml's [shell_environment_policy.set] does not
+# reach hooks). Read only when the env has no DIGITAL_ME_BRAIN_URL; each of
+# its two keys fills in only what the env leaves unset. Parsed line by line,
+# never sourced: other keys (and so `#` comments) are ignored, one pair of
+# surrounding quotes is stripped, and a missing file changes nothing.
+SIDECAR_URL=""
+SIDECAR_TOKEN_FILE=""
+HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
+SIDECAR="$HOOK_DIR/digital-me-brain.env"
+if [ -z "${DIGITAL_ME_BRAIN_URL:-}" ] && [ -n "$HOOK_DIR" ] && [ -f "$SIDECAR" ] && [ -r "$SIDECAR" ]; then
+  while IFS= read -r line || [ -n "$line" ]; do
+    line="${line%$'\r'}"
+    case "$line" in *=*) ;; *) continue ;; esac
+    key="${line%%=*}"
+    key="${key#"${key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${line#*=}"
+    value="${value#"${value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    case "$value" in \"*\"|\'*\') value="${value:1:${#value}-2}" ;; esac
+    case "$key" in
+      DIGITAL_ME_BRAIN_URL) SIDECAR_URL="$value" ;;
+      DIGITAL_ME_BRAIN_TOKEN_FILE) SIDECAR_TOKEN_FILE="$value" ;;
+    esac
+  done < "$SIDECAR"
+fi
+BRAIN_URL_FROM="DIGITAL_ME_BRAIN_URL"
+[ -n "$SIDECAR_URL" ] && BRAIN_URL_FROM="DIGITAL_ME_BRAIN_URL (from $SIDECAR)"
 
 # Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts, dm_m1_emit.py
 # and the Claude Code inject hook):
-#   1. DIGITAL_ME_BRAIN_URL — the digital-me brain-host. Its bearer token is
-#      DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed contents of
-#      DIGITAL_ME_BRAIN_TOKEN_FILE, else of the default token file
+#   1. DIGITAL_ME_BRAIN_URL (env, else the sidecar) — the digital-me
+#      brain-host. Its bearer token is DIGITAL_ME_BRAIN_TOKEN when non-empty,
+#      else the trimmed contents of DIGITAL_ME_BRAIN_TOKEN_FILE (env, else the
+#      sidecar), else of the default token file
 #      <DIGITAL_ME_WIKI_ROOT or ~/digital-me>/.data/brain-host.token (the
 #      mode-600 file `digital-me install --runtime brain-host` writes). An
 #      empty or unreadable file is "no token". A URL with no resolvable token
@@ -50,10 +92,10 @@ case "$PROMPT" in /*) exit 0 ;; esac
 # measured 2026-09-20 on the live index: relevant hits 0.71-0.77, off-topic
 # probe 0.50-0.53 — so brain-host gates on vectorScore >= 60.
 # DIGITAL_ME_HOOK_MIN_SCORE overrides either default (0-100 scale).
-if [ -n "${DIGITAL_ME_BRAIN_URL:-}" ]; then
-  BRAIN_URL="$DIGITAL_ME_BRAIN_URL"
+if [ -n "${DIGITAL_ME_BRAIN_URL:-$SIDECAR_URL}" ]; then
+  BRAIN_URL="${DIGITAL_ME_BRAIN_URL:-$SIDECAR_URL}"
   TOKEN="${DIGITAL_ME_BRAIN_TOKEN:-}"
-  TOKEN_FILE="${DIGITAL_ME_BRAIN_TOKEN_FILE:-${DIGITAL_ME_WIKI_ROOT:-$HOME/digital-me}/.data/brain-host.token}"
+  TOKEN_FILE="${DIGITAL_ME_BRAIN_TOKEN_FILE:-${SIDECAR_TOKEN_FILE:-${DIGITAL_ME_WIKI_ROOT:-$HOME/digital-me}/.data/brain-host.token}}"
   if [ -z "$TOKEN" ]; then
     # Env token wins; otherwise the token file. "$( )" drops trailing
     # newlines, the two expansions trim any remaining whitespace (bash 3.2
@@ -64,7 +106,7 @@ if [ -n "${DIGITAL_ME_BRAIN_URL:-}" ]; then
     TOKEN="${TOKEN%"${TOKEN##*[![:space:]]}"}"
   fi
   if [ -z "$TOKEN" ]; then
-    echo "dm_memory_search_inject: DIGITAL_ME_BRAIN_URL is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in $TOKEN_FILE), or unset the URL to fall back to the openclaw gateway" >&2
+    echo "dm_memory_search_inject: $BRAIN_URL_FROM is set but no token was found — set DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a readable token file (looked in $TOKEN_FILE), or unset the URL to fall back to the openclaw gateway" >&2
     exit 0
   fi
   SCORE_FIELD="vectorScore"

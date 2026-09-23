@@ -11,6 +11,11 @@
  *   > OPENCLAW_GATEWAY_URL | OPENCLAW_GATEWAY_HOST/PORT + OPENCLAW_GATEWAY_TOKEN
  *   > $HOME/.openclaw/openclaw.json  (gateway.auth.token)
  *
+ * With no DIGITAL_ME_BRAIN_URL in the env, the installer-written sidecar
+ * (digital-me-brain.env next to the script) supplies DIGITAL_ME_BRAIN_URL and
+ * DIGITAL_ME_BRAIN_TOKEN_FILE and beats every OPENCLAW_GATEWAY_* source — the
+ * hook host may never pass the env (Codex does not).
+ *
  * A node http stub stands in for the backend so each test proves WHERE the
  * request went and which bearer it carried — and that a URL with no resolvable
  * token never falls back to the gateway. Spawns start from a scrubbed env with an
@@ -36,6 +41,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { BRAIN_SIDECAR_FILE, renderBrainSidecar } from "@digital-me/contracts";
 import { HOOKS_DIR } from "./installer.js";
 
 // The hooks shell out to jq/curl/python3 several times per run; give slow CI
@@ -146,13 +152,41 @@ function writeTokenFile(file: string, contents: string): string {
   return file;
 }
 
+/**
+ * Install copies of the inject hook + emitter into a temp hooks dir, the way
+ * `digital-me install` does, optionally with a sidecar beside them. The
+ * scripts look for the sidecar next to their own path, so this is how a test
+ * controls it without any test-only switch in production code.
+ */
+function installHooks(sidecar?: string): { inject: string; emit: string; sidecar: string } {
+  const dir = path.join(home, "installed-hooks");
+  fs.mkdirSync(dir, { recursive: true });
+  for (const src of [INJECT, EMIT]) {
+    const dst = path.join(dir, path.basename(src));
+    fs.copyFileSync(src, dst);
+    fs.chmodSync(dst, 0o755);
+  }
+  const sidecarPath = path.join(dir, BRAIN_SIDECAR_FILE);
+  if (sidecar !== undefined) fs.writeFileSync(sidecarPath, sidecar);
+  return {
+    inject: path.join(dir, path.basename(INJECT)),
+    emit: path.join(dir, path.basename(EMIT)),
+    sidecar: sidecarPath,
+  };
+}
+
+/** Exactly what `digital-me install` writes for a brain-host at `url` whose token is in `tokenFile`. */
+function sidecarFor(url: string, tokenFile: string): string {
+  return renderBrainSidecar({ brainUrl: url, brainTokenFile: tokenFile });
+}
+
 // ─── dm_m1_emit.py ─────────────────────────────────────────────────────────
 
-async function runEmit(env: Record<string, string>, extraArgs: string[] = []) {
+async function runEmit(env: Record<string, string>, extraArgs: string[] = [], script = EMIT) {
   const wal = path.join(home, "wal.jsonl");
   const r = await run(
     "python3",
-    [EMIT, "knowledge_surfaced", "--session-id", "t", "--wal", wal, ...extraArgs],
+    [script, "knowledge_surfaced", "--session-id", "t", "--wal", wal, ...extraArgs],
     scrubbedEnv(env),
   );
   const walLines = fs.existsSync(wal)
@@ -316,6 +350,96 @@ describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
   });
 });
 
+describe(`${RUNTIME} dm_m1_emit.py — installer-written sidecar (${BRAIN_SIDECAR_FILE})`, () => {
+  it("no DIGITAL_ME_BRAIN_URL in the env: POSTs to the sidecar URL with the bearer from the sidecar's token file, whatever DIGITAL_ME_WIKI_ROOT says", async () => {
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { emit } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    // The live hook env: no brain URL and a WRONG wiki root (the wiki dir
+    // itself), so the default token file cannot be found either.
+    const r = await runEmit({ DIGITAL_ME_WIKI_ROOT: path.join(home, "digital-me", "wiki") }, [], emit);
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toBe("/sidecar/tools/invoke");
+    expect(seen[0]!.auth).toBe("Bearer sidecar-secret");
+    expect(seen[0]!.body.tool).toBe("m1_event_record");
+    expect(r.stdout).toContain("brain=ok");
+  });
+
+  it("an exported DIGITAL_ME_BRAIN_URL beats the sidecar", async () => {
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { emit } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    const r = await runEmit(
+      { DIGITAL_ME_BRAIN_URL: `${baseUrl}/env/tools/invoke`, DIGITAL_ME_BRAIN_TOKEN: "env-secret" },
+      [],
+      emit,
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toBe("/env/tools/invoke");
+    expect(seen[0]!.auth).toBe("Bearer env-secret");
+  });
+
+  it("the sidecar beats OPENCLAW_GATEWAY_* env and openclaw.json", async () => {
+    writeOpenclawJson("file-tok");
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { emit } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    const r = await runEmit(
+      {
+        OPENCLAW_GATEWAY_URL: `${baseUrl}/gateway/tools/invoke`,
+        OPENCLAW_GATEWAY_HOST: "127.0.0.1",
+        OPENCLAW_GATEWAY_PORT: port(),
+        OPENCLAW_GATEWAY_TOKEN: "t-gateway",
+      },
+      [],
+      emit,
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.url).toBe("/sidecar/tools/invoke");
+    expect(seen[0]!.auth).toBe("Bearer sidecar-secret");
+  });
+
+  it("a missing or garbage sidecar leaves today's behaviour: the gateway env is used", async () => {
+    const env = { OPENCLAW_GATEWAY_URL: `${baseUrl}/gateway/tools/invoke`, OPENCLAW_GATEWAY_TOKEN: "t-gateway" };
+    const { emit, sidecar } = installHooks();
+    const missing = await runEmit(env, [], emit);
+    expect(missing.status, missing.stderr).toBe(0);
+    fs.writeFileSync(sidecar, Buffer.from([0xff, 0xfe, 0x00, 0x0a, 0x6e, 0x6f, 0x3d, 0x0a])); // not UTF-8
+    const garbage = await runEmit(env, [], emit);
+    expect(garbage.status, garbage.stderr).toBe(0);
+    fs.writeFileSync(sidecar, "just words\nDIGITAL_ME_BRAIN_URL=\nOTHER_KEY=http://elsewhere\n");
+    const empty = await runEmit(env, [], emit);
+    expect(empty.status, empty.stderr).toBe(0);
+    expect(seen).toHaveLength(3);
+    for (const s of seen) {
+      expect(s.url).toBe("/gateway/tools/invoke");
+      expect(s.auth).toBe("Bearer t-gateway");
+    }
+  });
+
+  it("a sidecar URL whose token file is missing is a hard error naming the sidecar: exit 3, no request, WAL kept", async () => {
+    writeOpenclawJson("file-tok");
+    const missing = path.join(home, "secrets", "missing.token");
+    const { emit, sidecar } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, missing));
+    const r = await runEmit({ OPENCLAW_GATEWAY_TOKEN: "t-gateway" }, [], emit);
+    expect(r.status).toBe(3);
+    expect(seen).toHaveLength(0);
+    expect(r.stderr).toContain(sidecar);
+    expect(r.stderr).toContain(missing);
+    expect(r.walLines).toHaveLength(1);
+  });
+
+  it("--selftest stays isolated from a live sidecar next to the script", async () => {
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { emit } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    const r = await run("python3", [emit, "--selftest"], scrubbedEnv({}));
+    expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain("[selftest] brain sidecar");
+    expect(r.stdout).toContain("[selftest] PASSED");
+    expect(seen).toHaveLength(0);
+  });
+});
+
 // ─── dm_memory_search_inject.sh ────────────────────────────────────────────
 
 const PROMPT = "how should I rebase a dependabot pull request safely?";
@@ -357,13 +481,16 @@ function hit(entryPath: string, scores: { score: number; vectorScore?: number })
   };
 }
 
-async function runInject(env: Record<string, string>): Promise<Run> {
+async function runInject(
+  env: Record<string, string>,
+  { script = INJECT, prompt = PROMPT }: { script?: string; prompt?: string } = {},
+): Promise<Run> {
   const sid = randomUUID();
   const r = await run(
     "bash",
-    [INJECT],
+    [script],
     scrubbedEnv(env),
-    JSON.stringify({ prompt: PROMPT, session_id: sid }),
+    JSON.stringify({ prompt, session_id: sid }),
   );
   fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
   fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
@@ -583,6 +710,161 @@ describe(`${RUNTIME} dm_memory_search_inject.sh — endpoint, token and score ga
     });
     expect(r.status).toBe(0);
     expect(r.stdout).toBe("");
+    expect(seen).toHaveLength(0);
+  });
+});
+
+describe(`${RUNTIME} dm_memory_search_inject.sh — installer-written sidecar (${BRAIN_SIDECAR_FILE})`, () => {
+  it("no DIGITAL_ME_BRAIN_URL in the env (the live hook env, wrong DIGITAL_ME_WIKI_ROOT too): search + both M1 events go to the sidecar URL with the sidecar token-file bearer", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { inject } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    cannedSearch = { results: [hit(entryPath, { score: 0.042, vectorScore: 0.77 })] };
+    const r = await runInject({ DIGITAL_ME_WIKI_ROOT: path.join(wikiRoot, "wiki") }, { script: inject });
+    expect(r.status, r.stderr).toBe(0);
+    const ctx = parseContext(r.stdout);
+    expect(ctx).toContain(entryPath);
+    expect(ctx).toContain("score=77/100"); // brain-host gate: vectorScore, not the RRF score
+    expect(seen.map((s) => s.body.tool)).toEqual(["memory_search", "m1_event_record", "m1_event_record"]);
+    for (const s of seen) {
+      expect(s.url).toBe("/sidecar/tools/invoke");
+      expect(s.auth).toBe("Bearer sidecar-secret");
+    }
+  });
+
+  it("an exported DIGITAL_ME_BRAIN_URL beats the sidecar", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { inject } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const r = await runInject(
+      { DIGITAL_ME_BRAIN_URL: `${baseUrl}/env/tools/invoke`, DIGITAL_ME_BRAIN_TOKEN: "env-secret", DIGITAL_ME_WIKI_ROOT: wikiRoot },
+      { script: inject },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    parseContext(r.stdout);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const s of seen) {
+      expect(s.url).toBe("/env/tools/invoke");
+      expect(s.auth).toBe("Bearer env-secret");
+    }
+  });
+
+  it("the sidecar beats OPENCLAW_GATEWAY_* env and openclaw.json (and switches the gate to vectorScore)", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    writeOpenclawJson("file-tok");
+    const token = writeTokenFile(path.join(home, "secrets", "brain-host.token"), "sidecar-secret\n");
+    const { inject } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, token));
+    // Dropped in gateway mode (score 0.042), injected in brain-host mode.
+    cannedSearch = { results: [hit(entryPath, { score: 0.042, vectorScore: 0.77 })] };
+    const r = await runInject(
+      { OPENCLAW_GATEWAY_HOST: "127.0.0.1", OPENCLAW_GATEWAY_PORT: port(), OPENCLAW_GATEWAY_TOKEN: "g", DIGITAL_ME_WIKI_ROOT: wikiRoot },
+      { script: inject },
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(parseContext(r.stdout)).toContain("score=77/100");
+    const search = seen.filter((s) => s.body.tool === "memory_search");
+    expect(search).toHaveLength(1);
+    expect(search[0]!.url).toBe("/sidecar/tools/invoke");
+    expect(search[0]!.auth).toBe("Bearer sidecar-secret");
+  });
+
+  it("parses the sidecar line by line: quotes, CRLF, comments and unknown keys are handled, a token in it is never read", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const token = writeTokenFile(path.join(home, "secret dir", "brain-host.token"), "quoted-secret\n");
+    const { inject } = installHooks(
+      [
+        "# DIGITAL_ME_BRAIN_URL=http://127.0.0.1:1/commented-out",
+        "",
+        "no equals sign on this line",
+        "DIGITAL_ME_BRAIN_TOKEN=inline-secrets-are-never-read",
+        "OPENCLAW_GATEWAY_URL=http://127.0.0.1:1/not-honoured",
+        `  DIGITAL_ME_BRAIN_URL = "${baseUrl}/sidecar/tools/invoke"  `,
+        `DIGITAL_ME_BRAIN_TOKEN_FILE='${token}'`,
+      ].join("\r\n"), // no trailing newline on the last line either
+    );
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const r = await runInject({ DIGITAL_ME_WIKI_ROOT: wikiRoot }, { script: inject });
+    expect(r.status, r.stderr).toBe(0);
+    parseContext(r.stdout);
+    expect(seen.length).toBeGreaterThan(0);
+    for (const s of seen) {
+      expect(s.url).toBe("/sidecar/tools/invoke");
+      expect(s.auth).toBe("Bearer quoted-secret");
+    }
+  });
+
+  it("a missing or garbage sidecar leaves today's behaviour: gateway env, gateway `score` gate", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const env = { OPENCLAW_GATEWAY_HOST: "127.0.0.1", OPENCLAW_GATEWAY_PORT: port(), OPENCLAW_GATEWAY_TOKEN: "g", DIGITAL_ME_WIKI_ROOT: wikiRoot };
+    cannedSearch = { results: [hit(entryPath, { score: 0.455, vectorScore: 0.2 })] };
+    const { inject, sidecar } = installHooks();
+    const missing = await runInject(env, { script: inject });
+    expect(parseContext(missing.stdout)).toContain("score=45/100");
+    fs.writeFileSync(sidecar, Buffer.from([0xff, 0xfe, 0x00, 0x0a, 0x3d, 0x3d, 0x0a]));
+    const garbage = await runInject(env, { script: inject });
+    expect(parseContext(garbage.stdout)).toContain("score=45/100");
+    fs.writeFileSync(sidecar, "DIGITAL_ME_BRAIN_URL=\nDIGITAL_ME_BRAIN_TOKEN_FILE=''\n");
+    const empty = await runInject(env, { script: inject });
+    expect(parseContext(empty.stdout)).toContain("score=45/100");
+    const search = seen.filter((s) => s.body.tool === "memory_search");
+    expect(search).toHaveLength(3);
+    for (const s of seen) {
+      expect(s.url).toBe("/tools/invoke");
+      expect(s.auth).toBe("Bearer g");
+    }
+  });
+
+  it("a sidecar URL whose token file is missing: no request, fail-open with a stderr diagnostic naming the sidecar", async () => {
+    const { wikiRoot } = seedWiki();
+    writeOpenclawJson("file-tok"); // a gateway token IS available — it must not be used
+    const missing = path.join(home, "secrets", "missing.token");
+    const { inject, sidecar } = installHooks(sidecarFor(`${baseUrl}/sidecar/tools/invoke`, missing));
+    const r = await runInject({ OPENCLAW_GATEWAY_TOKEN: "g", DIGITAL_ME_WIKI_ROOT: wikiRoot }, { script: inject });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(r.stderr).toContain(sidecar);
+    expect(r.stderr).toContain(missing);
+    expect(seen).toHaveLength(0);
+  });
+});
+
+describe(`${RUNTIME} dm_memory_search_inject.sh — slash-command prompts`, () => {
+  const brainEnv = (wikiRoot: string) => ({
+    DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+    DIGITAL_ME_BRAIN_TOKEN: "t",
+    DIGITAL_ME_WIKI_ROOT: wikiRoot,
+  });
+
+  it("'/goal <task>' is a real prompt: the command token is dropped and the rest is searched and injected", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    cannedSearch = { results: [hit(entryPath, { score: 0.042, vectorScore: 0.77 })] };
+    const task = "hey, looks like our digital-me is off? the dashboard shows no data";
+    const r = await runInject(brainEnv(wikiRoot), { prompt: `/goal ${task}` });
+    expect(r.status, r.stderr).toBe(0);
+    expect(parseContext(r.stdout)).toContain("score=77/100");
+    const search = seen.filter((s) => s.body.tool === "memory_search");
+    expect(search).toHaveLength(1);
+    expect(search[0]!.body.args.query).toBe(task);
+  });
+
+  it("the whitespace after the command may be newlines", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    cannedSearch = { results: [hit(entryPath, { score: 0.042, vectorScore: 0.77 })] };
+    const r = await runInject(brainEnv(wikiRoot), { prompt: "/goal\n\n  fix the rebase flow for dependabot" });
+    expect(r.status, r.stderr).toBe(0);
+    parseContext(r.stdout);
+    expect(seen.find((s) => s.body.tool === "memory_search")!.body.args.query).toBe("fix the rebase flow for dependabot");
+  });
+
+  it("a bare command or one with a short argument ('/clear', '/compact', '/model opus') never calls the brain", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    for (const prompt of ["/clear", "/compact", "/model opus", "/goal   ", "/a-very-long-command-name-without-arguments"]) {
+      const r = await runInject(brainEnv(wikiRoot), { prompt });
+      expect(r.status, prompt).toBe(0);
+      expect(r.stdout, prompt).toBe("");
+    }
     expect(seen).toHaveLength(0);
   });
 });

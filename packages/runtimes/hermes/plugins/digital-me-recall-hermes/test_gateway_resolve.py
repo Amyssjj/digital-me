@@ -1,6 +1,7 @@
 """Unit tests for the Hermes recall plugin's brain-endpoint resolution and
 score gate — the pieces that decide whether recall reaches digital-me
-brain-host (DIGITAL_ME_BRAIN_URL with the token from DIGITAL_ME_BRAIN_TOKEN,
+brain-host (DIGITAL_ME_BRAIN_URL — from the env or the installer-written
+digital-me-brain.env sidecar — with the token from DIGITAL_ME_BRAIN_TOKEN,
 DIGITAL_ME_BRAIN_TOKEN_FILE or the default token file) or the openclaw
 gateway, and whether brain-host's RRF-fused `score` survives MIN_SCORE.
 
@@ -56,10 +57,13 @@ BRAIN_HOST_TASTE_PATH = f"{FAKE_DATA_ROOT}/tastes/design/no-italics.md"
 def _env(**overrides: Optional[str]) -> Iterator[Path]:
     """Clear every endpoint-related variable, apply `overrides`, restore after.
     Also resets the plugin's cached token + one-shot error flag so each test
-    resolves from scratch, and pins DIGITAL_ME_WIKI_ROOT to a scratch dir
+    resolves from scratch, pins DIGITAL_ME_WIKI_ROOT to a scratch dir
     (yielded) so the default brain-host token file under a real ~/digital-me
-    can never leak into a "no token" assertion."""
+    can never leak into a "no token" assertion, and points the plugin's
+    sidecar at a (missing) digital-me-brain.env in that dir so a sidecar
+    beside the real plugin can never leak in either."""
     saved = {k: os.environ.get(k) for k in _ENV_KEYS}
+    saved_sidecar = dmrh.BRAIN_SIDECAR
     for k in _ENV_KEYS:
         os.environ.pop(k, None)
     with tempfile.TemporaryDirectory() as scratch:
@@ -69,6 +73,7 @@ def _env(**overrides: Optional[str]) -> Iterator[Path]:
                 os.environ[k] = v
         dmrh._GATEWAY_TOKEN = None
         dmrh._BRAIN_TOKEN_MISSING_LOGGED = False
+        dmrh.BRAIN_SIDECAR = Path(scratch) / "digital-me-brain.env"
         try:
             yield Path(scratch)
         finally:
@@ -79,6 +84,7 @@ def _env(**overrides: Optional[str]) -> Iterator[Path]:
                     os.environ[k] = v
             dmrh._GATEWAY_TOKEN = None
             dmrh._BRAIN_TOKEN_MISSING_LOGGED = False
+            dmrh.BRAIN_SIDECAR = saved_sidecar
 
 
 def _reset_session(session_id: str) -> None:
@@ -461,6 +467,193 @@ def test_pre_llm_call_dedups_within_session():
         assert second is None
     finally:
         _reset_session(sid)
+
+
+# ── (g) installer-written sidecar (digital-me-brain.env) ───────────────────
+
+SIDECAR_URL = "http://sidecar.test:18791/tools/invoke"
+
+
+def _write_sidecar(path: Path, url: str, token_file: Path) -> None:
+    """The shape `digital-me install` writes: a comment header + two pairs."""
+    path.write_text(
+        "# Written by `digital-me install` — brain endpoint for the Digital Me hooks.\n"
+        f"DIGITAL_ME_BRAIN_URL={url}\n"
+        f"DIGITAL_ME_BRAIN_TOKEN_FILE={token_file}\n",
+        encoding="utf-8",
+    )
+
+
+def test_sidecar_supplies_brain_host_when_env_has_no_url():
+    # The live failure: the Hermes gateway env has no DIGITAL_ME_BRAIN_URL but
+    # does carry gateway settings, and a WRONG wiki root (the wiki dir itself)
+    # hides the default token file — only the sidecar knows the brain.
+    with tempfile.TemporaryDirectory() as tmp:
+        cfg = Path(tmp) / "openclaw.json"
+        cfg.write_text(json.dumps({"gateway": {"auth": {"token": "file-secret"}}}))
+        with _env(
+            OPENCLAW_GATEWAY_URL="http://gw.test:18789/tools/invoke",
+            OPENCLAW_GATEWAY_TOKEN="gw-secret",
+            OPENCLAW_GATEWAY_HOST="gw-host",
+            DIGITAL_ME_OPENCLAW_CONFIG=str(cfg),
+        ) as scratch:
+            os.environ["DIGITAL_ME_WIKI_ROOT"] = str(scratch / "wiki")
+            token_file = scratch / "brain-host.token"
+            token_file.write_text("sidecar-secret\n")
+            _write_sidecar(dmrh.BRAIN_SIDECAR, SIDECAR_URL, token_file)
+            assert dmrh._resolve_gateway_url() == SIDECAR_URL
+            assert dmrh._brain_token_file() == token_file
+            assert dmrh._load_gateway_token() == "sidecar-secret"
+            assert dmrh._get_token() == "sidecar-secret"
+
+
+def test_env_brain_url_hides_the_sidecar():
+    with _env(DIGITAL_ME_BRAIN_URL="http://brain.test:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN="env-secret") as scratch:
+        token_file = scratch / "sidecar.token"
+        token_file.write_text("sidecar-secret\n")
+        _write_sidecar(dmrh.BRAIN_SIDECAR, SIDECAR_URL, token_file)
+        assert dmrh._resolve_gateway_url() == "http://brain.test:18791/tools/invoke"
+        assert dmrh._load_gateway_token() == "env-secret"
+        # Not even the sidecar's token file is borrowed: without an env token
+        # the default file (absent under the scratch wiki root) is consulted.
+        del os.environ["DIGITAL_ME_BRAIN_TOKEN"]
+        assert dmrh._brain_token_file() == scratch / ".data" / "brain-host.token"
+        assert dmrh._load_gateway_token() is None
+
+
+def test_env_token_vars_still_win_over_the_sidecar_token_file():
+    # Per key: the sidecar only fills in what the env leaves unset.
+    with _env() as scratch:
+        sidecar_token = scratch / "sidecar.token"
+        sidecar_token.write_text("sidecar-secret\n")
+        env_token_file = scratch / "env.token"
+        env_token_file.write_text("env-file-secret\n")
+        _write_sidecar(dmrh.BRAIN_SIDECAR, SIDECAR_URL, sidecar_token)
+        os.environ["DIGITAL_ME_BRAIN_TOKEN_FILE"] = str(env_token_file)
+        assert dmrh._resolve_gateway_url() == SIDECAR_URL
+        assert dmrh._load_gateway_token() == "env-file-secret"
+        os.environ["DIGITAL_ME_BRAIN_TOKEN"] = "env-secret"
+        assert dmrh._load_gateway_token() == "env-secret"
+
+
+def test_sidecar_parsing_skips_comments_and_unknown_keys_and_strips_quotes():
+    with _env() as scratch:
+        token_file = scratch / "brain host.token"
+        token_file.write_text("quoted-secret")
+        dmrh.BRAIN_SIDECAR.write_text(
+            "# DIGITAL_ME_BRAIN_URL=http://commented-out/tools/invoke\r\n"
+            "\n"
+            "   \n"
+            "no equals sign here\n"
+            "DIGITAL_ME_BRAIN_TOKEN=inline-secrets-are-never-read\n"
+            "OPENCLAW_GATEWAY_URL=http://not-honoured/tools/invoke\n"
+            f'  DIGITAL_ME_BRAIN_URL = "{SIDECAR_URL}"  \r\n'
+            f"DIGITAL_ME_BRAIN_TOKEN_FILE='{token_file}'\n",
+            encoding="utf-8",
+        )
+        assert dmrh._read_brain_sidecar(dmrh.BRAIN_SIDECAR) == {
+            "DIGITAL_ME_BRAIN_URL": SIDECAR_URL,
+            "DIGITAL_ME_BRAIN_TOKEN_FILE": str(token_file),
+        }
+        assert dmrh._resolve_gateway_url() == SIDECAR_URL
+        assert dmrh._load_gateway_token() == "quoted-secret"
+
+
+def test_missing_garbage_or_empty_sidecar_changes_nothing():
+    with _env(OPENCLAW_GATEWAY_URL="http://gw.test:18789/tools/invoke", OPENCLAW_GATEWAY_TOKEN="gw-secret"):
+        assert not dmrh.BRAIN_SIDECAR.exists()
+        assert dmrh._read_brain_sidecar(dmrh.BRAIN_SIDECAR) == {}
+        assert dmrh._resolve_gateway_url() == "http://gw.test:18789/tools/invoke"
+        assert dmrh._load_gateway_token() == "gw-secret"
+        for garbage in (
+            b"\xff\xfe\x00 not utf-8 DIGITAL_ME_BRAIN_URL=http://x",
+            b"just some text\nwithout any pairs\n",
+            b"DIGITAL_ME_BRAIN_URL=\nDIGITAL_ME_BRAIN_TOKEN_FILE=''\n",
+        ):
+            dmrh.BRAIN_SIDECAR.write_bytes(garbage)
+            assert dmrh._resolve_gateway_url() == "http://gw.test:18789/tools/invoke", garbage
+            assert dmrh._load_gateway_token() == "gw-secret", garbage
+        # A directory in the sidecar's place is unreadable → ignored as well.
+        dmrh.BRAIN_SIDECAR.unlink()
+        dmrh.BRAIN_SIDECAR.mkdir()
+        assert dmrh._read_brain_sidecar(dmrh.BRAIN_SIDECAR) == {}
+
+
+def test_sidecar_url_without_readable_token_never_falls_back():
+    import logging
+
+    class _Capture(logging.Handler):
+        def __init__(self) -> None:
+            super().__init__()
+            self.messages: List[str] = []
+
+        def emit(self, record: logging.LogRecord) -> None:
+            self.messages.append(record.getMessage())
+
+    handler = _Capture()
+    dmrh.logger.addHandler(handler)
+    try:
+        with _env(OPENCLAW_GATEWAY_TOKEN="gw-secret") as scratch:
+            missing = scratch / "missing.token"
+            _write_sidecar(dmrh.BRAIN_SIDECAR, SIDECAR_URL, missing)
+            assert dmrh._resolve_gateway_url() == SIDECAR_URL
+            assert dmrh._load_gateway_token() is None
+            assert len(handler.messages) == 1, handler.messages
+            assert str(dmrh.BRAIN_SIDECAR) in handler.messages[0], handler.messages
+            assert str(missing) in handler.messages[0], handler.messages
+    finally:
+        dmrh.logger.removeHandler(handler)
+
+
+def test_installed_plugin_reads_the_sidecar_beside_it_and_posts_there():
+    # Production wiring, not the test seam: a fresh copy of the plugin in an
+    # "installed" dir finds the sidecar beside its own __init__.py at import,
+    # so GATEWAY_URL — where _invoke_gateway posts — is brain-host, with the
+    # bearer read from the sidecar's token file.
+    import http.server
+    import threading
+
+    seen: List[Dict[str, Any]] = []
+
+    class _Stub(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802 — BaseHTTPRequestHandler API
+            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            seen.append({"path": self.path, "auth": self.headers.get("Authorization"), "body": body})
+            payload = json.dumps(_brain_host_payload([])).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *_: Any) -> None:
+            pass
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Stub)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        with _env(OPENCLAW_GATEWAY_URL="http://gw.test:18789/tools/invoke", OPENCLAW_GATEWAY_TOKEN="gw-secret") as scratch:
+            plugin_dir = scratch / "plugins" / "digital-me-recall-hermes"
+            plugin_dir.mkdir(parents=True)
+            (plugin_dir / "__init__.py").write_text(Path(__file__).with_name("__init__.py").read_text())
+            token_file = scratch / "brain-host.token"
+            token_file.write_text("installed-secret\n")
+            url = f"http://127.0.0.1:{server.server_address[1]}/sidecar/tools/invoke"
+            _write_sidecar(plugin_dir / "digital-me-brain.env", url, token_file)
+            spec = importlib.util.spec_from_file_location("dmrh_installed_copy", plugin_dir / "__init__.py")
+            installed = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(installed)
+            assert installed.BRAIN_SIDECAR == plugin_dir / "digital-me-brain.env"
+            assert installed.GATEWAY_URL == url
+            assert installed._invoke_gateway("memory_search", {"query": "q"}) is not None
+        assert len(seen) == 1, seen
+        assert seen[0]["path"] == "/sidecar/tools/invoke"
+        assert seen[0]["auth"] == "Bearer installed-secret"
+        assert seen[0]["body"]["tool"] == "memory_search"
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 if __name__ == "__main__":
