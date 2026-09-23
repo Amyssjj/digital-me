@@ -107,9 +107,20 @@ LOG="$(resolve_log)"
 
 if [[ -n "$LOG" ]]; then
   note "log     $LOG"
-  hits=$(tail -c 4000000 "$LOG" 2>/dev/null \
-    | grep -c "Memory index changed while full reindex" || true)
-  if (( hits > 0 )); then
+  # An abort is only a livelock if the rebuild never converges after it. A
+  # gateway restart routinely aborts a full reindex once or twice while the
+  # wiki is being written, then completes — after which every memory sync
+  # reports "needsFullReindex":false. So count the aborts, and whether such a
+  # converged sync follows the LAST one; any later abort resets it.
+  read -r hits converged < <(
+    tail -c 4000000 "$LOG" 2>/dev/null | awk '
+      /Memory index changed while full reindex/ { hits++; conv = 0; next }
+      /"needsFullReindex":false/ { if (hits) conv = 1 }
+      END { print hits + 0, conv + 0 }'
+  )
+  if (( hits > 0 && converged == 1 )); then
+    note "ok      ${hits} full-reindex abort(s) in the log tail, converged since (a later sync needed no full reindex)"
+  elif (( hits > 0 )); then
     note "FAIL    ${hits} full-reindex abort(s) in the log tail — the rebuild is not converging:"
     tail -c 4000000 "$LOG" 2>/dev/null \
       | grep -o "expected revision [0-9]*, found [0-9]*" | tail -3 \
