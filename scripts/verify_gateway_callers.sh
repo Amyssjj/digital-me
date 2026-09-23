@@ -37,6 +37,10 @@ fail=0
 note() { printf '  %s\n' "$1"; }
 
 # Files that POST to the gateway's tool endpoint, excluding tests and builds.
+# Build output includes packages/cli/npm-dist/ — the npm bundle's COPIES of
+# the hooks and the recall plugin. They are regenerated from the sources this
+# check already covers, and a stale local bundle (git-ignored, never rebuilt
+# by `pnpm build`) otherwise fails the check on code that no longer exists.
 # Read via process substitution, NOT a pipe: the last stage of a pipeline runs
 # in a subshell, so an array built there is discarded and this check would
 # silently pass with zero callers — the exact failure mode it exists to catch.
@@ -48,7 +52,7 @@ done < <(
   grep -rl "tools/invoke" \
     --include="*.ts" --include="*.py" --include="*.sh" --include="*.mjs" \
     packages/ scripts/ 2>/dev/null \
-    | grep -vE "(^|/)(dist|node_modules)/" \
+    | grep -vE "(^|/)(dist|npm-dist|node_modules)/" \
     | grep -vE "\.test\.(ts|py)$|_test\.py$|/test_[^/]*\.py$" \
     | grep -v "verify_gateway_callers.sh" \
     | sort
