@@ -44,20 +44,38 @@ def db_path() -> Path:
     return DEFAULT_DB_PATH
 
 
-def wiki_root() -> Path:
-    """Resolve the active wiki root. Respects DIGITAL_ME_WIKI_ROOT or
-    falls back to ~/digital-me/wiki/."""
+def digital_me_root() -> Path:
+    """The Digital Me data root — wiki/, tastes/ and .data/ live under it.
+
+    ``$DIGITAL_ME_WIKI_ROOT`` names this ROOT (docs/CONTRACTS.md; brain-host's
+    service env sets it to ``~/digital-me``), default ``~/digital-me``. Until
+    2026-09 this module read the variable as the wiki directory itself; once
+    brain-host started exporting the contract value, the scan walked all of
+    ~/digital-me as "wiki" and looked for tastes beside it. A value that still
+    names the wiki directory (``…/wiki`` with no ``wiki/`` inside) is tolerated.
+    """
     override = os.environ.get("DIGITAL_ME_WIKI_ROOT")
+    if not override:
+        return Path.home() / "digital-me"
+    root = Path(override).expanduser()
+    if root.name == "wiki" and not (root / "wiki").is_dir():
+        return root.parent
+    return root
+
+
+def wiki_root() -> Path:
+    """The wiki tree: ``$DIGITAL_ME_WIKI_DIR``, else ``<root>/wiki``."""
+    override = os.environ.get("DIGITAL_ME_WIKI_DIR")
     if override:
         return Path(override).expanduser()
-    return Path.home() / "digital-me" / "wiki"
+    return digital_me_root() / "wiki"
 
 
 def brain_db_path(explicit: Optional[Path] = None) -> Path:
     """Where brain.db lives — the rule every digital-me reader shares
     (Python twin of ``@digital-me/contracts`` ``resolveBrainDbPath``):
     arg → $DIGITAL_ME_BRAIN_DB (or the intake's older $OPENCLAW_BRAIN_DB) →
-    <wiki-root>/.data/brain.db when it exists → the legacy
+    <root>/.data/brain.db when it exists → the legacy
     <OPENCLAW_HOME or ~/.openclaw>/data/brain.db when it exists → canonical.
     """
     if explicit is not None:
@@ -65,7 +83,7 @@ def brain_db_path(explicit: Optional[Path] = None) -> Path:
     override = os.environ.get("DIGITAL_ME_BRAIN_DB") or os.environ.get("OPENCLAW_BRAIN_DB")
     if override:
         return Path(override).expanduser()
-    canonical = wiki_root().parent / ".data" / "brain.db"
+    canonical = digital_me_root() / ".data" / "brain.db"
     if canonical.exists():
         return canonical
     oc_home = os.environ.get("OPENCLAW_HOME")
@@ -76,6 +94,8 @@ def brain_db_path(explicit: Optional[Path] = None) -> Path:
 
 
 def tastes_root() -> Path:
-    """Resolve the tastes tree (lives next to the wiki under ~/digital-me/)."""
-    wiki = wiki_root()
-    return wiki.parent / "tastes"
+    """The tastes tree: ``$DIGITAL_ME_TASTES_DIR``, else ``<root>/tastes``."""
+    override = os.environ.get("DIGITAL_ME_TASTES_DIR")
+    if override:
+        return Path(override).expanduser()
+    return digital_me_root() / "tastes"

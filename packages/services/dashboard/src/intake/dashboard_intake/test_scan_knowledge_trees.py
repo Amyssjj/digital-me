@@ -326,6 +326,50 @@ def test_main_removes_stale_distribution_rows(tmp_path: Path) -> None:
     assert ("wiki", "infrastructure") in domains_after
 
 
+def test_main_replaces_the_whole_distribution(tmp_path: Path) -> None:
+    """A domain that vanished from disk must drop out of the totals, not
+    linger with its last count."""
+    wiki = tmp_path / "wiki"
+    tastes = tmp_path / "tastes"
+    db_path = tmp_path / "dashboard.db"
+    _md(wiki / "agents", "w1", date.today().isoformat())
+    tastes.mkdir()
+    _create_schema(db_path)
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO knowledge_taste_distribution (tree, domain, total, as_of)"
+        " VALUES ('wiki', 'process-docs', 499, '2026-09-20')"
+    )
+    conn.commit()
+    conn.close()
+
+    assert main(["--db", str(db_path), "--wiki", str(wiki), "--tastes", str(tastes)]) == 0
+    assert _distribution_domains(db_path) == {("wiki", "agents")}
+
+
+def test_main_reads_the_trees_under_the_contract_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression (2026-09-20 → 09-22): brain-host exports
+    DIGITAL_ME_WIKI_ROOT=~/digital-me (the ROOT). The scan read it as the wiki
+    dir, walked every .md under the root as "wiki" (process docs included) and
+    looked for tastes beside the root — the taste flow read 0 for two days."""
+    root = tmp_path / "digital-me"
+    _md(root / "wiki" / "agents", "w1", date.today().isoformat())
+    _taste_md(root / "tastes" / "infra", "t1", created=date.today().isoformat())
+    _md(root / "process-docs", "plan", date.today().isoformat())
+    db_path = tmp_path / "dashboard.db"
+    _create_schema(db_path)
+    for var in ("DIGITAL_ME_WIKI_DIR", "DIGITAL_ME_TASTES_DIR"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(root))
+
+    assert main(["--db", str(db_path)]) == 0
+    assert _distribution_domains(db_path) == {("wiki", "agents"), ("tastes", "infrastructure")}
+    created = {k: v[0] for k, v in _changes_for(db_path).items()}
+    assert created[(date.today().isoformat(), "tastes", "infrastructure")] == 1
+
+
 def test_wiki_update_counts_only_on_real_body_change(tmp_path: Path) -> None:
     """Regression: the nightly consolidate/reindex rewrites a wiki file's
     frontmatter `updated:` (and `related:`) without changing the knowledge.

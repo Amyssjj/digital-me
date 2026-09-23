@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/dashboard",
   "version": "0.1.0-pre",
-  "description": "Digital Me OA Dashboard — minimal 4-view surface (Metrics / Mechanism / Kanban / Delivery) over openclaw brain state + the dashboard-intake pipeline.",
+  "description": "Digital Me OA Dashboard \u2014 minimal 4-view surface (Metrics / Mechanism / Kanban / Delivery) over openclaw brain state + the dashboard-intake pipeline.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/server/lib.js",
@@ -49,6 +49,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@digital-me/brain-orchestrator": "workspace:*",
     "@types/better-sqlite3": "^7.6.13",
     "@types/express": "^4.17.21",
     "@types/node": "^22.0.0",

@@ -8,14 +8,15 @@
  * §G cleanup: Removed the legacy SQLite layer (getGoals, getGoalMetrics,
  * getImprovements, getFeedback, getInsights, getCronRunsSummary, etc.) after
  * PR #90 deleted their last callers. All remaining functions here use the
- * brain MCP tools, not SQLite reads.
+ * brain MCP tools, not SQLite reads. The Kanban board moved to direct
+ * read-only SQL over brain.db (brain-kanban.ts): the brain's board JSON was
+ * too large to poll.
  */
 
 import {
   brainBoard,
   brainTracesQuery,
   brainWorkflowList,
-  type BrainGoal,
   type BrainTrace,
 } from "./brain-client.mc.js";
 
@@ -166,90 +167,6 @@ export async function getTraceById(traceId: string): Promise<TraceGroup | null> 
   };
 }
 
-// ── Kanban Board (Task Orchestrator) ──
-
-type GoalStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-type TaskStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-type AttemptStatus = 'running' | 'completed' | 'failed';
-
-interface KanbanAttempt {
-  attemptId: string;
-  attemptNumber: number;
-  status: AttemptStatus;
-  startedAt: string;
-  endedAt: string | null;
-  outputSummary: string | null;
-  failureReason: string | null;
-  artifactPaths: string[];
-}
-
-interface TaskCheckpoint {
-  phase: string;
-  summary: string;
-  progressPercent: number;
-  artifactPaths: string[];
-  blocker: string | null;
-  timestamp: string;
-}
-
-interface KanbanTask {
-  id: string;
-  name: string;
-  task: string;
-  status: TaskStatus;
-  priority: string;
-  blockedBy: string[];
-  attemptCount: number;
-  startedAt: string | null;
-  completedAt: string | null;
-  failureReason: string | null;
-  onUpstreamFailure: string;
-  latestCheckpoint: TaskCheckpoint | null;
-  latestOutput: string | null;
-  activeAttempt: KanbanAttempt | null;
-  attempts: KanbanAttempt[];
-}
-
-interface KanbanGoal {
-  id: string;
-  name: string;
-  description: string;
-  status: GoalStatus;
-  parentGoalId: string | null;
-  sourceWorkflowId: string | null;
-  sourceWorkflowVersion: number | null;
-  createdAt: string;
-  updatedAt: string;
-  completedAt: string | null;
-  createdBy: string;
-  agentId: string | null;
-  tasks: KanbanTask[];
-}
-
-interface AgentGoalCount {
-  agentId: string;
-  goalCount: number;
-}
-
-interface KanbanStats {
-  goals: { total: number; byStatus: Record<string, number> };
-  tasks: { total: number; byStatus: Record<string, number> };
-  agents: AgentGoalCount[];
-}
-
-interface KanbanPagination {
-  limit: number;
-  offset: number;
-  total: number;
-  hasMore: boolean;
-}
-
-export interface KanbanResponse {
-  goals: KanbanGoal[];
-  stats: KanbanStats;
-  pagination: KanbanPagination;
-}
-
 // ── Layer Health — via brain API ──
 // Evergreen goals + open project-goal counts.
 export async function getLayerHealth() {
@@ -288,163 +205,6 @@ export async function getLayerHealth() {
   });
 
   return { layers };
-}
-
-export async function getKanbanData(opts: {
-  status?: string;
-  limit?: number;
-  offset?: number;
-  sort?: string;
-  order?: string;
-  days?: number;
-}): Promise<KanbanResponse> {
-  // Forward the range selector as the brain-side window so a narrow range
-  // fetches a narrow board (brainBoard clamps it to the brain's 7-day max).
-  const board = await brainBoard({ days: opts.days });
-
-  const limit = Math.min(opts.limit ?? 50, 200);
-  const offset = opts.offset ?? 0;
-
-  // Project goals only (evergreen goals use a different status vocabulary and
-  // are surfaced in the Layer Health strip).
-  let projectGoals = board.goals.filter((g) => (g.type ?? "project") === "project");
-
-  // Date-range scope — the dashboard's shared range selector flows in as
-  // `days`. Applied before status filtering so both the stats overview and
-  // the columns reflect the same window. A goal is in-range if it was last
-  // updated within the window; "all time" maps to a large day count upstream.
-  if (opts.days != null) {
-    const cutoffIso = new Date(Date.now() - opts.days * 24 * 60 * 60 * 1000).toISOString();
-    projectGoals = projectGoals.filter((g) => {
-      const updated = epochToIso(g.updated_at ?? g.updatedAt ?? null);
-      return updated != null && updated >= cutoffIso;
-    });
-  }
-
-  let filtered = projectGoals;
-
-  if (opts.status) {
-    const statuses = opts.status.split(",").map((s) => s.trim()).filter(Boolean);
-    filtered = filtered.filter((g) => statuses.includes(g.status));
-  } else {
-    // Default: hide completed older than 7 days
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    filtered = filtered.filter((g) => {
-      if (g.status !== "completed") return true;
-      const completedAt = epochToIso(g.completed_at ?? g.completedAt ?? null);
-      return completedAt != null && completedAt >= sevenDaysAgo;
-    });
-  }
-
-  // Sort
-  const asc = opts.order === "asc";
-  const getSortVal = (g: BrainGoal): string => {
-    if (opts.sort === "created_at") return String(g.created_at ?? g.createdAt ?? "");
-    if (opts.sort === "name") return g.name;
-    return String(g.updated_at ?? g.updatedAt ?? "");
-  };
-  filtered.sort((a, b) => {
-    const va = getSortVal(a);
-    const vb = getSortVal(b);
-    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
-  });
-
-  const totalGoals = filtered.length;
-  const page = filtered.slice(offset, offset + limit);
-
-  // Adapt brain goals to KanbanGoal shape
-  const goals: KanbanGoal[] = page.map((g) => {
-    const brainTasks = g.tasks ?? [];
-    const tasks: KanbanTask[] = brainTasks
-      .filter((t) => t.status !== "cancelled")
-      .map((t) => {
-        const rawAttempts = t.attempts ?? [];
-        const attempts: KanbanAttempt[] = rawAttempts.map((a) => ({
-          attemptId: a.attempt_id ?? a.attemptId ?? "",
-          attemptNumber: a.attempt_number ?? a.attemptNumber ?? 0,
-          status: a.status as AttemptStatus,
-          startedAt: epochToIso(a.started_at ?? a.startedAt ?? null) ?? "",
-          endedAt: epochToIso(a.ended_at ?? a.endedAt ?? null),
-          outputSummary: a.output_summary ?? a.outputSummary ?? null,
-          failureReason: a.failure_reason ?? a.failureReason ?? null,
-          artifactPaths: Array.isArray(a.artifact_paths)
-            ? a.artifact_paths
-            : Array.isArray(a.artifactPaths)
-              ? a.artifactPaths
-              : safeJsonParse(typeof a.artifact_paths === "string" ? a.artifact_paths : null, []),
-        }));
-
-        const activeAttempt = attempts.find((a) => a.status === "running") || null;
-
-        return {
-          id: t.id,
-          name: t.name,
-          task: t.task,
-          status: t.status as TaskStatus,
-          priority: t.priority || "normal",
-          blockedBy: Array.isArray(t.blocked_by) ? t.blocked_by
-            : Array.isArray(t.blockedBy) ? t.blockedBy
-            : typeof t.blocked_by === "string" ? safeJsonParse(t.blocked_by, [])
-            : [],
-          attemptCount: t.attempt_count ?? t.attemptCount ?? 0,
-          startedAt: epochToIso(t.started_at ?? t.startedAt ?? null),
-          completedAt: epochToIso(t.completed_at ?? t.completedAt ?? null),
-          failureReason: t.failure_reason ?? t.failureReason ?? null,
-          onUpstreamFailure: t.on_upstream_failure ?? t.onUpstreamFailure ?? "wait",
-          latestCheckpoint: (typeof t.latest_checkpoint === "string"
-            ? safeJsonParse<TaskCheckpoint | null>(t.latest_checkpoint, null)
-            : (t.latestCheckpoint as TaskCheckpoint | null) ?? null),
-          latestOutput: t.latest_output ?? t.latestOutput ?? null,
-          activeAttempt,
-          attempts,
-        };
-      });
-
-    // Extract agentId from first task's dispatch
-    let agentId: string | null = g.agent_id ?? g.agentId ?? null;
-    if (!agentId && brainTasks.length > 0) {
-      const d = brainTasks[0].dispatch;
-      if (typeof d === "string") {
-        agentId = safeJsonParse<{ agentId?: string }>(d, {}).agentId ?? null;
-      } else if (d && typeof d === "object") {
-        agentId = d.agentId ?? null;
-      }
-    }
-
-    return {
-      id: g.id,
-      name: g.name,
-      description: g.description,
-      status: g.status as GoalStatus,
-      parentGoalId: g.parent_goal_id ?? g.parentGoalId ?? null,
-      sourceWorkflowId: g.source_workflow_id ?? g.sourceWorkflowId ?? null,
-      sourceWorkflowVersion: g.source_workflow_version ?? g.sourceWorkflowVersion ?? null,
-      createdAt: epochToIso(g.created_at ?? g.createdAt ?? null) ?? "",
-      updatedAt: epochToIso(g.updated_at ?? g.updatedAt ?? null) ?? "",
-      completedAt: epochToIso(g.completed_at ?? g.completedAt ?? null),
-      createdBy: g.created_by ?? g.createdBy ?? "",
-      agentId,
-      tasks,
-    };
-  });
-
-  // Build stats. When a date window is applied, scope the overview to the
-  // same date-filtered (but not status-filtered) goal set so the stats bar
-  // and the board agree; otherwise use the brain's global board stats.
-  const stats = opts.days != null
-    ? buildKanbanStatsFromBoard({ goals: projectGoals })
-    : buildKanbanStatsFromBoard(board);
-
-  return {
-    goals,
-    stats,
-    pagination: {
-      limit,
-      offset,
-      total: totalGoals,
-      hasMore: offset + limit < totalGoals,
-    },
-  };
 }
 
 // ── Workflow Templates for Mechanism View ──
@@ -565,55 +325,5 @@ export async function getWorkflowsForMechanism(): Promise<WorkflowsForMechanismR
     templates: result,
     totalTemplates: result.length,
     fetchedAt: new Date().toISOString(),
-  };
-}
-
-// Derive stats from brain board response (no SQLite)
-function buildKanbanStatsFromBoard(
-  board: { goals: BrainGoal[]; stats?: Record<string, unknown> },
-): KanbanStats {
-  // If brain already provides stats, use them
-  if (board.stats) {
-    const bs = board.stats as {
-      goals?: { total?: number; byStatus?: Record<string, number> };
-      tasks?: { total?: number; byStatus?: Record<string, number> };
-      agents?: Array<{ agentId: string; goalCount: number }>;
-    };
-    if (bs.goals && bs.tasks) {
-      return {
-        goals: { total: bs.goals.total ?? 0, byStatus: bs.goals.byStatus ?? {} },
-        tasks: { total: bs.tasks.total ?? 0, byStatus: bs.tasks.byStatus ?? {} },
-        agents: bs.agents ?? [],
-      };
-    }
-  }
-
-  // Otherwise compute from goals list
-  const goalsByStatus: Record<string, number> = { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
-  const tasksByStatus: Record<string, number> = { pending: 0, running: 0, completed: 0, failed: 0, cancelled: 0 };
-  const agentCounts = new Map<string, number>();
-
-  for (const g of board.goals) {
-    goalsByStatus[g.status] = (goalsByStatus[g.status] ?? 0) + 1;
-    for (const t of g.tasks ?? []) {
-      tasksByStatus[t.status] = (tasksByStatus[t.status] ?? 0) + 1;
-    }
-    // Extract agent
-    const agentId = g.agent_id ?? g.agentId ?? null;
-    if (agentId) {
-      agentCounts.set(agentId, (agentCounts.get(agentId) ?? 0) + 1);
-    }
-  }
-
-  const goalTotal = Object.values(goalsByStatus).reduce((s, v) => s + v, 0);
-  const taskTotal = Object.values(tasksByStatus).reduce((s, v) => s + v, 0);
-  const agents: AgentGoalCount[] = [...agentCounts.entries()]
-    .map(([agentId, goalCount]) => ({ agentId, goalCount }))
-    .sort((a, b) => b.goalCount - a.goalCount);
-
-  return {
-    goals: { total: goalTotal, byStatus: goalsByStatus },
-    tasks: { total: taskTotal, byStatus: tasksByStatus },
-    agents,
   };
 }

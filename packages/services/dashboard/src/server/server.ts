@@ -8,7 +8,7 @@ import { fileURLToPath } from "url";
 // view is rewritten; §G's final pass collapses .mc duplicates into canonical
 // filenames once nothing imports the legacy modules anymore.
 import { fetchDashboardData } from "./data.mc.js";
-import { getRecentTraces, getTraceById, getKanbanData, getLayerHealth, getWorkflowsForMechanism } from "./db.js";
+import { getRecentTraces, getTraceById, getLayerHealth, getWorkflowsForMechanism } from "./db.js";
 import { getSystemStatus, loadSkillsConfig } from "./drift-status.mc.js";
 import { brainMemorySearch, initBrainClient } from "./brain-client.mc.js";
 // Feed search: ranked memory_search results with containment-checked previews.
@@ -23,7 +23,9 @@ import { buildKanbanRouter, buildMechanismRouter } from "./mechanism-routes.js";
 import { buildActivityFeedRouter } from "./activity-feed.js";
 // Remote MCP clients: external CLIs (other machines) that reach the brain over
 // the HTTP transport and thus never appear in the openclaw agent roster.
-import { buildRemoteClientsRouter } from "./remote-clients-routes.js";
+import { buildRemoteClientsRouter, cachedRoster, defaultListRosterIds } from "./remote-clients-routes.js";
+// Kanban board + Mechanism run stats: read-only SQL over brain.db.
+import { buildBrainKanbanRouter, queryWorkflowRunStats, withBrainDb } from "./brain-kanban.js";
 // DNS-rebinding guard: reject any request whose Host isn't a loopback name.
 import { isLoopbackHost } from "./host-guard.js";
 import { resolveBrainDbPath } from "@digital-me/contracts";
@@ -112,21 +114,33 @@ const BRAIN_DB_PATH =
 // ── NUX §C: 4-metric router ──
 app.use("/api/metrics", buildMetricsRouter(DASHBOARD_DB_PATH));
 
-// ── NUX §D: Mechanism router (eligibility-filtered workflow list) ──
-app.use("/api/mechanism", buildMechanismRouter());
-
 // ── Delivery view: unified agent-activity feed ──
 // Reads the `activity` snapshot table from dashboard.db (same producer/consumer
 // split as the metrics endpoints); the stream_activity intake step owns the
 // brain → row mapping. See activity-feed.ts + intake/.../stream_activity.py.
 app.use("/api/activity-feed", buildActivityFeedRouter(DASHBOARD_DB_PATH));
 
+// ── NUX §D: Mechanism router (eligibility-filtered workflow list) ──
+// Run counts / success rate / latest run come from brain.db: the brain's
+// workflow_list carries none, so every card read "0 runs".
+app.use(
+  "/api/mechanism",
+  buildMechanismRouter({ runStats: () => withBrainDb(BRAIN_DB_PATH, queryWorkflowRunStats) }),
+);
+
+// ── Kanban Board: read-only SQL over brain.db (see brain-kanban.ts) ──
+app.use("/api/kanban", buildBrainKanbanRouter(BRAIN_DB_PATH));
+
 // ── Remote MCP clients ──
 // External MCP clients (a second machine's Claude Code / Codex CLI) reach the
 // brain over the Streamable-HTTP transport, attributed by X-Agent-Id. They
 // leave a footprint only in brain.db `traces`, never in the openclaw roster, so
 // no agent-card surfaces them. This endpoint aggregates the non-roster clients.
-app.use("/api/remote-clients", buildRemoteClientsRouter(BRAIN_DB_PATH));
+// The roster (`openclaw agents list`, ~12 s) is fetched async behind a TTL
+// cache and warmed at boot so the first panel load doesn't wait on it.
+const rosterIds = cachedRoster(defaultListRosterIds);
+void rosterIds();
+app.use("/api/remote-clients", buildRemoteClientsRouter(BRAIN_DB_PATH, rosterIds));
 
 // ── Feed search: ranked knowledge search over the brain's memory_search ──
 // Preview markdown is read from disk, restricted to the user-owned knowledge
@@ -143,7 +157,7 @@ app.use(
   }),
 );
 // NUX §E note: buildKanbanRouter is exported but intentionally NOT mounted at
-// /api/kanban. The legacy /api/kanban endpoint below returns a rich
+// /api/kanban. The /api/kanban endpoint above (brain-kanban.ts) returns a rich
 // {goals, stats, pagination} shape that TaskKanban consumes; replacing it
 // would require an 887-line component rewrite. Instead useKanban filters
 // goals client-side via /api/mechanism/workflows. The simpler endpoint can be
@@ -214,25 +228,6 @@ app.get("/api/layer-health", async (_req, res) => {
   } catch (err) {
     console.error("[/api/layer-health]", err);
     res.status(500).json({ error: "Failed to fetch layer health" });
-  }
-});
-
-// ── Kanban Board (Task Orchestrator — via brain API) ──
-app.get("/api/kanban", async (req, res) => {
-  try {
-    const query = req.query as Record<string, string>;
-    const data = await getKanbanData({
-      status: query.status || undefined,
-      limit: query.limit ? parseInt(query.limit) : undefined,
-      offset: query.offset ? parseInt(query.offset) : undefined,
-      sort: query.sort || undefined,
-      order: query.order || undefined,
-      days: query.days ? parseInt(query.days) : undefined,
-    });
-    res.json(data);
-  } catch (err) {
-    console.error("[/api/kanban]", err);
-    res.status(500).json({ error: "Failed to fetch kanban data" });
   }
 });
 
