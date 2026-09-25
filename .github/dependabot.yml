@@ -108,6 +108,14 @@ updates:
     commit-message:
       prefix: "chore(deps)"
       prefix-development: "chore(deps-dev)"
+    ignore:
+      # @types/node tracks the Node API surface we *run on*, not the newest one.
+      # engines.node is ">=22.5", so @types/node@26 would type-check calls to
+      # Node 26-only APIs that then throw on a supported Node 22 install. Move
+      # this major together with engines.node (and the CI node-version), never
+      # on its own. Patch/minor within 22.x still flow through the group above.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # Python services. All three are listed explicitly rather than by glob: the
   # dashboard intake package sits deeper than the others, and a glob that missed

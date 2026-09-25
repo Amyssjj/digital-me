@@ -36,6 +36,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   statSync,
@@ -2169,7 +2170,7 @@ async function brainDbCommand(args: readonly string[]): Promise<number> {
     source.close();
   }
   const copied = new SqliteDatabase(plan.to, { readOnly: true });
-  let goals = 0;
+  let goals: number;
   try {
     goals = Number((copied.prepare("SELECT COUNT(*) AS n FROM goals").get() as { n: number }).n);
   } finally {
@@ -2631,7 +2632,12 @@ async function installBrainHost(
   mkdirSync(path.dirname(cfg.workingDir), { recursive: true });
   if (existsSync(cfg.workingDir)) {
     // Repoint if the symlink targets another checkout (worktree → main, …).
-    const current = spawnSync("readlink", [cfg.workingDir], { encoding: "utf-8" }).stdout.trim();
+    let current = "";
+    try {
+      current = readlinkSync(cfg.workingDir);
+    } catch {
+      // Not a symlink — treated as a mismatch, same as `readlink` printing nothing.
+    }
     if (current !== packagePath) {
       rmSync(cfg.workingDir, { recursive: false, force: true });
     }

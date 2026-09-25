@@ -325,7 +325,7 @@ export function ActivityFeed() {
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search knowledge…"
               aria-label="Search knowledge"
-              className="w-56 rounded-full border border-gray-200 bg-white pl-8 pr-8 py-1 text-xs text-gray-700 placeholder:text-gray-300 outline-none transition-colors focus:border-gray-400 [&::-webkit-search-cancel-button]:hidden"
+              className="w-56 rounded-full border border-gray-200 bg-white pl-8 pr-8 py-1 text-xs text-gray-700 placeholder:text-gray-300 outline-hidden transition-colors focus:border-gray-400 [&::-webkit-search-cancel-button]:hidden"
             />
             {searching ? (
               <button
@@ -633,7 +633,7 @@ function FeedPost({
               ))}
             </div>
           ) : item.meta ? (
-            <span className="inline-block mt-3 text-[10px] font-mono text-gray-400 bg-gray-50 border border-gray-100 rounded px-1.5 py-0.5">
+            <span className="inline-block mt-3 text-[10px] font-mono text-gray-400 bg-gray-50 border border-gray-100 rounded-sm px-1.5 py-0.5">
               {item.meta}
             </span>
           ) : null}
@@ -742,7 +742,7 @@ function RenderedLearning({ target, onClose }: { target: PreviewTarget; onClose:
   return (
     <div>
       {/* Panel header */}
-      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/90 px-5 py-3 backdrop-blur">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white/90 px-5 py-3 backdrop-blur-sm">
         <span
           className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${badge.cls}`}
         >

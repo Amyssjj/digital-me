@@ -28,8 +28,6 @@ export function startParentPidWatcher(
     }
   }, pollMs);
   // Don't keep the event loop alive just for this poller.
-  if (typeof (timer as NodeJS.Timer).unref === "function") {
-    (timer as NodeJS.Timer).unref();
-  }
+  timer.unref();
   return () => clearInterval(timer);
 }

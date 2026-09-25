@@ -282,7 +282,9 @@ app.use(express.static(distPath));
 // In DEV mode (vite dev server on $VITE_PORT proxying /api → here),
 // dist/ doesn't exist yet and this returns 404 instead of ENOENT-crashing.
 // Open the Vite dev URL directly when developing.
-app.get("*", (_req, res) => {
+// Express 5 (path-to-regexp v8) rejects a bare "*" at registration time, so the
+// catch-all is a named wildcard; "/{*splat}" also matches "/" itself.
+app.get("/{*splat}", (_req, res) => {
   const indexFile = path.join(distPath, "index.html");
   res.sendFile(indexFile, (err) => {
     if (err) {
