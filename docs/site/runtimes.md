@@ -53,8 +53,8 @@ What lands:
   matching wiki knowledge; Stop captures session learnings)
 - `~/.claude/skills/digital-me/` — the protocol skill
 - merged `settings.json` — hook registrations alongside whatever you already
-  had, plus the `openclaw-brain` MCP server entry (the name is historical —
-  it is `brain-mcp-proxy` forwarding to brain-host)
+  had, plus the `digital-me-brain` MCP server entry (`brain-mcp-proxy`
+  forwarding to brain-host; replaces a pre-rename `openclaw-brain` entry)
 
 Verify: start a session and ask about a topic you know is in your wiki — the
 prompt context will show a `[Digital Me]` injection block.
@@ -68,8 +68,8 @@ digital-me install --runtime codex
 What lands:
 
 - `~/.codex/CODEX.md` — protocol instructions
-- the `openclaw-brain` MCP entry in `~/.codex/config.toml` (historical name;
-  `brain-mcp-proxy` stdio↔HTTP transport to brain-host)
+- the `digital-me-brain` MCP entry in `~/.codex/config.toml`
+  (`brain-mcp-proxy` stdio↔HTTP transport to brain-host)
 - `~/.codex/hooks/*` wired through `~/.codex/hooks.json` — UserPromptSubmit /
   Stop / PreToolUse, with M1 application-rate tracking
 

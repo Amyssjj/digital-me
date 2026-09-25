@@ -105,7 +105,7 @@ export async function mainHttp(): Promise<void> {
   const server = http.createServer(listener);
 
   const shutdown = (reason: string): void => {
-    emitStderr(`openclaw-brain MCP HTTP transport: ${reason}, shutting down`);
+    emitStderr(`digital-me-brain MCP HTTP transport: ${reason}, shutting down`);
     server.close();
     try {
       appRateWriter.shutdown();
@@ -120,7 +120,7 @@ export async function mainHttp(): Promise<void> {
 
   server.listen(httpConfig.port, httpConfig.host, () => {
     emitStderr(
-      `openclaw-brain MCP HTTP transport listening on ` +
+      `digital-me-brain MCP HTTP transport listening on ` +
         `http://${httpConfig.host}:${httpConfig.port}${MCP_PATH} ` +
         `(gateway: ${gateway.host}:${gateway.port}, default agent_id: ` +
         `${httpConfig.defaultAgentId ?? "(unset — clients should send X-Agent-Id)"})`,

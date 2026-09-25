@@ -152,8 +152,8 @@ the installers write once the brain-host token file exists:
 | Installer | Where | What it writes |
 |---|---|---|
 | `install --runtime claude-code` | `~/.claude/settings.json` `env` (hooks), the `claude mcp add` registration and `~/.claude/hooks/digital-me-brain.env` | `DIGITAL_ME_BRAIN_URL` + `DIGITAL_ME_BRAIN_TOKEN_FILE`; a `DIGITAL_ME_BRAIN_TOKEN` an earlier install wrote is removed |
-| `install --runtime codex` | `~/.codex/config.toml` `[mcp_servers.openclaw-brain]` env (proxy) and `[shell_environment_policy.set]` (commands Codex runs), plus `~/.codex/hooks/digital-me-brain.env` (hooks — Codex passes neither env table to hook processes) | same pair; the MCP stanza is replaced wholesale, so an old inline `DIGITAL_ME_BRAIN_TOKEN` disappears; other keys in `[shell_environment_policy.set]` are preserved |
-| `install --runtime hermes` | `~/.hermes/config.yaml` `openclaw-brain` stanza `env:` (via `hermes mcp add --env`) and `digital-me-brain.env` in the recall plugin dir (the gateway process never sees the stanza env) | same pair |
+| `install --runtime codex` | `~/.codex/config.toml` `[mcp_servers.digital-me-brain]` env (proxy) and `[shell_environment_policy.set]` (commands Codex runs), plus `~/.codex/hooks/digital-me-brain.env` (hooks — Codex passes neither env table to hook processes) | same pair; the MCP stanza is replaced wholesale, so an old inline `DIGITAL_ME_BRAIN_TOKEN` disappears; other keys in `[shell_environment_policy.set]` are preserved |
+| `install --runtime hermes` | `~/.hermes/config.yaml` `digital-me-brain` stanza `env:` (via `hermes mcp add --env`) and `digital-me-brain.env` in the recall plugin dir (the gateway process never sees the stanza env) | same pair |
 
 The `digital-me-brain.env` sidecar is what hook processes can always see: the
 hooks read it next to themselves when `DIGITAL_ME_BRAIN_URL` is not in their

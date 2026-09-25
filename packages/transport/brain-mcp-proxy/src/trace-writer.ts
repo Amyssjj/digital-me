@@ -3,7 +3,7 @@
  *
  * Writes one row per tool call to the brain.db `traces` table — the
  * canonical observability surface owned by `digital-me-brain`. This is
- * the universal chokepoint for openclaw-brain MCP traffic: every
+ * the universal chokepoint for digital-me-brain MCP traffic: every
  * memory_search/tasks/etc. call from Codex, Claude Code, Hermes lands
  * here before forwarding to the openclaw gateway.
  *

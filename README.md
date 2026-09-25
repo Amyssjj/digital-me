@@ -100,7 +100,7 @@ What `setup` does:
 2. **Scaffolds** the wiki root: `~/digital-me/{wiki,tastes,inbox,.cache,.data}` + a pristine `config.example.yaml`, a live `config.yaml` (created only if absent, never clobbered) and a `.gitignore` that keeps `~/digital-me/.data/` — brain.db, the bearer token, your `.env` — out of the wiki repo.
 3. **Installs brain-host** — the hub. Links it at `~/.local/share/digital-me/brain-host`, writes its bearer token to `~/digital-me/.data/brain-host.token`, builds the retrieval index over `~/digital-me/wiki/` + `~/digital-me/tastes/`, and loads it as a `launchd` (macOS) / `systemd --user` (Linux) service on `127.0.0.1:18791` with the scheduler tick on.
 4. **Installs each detected runtime**, pointed at brain-host (the registrations carry `DIGITAL_ME_BRAIN_URL` + the token-file *path*, never the secret):
-   - `~/.claude/hooks/*` + `~/.claude/skills/digital-me/` + merged settings.json + the `openclaw-brain` MCP server (the name is historical; it's brain-host behind it)
+   - `~/.claude/hooks/*` + `~/.claude/skills/digital-me/` + merged settings.json + the `digital-me-brain` MCP server (brain-mcp-proxy → brain-host; an old `openclaw-brain` registration is replaced)
    - `~/.codex/CODEX.md` + MCP entry in `~/.codex/config.toml` + `~/.codex/hooks/*` wired via `~/.codex/hooks.json` (UserPromptSubmit / Stop / PreToolUse, with M1 application_rate tracking)
    - `~/.hermes/SOUL.md` with the digital-me protocol section + MCP stanza
    - the `digital-me-brain` plugin into `~/.openclaw/extensions/` — only when openclaw is present

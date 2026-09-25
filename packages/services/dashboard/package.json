@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/dashboard",
   "version": "0.1.0-pre",
-  "description": "Digital Me OA Dashboard \u2014 minimal 4-view surface (Metrics / Mechanism / Kanban / Delivery) over openclaw brain state + the dashboard-intake pipeline.",
+  "description": "Digital Me dashboard \u2014 Metrics / Mechanism / Kanban / Feed views over the digital-me-brain's brain.db and the dashboard-intake pipeline.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/server/lib.js",

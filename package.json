@@ -2,7 +2,7 @@
   "name": "digital-me-os",
   "version": "0.1.0-pre",
   "private": true,
-  "description": "Digital Me OS — openclaw-based personal brain stack (operations, knowledge, runtime adapters).",
+  "description": "Digital Me OS \u2014 one brain (digital-me-brain, served by brain-host) shared by every agent runtime: knowledge, taste, operations, runtime adapters.",
   "license": "MIT",
   "type": "module",
   "engines": {

@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/brain-host",
   "version": "0.1.0-pre",
-  "description": "digital-me brain host \u2014 serves the brain's memory_search / memory_get / wiki tools on the /tools/invoke wire from a retriever owned by this repo (wiki + tastes, hybrid FTS5 + embeddings). Phase 1 of openclaw independence.",
+  "description": "brain-host \u2014 the always-on process that serves the digital-me-brain: retrieval (memory_search / memory_get / wiki over wiki + tastes, hybrid FTS5 + embeddings) and brain-orchestrator's operations on one authenticated /tools/invoke wire.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

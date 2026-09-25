@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/brain-orchestrator",
   "version": "0.1.0-pre",
-  "description": "Brain orchestrator plugin — operational ledger for openclaw: tasks, agent identity, traces, learnings, metrics, issues, feedback, insights, cron history. Derived from openclaw's task-orchestrator plus the digital-me-os telemetry tool families.",
+  "description": "Brain orchestrator \u2014 the digital-me-brain's operational core: tasks (goals, workflows, schedules), agent identity, traces, learnings, M1 events, and the scheduler tick. Runtime-agnostic; mounted by brain-host.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -189,7 +189,7 @@ export interface BrainCallerEnv {
 /**
  * The DIGITAL_ME_BRAIN_URL / DIGITAL_ME_BRAIN_TOKEN_FILE pair a caller
  * registration should carry (settings.json `env`, the codex
- * `[mcp_servers.openclaw-brain]` env table, `hermes mcp add --env`) so the
+ * `[mcp_servers.digital-me-brain]` env table, `hermes mcp add --env`) so the
  * proxy or hook that caller spawns talks to brain-host, not the openclaw
  * gateway. Registrations need the pair baked in because MCP hosts do not
  * forward the installer's shell environment.

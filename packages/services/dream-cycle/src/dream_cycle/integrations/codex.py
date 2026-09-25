@@ -41,7 +41,7 @@ Before any non-trivial task:
 4. **Active Policies are mandatory** — the section below is injected verbatim from `_INDEX.md`.
 
 When you discover a generalizable pattern, call the `learning_capture` MCP tool
-(via the `openclaw-brain` server) with `kind`, `text`, `why`, `apply_when`,
+(via the `digital-me-brain` server) with `kind`, `text`, `why`, `apply_when`,
 and `proposed_wiki_path`. The brain stores the capture; the next dream cycle
 materializes it into the wiki.
 

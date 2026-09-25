@@ -45,6 +45,12 @@
       "pattern": "openclaw[^.\\n]{0,40}\\bmandatory\\b|\\bmandatory\\b[^.\\n]{0,40}openclaw|mandatory foundation|hard-stops?[^.\\n]{0,60}openclaw|install openclaw first|--skip-openclaw-check",
       "reason": "the openclaw prerequisite gate was lifted in digital-me #123; setup installs brain-host itself and --skip-openclaw-check is a deprecated no-op.",
       "since": "2026-09-21"
+    },
+    {
+      "key": "openclaw-brain-mcp-name",
+      "pattern": "mcp__openclaw[-_]brain__|\\[mcp_servers\\.openclaw-brain\\]|(the|via|registers?|registered as)\\s+`?openclaw-brain`?\\s+(MCP|server|proxy)",
+      "reason": "the brain's MCP server is `digital-me-brain` (BRAIN_MCP_SERVER_NAME in @digital-me/contracts); `openclaw-brain` is only a legacy alias that install removes. Mentioning it as the old name is fine; presenting it as the current one is not.",
+      "since": "2026-09-25"
     }
   ],
   "factRules": {

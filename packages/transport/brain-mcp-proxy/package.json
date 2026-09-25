@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/brain-mcp-proxy",
   "version": "0.1.0-pre",
-  "description": "Stdio MCP server that forwards tool calls to openclaw's HTTP gateway. Lets any MCP-capable CLI (Claude Code, Codex, Hermes) reach the openclaw-brain.",
+  "description": "Stdio (and HTTP) MCP server registered as `digital-me-brain`: forwards tool calls to brain-host's /tools/invoke wire so any MCP-capable CLI (Claude Code, Codex, Hermes) reaches the brain.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

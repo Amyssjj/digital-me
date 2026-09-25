@@ -25,6 +25,7 @@ import {
 import type { CallToolResult } from "./gateway.js";
 import type { CallToolRequest } from "./handler.js";
 import {
+  BRAIN_MCP_SERVER_NAME,
   extractBearerToken,
   readJsonBody,
   timingSafeTokenEqual,
@@ -177,7 +178,7 @@ export async function handleMcpRequest(
         ? withEnforcedAgentId(baseHandler, resolution.agentId, deps.log)
         : baseHandler;
     const server = new Server(
-      { name: "openclaw-brain", version: "1.0.0" },
+      { name: BRAIN_MCP_SERVER_NAME, version: "1.0.0" },
       { capabilities: { tools: {} } },
     );
     server.setRequestHandler(ListToolsRequestSchema, async () => ({

@@ -1,5 +1,5 @@
 /**
- * Tool definitions exposed by the openclaw-brain MCP proxy.
+ * Tool definitions exposed by the digital-me-brain MCP proxy.
  *
  * These declare the MCP tool shapes only — they don't implement anything.
  * The actual implementations live in openclaw plugins (memory-core,

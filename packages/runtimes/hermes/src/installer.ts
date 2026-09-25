@@ -71,7 +71,7 @@ export const SECTION_END =
   "<!-- END digital-me auto-generated section -->";
 
 /**
- * Inputs for the `env:` map of the `openclaw-brain` MCP stanza in
+ * Inputs for the `env:` map of the `digital-me-brain` MCP stanza in
  * ~/.hermes/config.yaml (written by `hermes mcp add --env KEY=VALUE ...`).
  */
 export interface HermesMcpEnvInputs {

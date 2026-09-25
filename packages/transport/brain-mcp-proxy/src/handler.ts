@@ -15,7 +15,7 @@
  *   5. catches unexpected exceptions and returns an isError result
  *   6. records a trace via the optional traceWriter (fire-and-forget) —
  *      this is the universal observability chokepoint for every
- *      MCP-routed openclaw-brain tool call from any client.
+ *      MCP-routed digital-me-brain tool call from any client.
  */
 
 import type { CallToolResult } from "./gateway.js";

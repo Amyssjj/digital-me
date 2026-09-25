@@ -48,6 +48,13 @@ export type {
 export type { BrainSidecarValues } from "./brain-sidecar.js";
 
 export {
+  BRAIN_MCP_SERVER_NAME,
+  LEGACY_BRAIN_MCP_SERVER_NAMES,
+  brainMcpToolNames,
+  migrateLegacyBrainServerRefs,
+} from "./brain-identity.js";
+
+export {
   MIN_TOKEN_LENGTH,
   extractBearerToken,
   timingSafeTokenEqual,

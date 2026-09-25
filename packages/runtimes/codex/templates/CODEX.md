@@ -41,7 +41,7 @@ OpenClaw native agents do — you must pull via `memory_search`. The
 `[Digital Me]` prefix makes that pull meaningful.
 
 When you discover a generalizable pattern, call the `learning_capture` MCP tool
-(via the `openclaw-brain` server) with `kind`, `text`, `why`, `apply_when`,
+(via the `digital-me-brain` server) with `kind`, `text`, `why`, `apply_when`,
 and `proposed_wiki_path`. The brain stores the capture; the next dream cycle
 materializes it into the wiki. `learning_capture` records its own paired
 capture trace — do **not** follow it with a `traces_record kind:

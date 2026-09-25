@@ -14,6 +14,7 @@ import { TRANSCRIPT_SOURCE as CLAUDE_CODE_TRANSCRIPT_SOURCE } from "@digital-me/
 import { TRANSCRIPT_SOURCE as CODEX_TRANSCRIPT_SOURCE } from "@digital-me/runtime-codex";
 import { TRANSCRIPT_SOURCE as HERMES_TRANSCRIPT_SOURCE } from "@digital-me/runtime-hermes";
 import { TRANSCRIPT_SOURCE as OPENCLAW_TRANSCRIPT_SOURCE } from "@digital-me/runtime-openclaw";
+import { BRAIN_MCP_SERVER_NAME } from "@digital-me/contracts";
 
 export type DetectedRuntime = "claude-code" | "codex" | "hermes" | "openclaw";
 
@@ -96,7 +97,7 @@ export type AliasMap = Readonly<Record<string, AliasStanza>>;
  * cutover.
  *
  * Tool allowlists are intentionally conservative: every alias gets
- * Bash/Read/Write/Edit + the openclaw-brain MCP tools. Power users
+ * Bash/Read/Write/Edit + the digital-me-brain MCP tools. Power users
  * customize via config.yaml.
  */
 export function buildDefaultAliases(runtimes: readonly DetectedRuntime[]): AliasMap {
@@ -110,9 +111,9 @@ export function buildDefaultAliases(runtimes: readonly DetectedRuntime[]): Alias
         "bypassPermissions",
         "--allowedTools",
         [
-          "mcp__openclaw-brain__memory_search",
-          "mcp__openclaw-brain__tasks",
-          "mcp__openclaw-brain__traces_record",
+          `mcp__${BRAIN_MCP_SERVER_NAME}__memory_search`,
+          `mcp__${BRAIN_MCP_SERVER_NAME}__tasks`,
+          `mcp__${BRAIN_MCP_SERVER_NAME}__traces_record`,
           "Bash",
           "Read",
           "Write",
@@ -132,9 +133,9 @@ export function buildDefaultAliases(runtimes: readonly DetectedRuntime[]): Alias
       binary: "codex",
       args: [
         "-c",
-        'mcp_servers.openclaw-brain.tools.memory_search.approval_mode="approve"',
+        `mcp_servers.${BRAIN_MCP_SERVER_NAME}.tools.memory_search.approval_mode="approve"`,
         "-c",
-        'mcp_servers.openclaw-brain.tools.traces_record.approval_mode="approve"',
+        `mcp_servers.${BRAIN_MCP_SERVER_NAME}.tools.traces_record.approval_mode="approve"`,
         "--sandbox",
         "workspace-write",
         "--ask-for-approval",

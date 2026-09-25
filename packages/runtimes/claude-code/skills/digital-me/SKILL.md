@@ -24,9 +24,9 @@ Key paths:
 
 | Agent type | Access method |
 |---|---|
-| Claude Code | `Read`/`Write` tools on `~/digital-me/` + `memory_search`/`memory_get` via `openclaw-brain` MCP |
+| Claude Code | `Read`/`Write` tools on `~/digital-me/` + `memory_search`/`memory_get` via `digital-me-brain` MCP |
 | OpenClaw subagents | `memory_search`/`memory_get` tools (wiki + tastes are in `memorySearch.extraPaths`) |
-| Hermes Agent | `memory_search`/`memory_get` via `openclaw-brain` MCP |
+| Hermes Agent | `memory_search`/`memory_get` via `digital-me-brain` MCP |
 | Antigravity | Direct filesystem access to `~/digital-me/` |
 
 ## The Protocol (every task)
@@ -98,7 +98,7 @@ Pick the best fit when writing a new entry:
 
 See `~/digital-me/_STATS.md` for the current full list.
 
-## MCP Tools (openclaw-brain)
+## MCP Tools (digital-me-brain)
 
 | Tool | Purpose |
 |---|---|

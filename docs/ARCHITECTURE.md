@@ -11,6 +11,16 @@ Digital Me OS is one brain and a set of spokes. The brain — **brain-host** —
 
 `brain-host` mounts both on `POST /tools/invoke` (bearer token, `{tool, agentId, args}` → `{ok, result}`), opens and migrates `brain.db`, and runs the tick. Everything else in this repo orbits that process.
 
+### Vocabulary
+
+| Name | What it is | Where you see it |
+|---|---|---|
+| **digital-me-brain** | The brain, as agents and people see it | The MCP server every runtime registers (tools surface as `mcp__digital-me-brain__tasks`; Codex spells it `mcp__digital_me_brain__tasks`), the openclaw plugin id |
+| **brain-host** | The always-on process that serves the digital-me-brain | The `@digital-me/brain-host` package, its launchd/systemd service, `DIGITAL_ME_BRAIN_*` env, `digital-me service brain-host` |
+| **brain-mcp-proxy** | The stdio↔HTTP transport a CLI spawns to reach brain-host | The command behind each MCP registration |
+
+`openclaw-brain` is the MCP server's name from when openclaw was the hub. It survives only as a legacy alias (`LEGACY_BRAIN_MCP_SERVER_NAMES` in `@digital-me/contracts`): `install` removes a registration under it, hooks still recognise its tool names in older transcripts, and saved `cli_exec_aliases` that reference it are rewritten at dispatch time.
+
 ## The package roles
 
 ```

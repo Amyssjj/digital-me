@@ -12,7 +12,7 @@ Three modes, all from the same leaf file:
   - eval:    batch — same as judge, run over multiple artifacts with aggregation.
 
 Designed to be importable from any Python runtime AND wrappable as MCP tools
-(`mcp__openclaw-brain__taste_consult`, `mcp__openclaw-brain__taste_judge_prompt`)
+(`mcp__digital-me-brain__taste_consult`, `mcp__digital-me-brain__taste_judge_prompt`)
 so every cross-agent surface (Claude Code, Codex, Hermes, OpenClaw subagents,
 Mission Control) consumes the same source of truth.
 
