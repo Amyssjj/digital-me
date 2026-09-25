@@ -15,7 +15,7 @@
 import http from "node:http";
 import { homedir } from "node:os";
 import path from "node:path";
-import { loadConfig } from "@digital-me/contracts";
+import { isLoopbackHost, loadConfig } from "@digital-me/contracts";
 import {
   createAppRateWriter,
   defaultLogPathForAgent,
@@ -25,7 +25,7 @@ import { invokeGatewayTool } from "./gateway.js";
 import { resolveGatewayAgentId } from "./config.js";
 import { createCallToolHandler, resolveMaxResultBytes } from "./handler.js";
 import { createRequestListener, MCP_PATH } from "./http-app.js";
-import { isLoopbackHost, loadHttpConfig } from "./http-config.js";
+import { loadHttpConfig } from "./http-config.js";
 import {
   createSqliteTraceWriter,
   defaultBrainDbPath,

@@ -99,8 +99,14 @@ POST /tools/invoke   Authorization: Bearer <token>
 → { "ok": true, "result": { "content": [{ "type": "text", "text": "<json>" }], "details": { "results": [...], "provider", "model", "count" } } }
 → { "ok": false, "error": { "type": "search_unavailable" | "invalid_request" | "unknown_tool" | …, "message" } }
 
-GET /health → { ok, version, provenance, lastIndexAt, entries, sections, byCorpus, orchestrator }
+GET /health                                  → { ok, version }   (liveness; no token needed)
+GET /health  Authorization: Bearer <token>   → { ok, version, provenance, lastIndexAt, entries, sections, byCorpus, dbPath, wikiRoot, orchestrator }
 ```
+
+`serve` refuses a token shorter than 16 characters (the same `MIN_TOKEN_LENGTH`
+brain-mcp-proxy enforces, from `@digital-me/contracts`) and logs a warning when
+`DIGITAL_ME_BRAIN_HOST` is not a loopback address. A client that aborts
+mid-upload gets its request dropped; it cannot take the process down.
 
 `/health` under load: it is served on the same single event loop as
 `/tools/invoke`, so one heavy synchronous tool call — today `tasks

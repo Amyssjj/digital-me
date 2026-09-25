@@ -1,5 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_PORT, expandHome, loadConfig } from "./config.js";
+import { MIN_TOKEN_LENGTH } from "@digital-me/contracts";
+import { checkServeConfig, DEFAULT_PORT, expandHome, loadConfig } from "./config.js";
+
+describe("checkServeConfig", () => {
+  const strong = "a".repeat(MIN_TOKEN_LENGTH);
+  const base = { tokenFile: "/h/.data/brain-host.token", host: "127.0.0.1" };
+
+  it("refuses to serve without a token and names the token file", () => {
+    const r = checkServeConfig({ ...base, token: undefined });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.message).toMatch(/DIGITAL_ME_BRAIN_TOKEN must be set.*\/h\/\.data\/brain-host\.token/);
+  });
+
+  it("rejects a token shorter than the shared minimum", () => {
+    const r = checkServeConfig({ ...base, token: "a".repeat(MIN_TOKEN_LENGTH - 1) });
+    expect(r).toEqual({
+      ok: false,
+      message: `the bearer token is too short (${MIN_TOKEN_LENGTH - 1} chars, minimum ${MIN_TOKEN_LENGTH}). Generate a strong one with: openssl rand -hex 32`,
+    });
+    // A token file holding a short token is rejected the same way.
+    const fromFile = loadConfig({}, "/h", () => "short\n");
+    expect(checkServeConfig(fromFile).ok).toBe(false);
+  });
+
+  it("accepts a minimum-length token on loopback without warnings", () => {
+    for (const host of ["127.0.0.1", "::1", "localhost"]) {
+      expect(checkServeConfig({ ...base, host, token: strong })).toEqual({ ok: true, token: strong, warnings: [] });
+    }
+  });
+
+  it("warns (but still serves) on a non-loopback bind", () => {
+    const r = checkServeConfig(loadConfig({ DIGITAL_ME_BRAIN_TOKEN: strong, DIGITAL_ME_BRAIN_HOST: "0.0.0.0" }, "/h"));
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.warnings).toHaveLength(1);
+      expect(r.warnings[0]).toMatch(/^WARNING: DIGITAL_ME_BRAIN_HOST=0\.0\.0\.0 is not a loopback interface/);
+    }
+  });
+});
 
 describe("loadConfig", () => {
   it("applies defaults from the home directory", () => {

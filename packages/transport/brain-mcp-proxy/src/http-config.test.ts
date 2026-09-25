@@ -4,10 +4,9 @@ import {
   DEFAULT_HTTP_PORT,
   DEFAULT_MAX_BODY_BYTES,
   HttpConfigError,
-  MIN_TOKEN_LENGTH,
-  isLoopbackHost,
   loadHttpConfig,
 } from "./http-config.js";
+import { MIN_TOKEN_LENGTH } from "@digital-me/contracts";
 
 const VALID_TOKEN = "0123456789abcdef0123456789abcdef";
 
@@ -100,14 +99,3 @@ describe("loadHttpConfig", () => {
   });
 });
 
-describe("isLoopbackHost", () => {
-  it.each([
-    ["127.0.0.1", true],
-    ["::1", true],
-    ["localhost", true],
-    ["0.0.0.0", false],
-    ["192.168.1.20", false],
-  ])("classifies %s as loopback=%s", (host, expected) => {
-    expect(isLoopbackHost(host)).toBe(expected);
-  });
-});

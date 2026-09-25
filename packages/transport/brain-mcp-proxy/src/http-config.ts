@@ -9,14 +9,16 @@
  *     see the README's remote-access section (prefer a private overlay
  *     network such as WireGuard/Tailscale over raw LAN binding).
  *
- * Pure functions, no side effects.
+ * Pure functions, no side effects. MIN_TOKEN_LENGTH and isLoopbackHost come
+ * from @digital-me/contracts so brain-host enforces the same rules.
  */
+
+import { MIN_TOKEN_LENGTH } from "@digital-me/contracts";
 
 export const DEFAULT_HTTP_HOST = "127.0.0.1";
 /** One above the gateway's default (18789) so the pair reads as a family. */
 export const DEFAULT_HTTP_PORT = 18790;
 export const DEFAULT_MAX_BODY_BYTES = 2 * 1024 * 1024;
-export const MIN_TOKEN_LENGTH = 16;
 
 export type HttpConfig = {
   readonly host: string;
@@ -53,14 +55,6 @@ function parsePositiveInt(
     );
   }
   return n;
-}
-
-/**
- * True for hosts that keep the transport machine-local. Used to decide
- * whether to emit the network-exposure warning at startup.
- */
-export function isLoopbackHost(host: string): boolean {
-  return host === "127.0.0.1" || host === "::1" || host === "localhost";
 }
 
 export function loadHttpConfig(input: {

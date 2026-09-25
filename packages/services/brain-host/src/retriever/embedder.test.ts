@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { GeminiEmbedder, HashEmbedder, tokenize, type FetchLike } from "./embedder.js";
 
 function fakeFetch(responses: { status: number; body: unknown }[]): { fetch: FetchLike; calls: { url: string; body: unknown }[] } {
@@ -43,6 +43,19 @@ describe("GeminiEmbedder", () => {
     const bad = fakeFetch([{ status: 500, body: "x" }, { status: 500, body: "y" }]);
     const e2 = new GeminiEmbedder({ apiKey: "k", dims: 2, fetch: bad.fetch, sleep: async () => {}, maxRetries: 1 });
     await expect(e2.embed(["a"], "query")).rejects.toThrow(/HTTP 500 y/);
+  });
+
+  it("backs off with a real timer when no sleep seam is given", async () => {
+    vi.useFakeTimers();
+    try {
+      const f = fakeFetch([{ status: 503, body: "down" }, { status: 200, body: vecs(1, 2) }]);
+      const pending = new GeminiEmbedder({ apiKey: "k", dims: 2, fetch: f.fetch }).embed(["a"], "query");
+      await vi.advanceTimersByTimeAsync(500);
+      expect(await pending).toHaveLength(1);
+      expect(f.calls).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("does not retry client errors", async () => {
