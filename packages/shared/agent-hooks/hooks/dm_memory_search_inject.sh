@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 # Digital Me: inject openclaw-brain memory_search hits into user prompts.
-# Runs on UserPromptSubmit. Fails open (empty output, exit 0) on any error.
+# Runs on UserPromptSubmit (Claude Code and Codex). Fails open (empty output,
+# exit 0) on any error.
+#
+# Both hosts send `.prompt` + `.session_id` on stdin and accept the same
+# `hookSpecificOutput.additionalContext` stdout shape, so the surfacing logic
+# is shared. The runtime (`--runtime claude-code|codex`, see dm_hook_lib.sh)
+# only picks the per-session dedup cache name and — via the exported
+# DM_RUNTIME — the M1 emitter's runtime label, WAL and once-only flag.
 #
 # 2026-05-22 changes (M1 calibration):
 #   - SCORE_GATE: drop hits below MIN_SCORE (was: unconditional top-3).
@@ -14,11 +21,16 @@
 set -u
 PATH="/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
 
+HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
+DM_HOOK_DIR="$HOOK_DIR"
+# shellcheck source=dm_hook_lib.sh
+. "$DM_HOOK_DIR/dm_hook_lib.sh" 2>/dev/null && dm_hook_init "$@" || exit 0
+
 STDIN="$(cat)"
 PROMPT="$(printf '%s' "$STDIN" | jq -r '.prompt // empty' 2>/dev/null)"
 [ -z "$PROMPT" ] && exit 0
 
-# Session id for per-session dedup. Claude Code passes `session_id` on stdin.
+# Session id for per-session dedup. Both hosts pass `session_id` on stdin.
 SESSION_ID="$(printf '%s' "$STDIN" | jq -r '.session_id // empty' 2>/dev/null)"
 
 # Slash commands: search on what follows the command, not the command itself.
@@ -46,7 +58,6 @@ PLEN=${#PROMPT}
 # stripped, and a missing file changes nothing.
 SIDECAR_URL=""
 SIDECAR_TOKEN_FILE=""
-HOOK_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd)"
 SIDECAR="$HOOK_DIR/digital-me-brain.env"
 if [ -z "${DIGITAL_ME_BRAIN_URL:-}" ] && [ -n "$HOOK_DIR" ] && [ -f "$SIDECAR" ] && [ -r "$SIDECAR" ]; then
   while IFS= read -r line || [ -n "$line" ]; do
@@ -68,8 +79,8 @@ fi
 BRAIN_URL_FROM="DIGITAL_ME_BRAIN_URL"
 [ -n "$SIDECAR_URL" ] && BRAIN_URL_FROM="DIGITAL_ME_BRAIN_URL (from $SIDECAR)"
 
-# Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts, dm_m1_emit.py
-# and the Codex inject hook):
+# Brain endpoint precedence (mirrors brain-mcp-proxy/config.ts and
+# dm_m1_emit.py):
 #   1. DIGITAL_ME_BRAIN_URL (env, else the sidecar) — the digital-me
 #      brain-host. Its bearer token is DIGITAL_ME_BRAIN_TOKEN when non-empty,
 #      else the trimmed contents of DIGITAL_ME_BRAIN_TOKEN_FILE (env, else the
@@ -131,11 +142,12 @@ NOW_EPOCH=$(date +%s)
 
 # Per-session dedup cache. Holds wiki paths already surfaced in this session
 # so we never inject the same entry twice — forces the hook to escalate to
-# fresh hits if the topic stays the same.
+# fresh hits if the topic stays the same. The prefix is per runtime
+# (dm_hook_lib.sh) so Claude Code and Codex never cross-dedup each other;
+# dm_application_rate.sh reads the same file at Stop.
 SEEN_FILE=""
 if [ -n "$SESSION_ID" ]; then
-  SEEN_FILE="/tmp/dm_hook_seen_${SESSION_ID}.txt"
-  : > /dev/null  # noop; create lazily when we write
+  SEEN_FILE="${DM_SEEN_PREFIX}${SESSION_ID}.txt"
 fi
 
 # Trim prompt for the query (brain does semantic search; long verbatim prompts add noise)
@@ -315,14 +327,22 @@ if [ -n "$SEEN_FILE" ]; then
   printf '\n' >> "$SEEN_FILE"
 fi
 
-# ─── M1 universal-protocol emit (2026-05-27) ──────────────────────────────
+# ─── M1 universal-protocol emit ───────────────────────────────────────────
 # Emit canonical events to brain via dm_m1_emit.py:
 #   1. session_start (once-only per session_id, gated by /tmp flag file)
 #   2. knowledge_surfaced (every successful injection)
-# Both append to ~/.openclaw/data/m1_events_claude_code.jsonl as the
-# durable WAL; brain POSTs are best-effort (m1_backfill.py replays on
-# next reachable window). See wiki: infrastructure/m1-universal-event-protocol.md
-M1_EMIT="$(dirname "$0")/dm_m1_emit.py"
+# Both append to ~/.openclaw/data/m1_events_<runtime>.jsonl as the durable
+# WAL; brain POSTs are best-effort (m1_backfill.py replays on next reachable
+# window). See wiki: infrastructure/m1-universal-event-protocol.md
+#
+# Never on the prompt's critical path: each emit is a python start-up plus a
+# brain POST that may wait out its 2s timeout, so both run in ONE detached
+# background subshell (in order: session_start, then knowledge_surfaced) with
+# every fd pointed at /dev/null — the host sees this hook exit as soon as the
+# context is printed. The once-only flag is checked here in bash first, so
+# after the first surfaced turn of a session no python is spawned for
+# session_start at all (--skip-if-already-started still guards the race).
+M1_EMIT="$HOOK_DIR/dm_m1_emit.py"
 if [ -n "$SESSION_ID" ] && [ -x "$M1_EMIT" ] && [ -n "$PATHS" ]; then
   # Build a turn id from the seen-file line count (monotonic per session)
   if [ -n "$SEEN_FILE" ] && [ -f "$SEEN_FILE" ]; then
@@ -336,21 +356,27 @@ if [ -n "$SESSION_ID" ] && [ -x "$M1_EMIT" ] && [ -n "$PATHS" ]; then
   ENTRIES_JSON="$(printf '%s' "$HITS_JSON" | jq -c 'map({path: (.path // ""), title: (.title // ""), score: (.score // null), source: "memory_search"}) | map(select(.path != ""))' 2>/dev/null)"
   [ -z "$ENTRIES_JSON" ] && ENTRIES_JSON='[]'
 
-  # 1. session_start — once-only-per-session (--skip-if-already-started)
-  "$M1_EMIT" session_start \
-    --session-id "$SESSION_ID" \
-    --turn-id "0" \
-    --skip-if-already-started \
-    --quiet \
-    >/dev/null 2>&1 || true
+  M1_NEED_START=1
+  [ -e "${DM_M1_FLAG_PREFIX}${SESSION_ID}" ] && M1_NEED_START=0
 
-  # 2. knowledge_surfaced
-  "$M1_EMIT" knowledge_surfaced \
-    --session-id "$SESSION_ID" \
-    --turn-id "$M1_TURN_ID" \
-    --entries-json "$ENTRIES_JSON" \
-    --quiet \
-    >/dev/null 2>&1 || true
+  (
+    # 1. session_start — once-only-per-session
+    if [ "$M1_NEED_START" = "1" ]; then
+      "$M1_EMIT" session_start \
+        --session-id "$SESSION_ID" \
+        --turn-id "0" \
+        --skip-if-already-started \
+        --quiet || true
+    fi
+
+    # 2. knowledge_surfaced
+    "$M1_EMIT" knowledge_surfaced \
+      --session-id "$SESSION_ID" \
+      --turn-id "$M1_TURN_ID" \
+      --entries-json "$ENTRIES_JSON" \
+      --quiet || true
+  ) </dev/null >/dev/null 2>&1 &
+  disown 2>/dev/null || true
 fi
 
 CTX="Digital Me / openclaw-brain memory_search top hits for this prompt (auto-injected; may be stale — verify against current state before acting):

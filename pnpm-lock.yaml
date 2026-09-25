@@ -102,6 +102,9 @@ importers:
 
   packages/runtimes/claude-code:
     dependencies:
+      '@digital-me/agent-hooks':
+        specifier: workspace:*
+        version: link:../../shared/agent-hooks
       '@digital-me/contracts':
         specifier: workspace:*
         version: link:../../shared/contracts
@@ -121,6 +124,9 @@ importers:
 
   packages/runtimes/codex:
     dependencies:
+      '@digital-me/agent-hooks':
+        specifier: workspace:*
+        version: link:../../shared/agent-hooks
       '@digital-me/contracts':
         specifier: workspace:*
         version: link:../../shared/contracts
@@ -294,6 +300,24 @@ importers:
       vite:
         specifier: ^8.2.2
         version: 8.2.2(@types/node@22.19.19)(esbuild@0.28.2)(jiti@1.21.7)(tsx@4.23.12)(yaml@2.9.0)
+      vitest:
+        specifier: ^3.2.6
+        version: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0)
+
+  packages/shared/agent-hooks:
+    devDependencies:
+      '@digital-me/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@types/node':
+        specifier: ^22.0.0
+        version: 22.19.19
+      '@vitest/coverage-v8':
+        specifier: ^3.2.6
+        version: 3.2.6(vitest@3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0))
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
       vitest:
         specifier: ^3.2.6
         version: 3.2.6(@types/debug@4.1.13)(@types/node@22.19.19)(lightningcss@1.33.0)

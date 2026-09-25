@@ -4,8 +4,10 @@
  * Codex CLI runtime adapter for the digital-me brain. Ships:
  *   - CODEX.md instructions template (templates/CODEX.md).
  *   - openclaw-brain MCP server fragment (templates/openclaw-brain.mcp.toml).
- *   - Lifecycle hooks (hooks/) wired into Codex's UserPromptSubmit / Stop /
- *     PreToolUse events, plus the shared dm_m1_emit.py M1 event emitter.
+ *   - Lifecycle hooks wired into Codex's UserPromptSubmit / Stop /
+ *     PreToolUse events, plus the dm_m1_emit.py M1 event emitter — the same
+ *     scripts the Claude Code runtime installs (@digital-me/agent-hooks),
+ *     registered here with `--runtime codex`.
  *   - Pure-data installer that merges all three into the user's ~/.codex/.
  *
  * The CLI does the disk I/O; this package owns the merge logic so the

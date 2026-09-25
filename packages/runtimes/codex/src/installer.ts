@@ -12,6 +12,12 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import {
+  AGENT_HOOKS_DIR,
+  SHARED_HOOK_FILES,
+  hookCommand,
+  mergeHookManifest,
+} from "@digital-me/agent-hooks";
 
 const MODULE_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -19,17 +25,26 @@ const MODULE_ROOT = path.resolve(
 );
 
 // Workspace layout: this module compiles to <pkg>/dist/*.js, so MODULE_ROOT
-// is the package root, which carries hooks/ directly. Published CLI
+// is the package root, which carries templates/ directly. Published CLI
 // bundle: esbuild inlines every workspace module into <npm-pkg>/bin/*.js, so
 // MODULE_ROOT is the npm package root for EVERY package — per-package assets
 // are staged by scripts/build-cli-bundle.mjs under assets/codex/ to
-// avoid cross-package collisions (e.g. claude-code and codex both ship hooks/).
-export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "hooks"))
+// avoid cross-package collisions.
+export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "templates"))
   ? MODULE_ROOT
   : path.join(MODULE_ROOT, "assets", "codex");
 
 export const TEMPLATES_DIR = path.join(PACKAGE_ROOT, "templates");
-export const HOOKS_DIR = path.join(PACKAGE_ROOT, "hooks");
+/**
+ * Source of the hook scripts: the shared @digital-me/agent-hooks package —
+ * the SAME files the Claude Code runtime installs. Codex hooks are
+ * I/O-compatible with Claude Code's (same stdin JSON, same
+ * `hookSpecificOutput` / `decision` stdout); the few genuine differences
+ * (runtime home, /tmp state names, M1 runtime label + WAL, rollout transcript
+ * format) are selected by the `--runtime codex` baked into each command.
+ * See https://developers.openai.com/codex/hooks.
+ */
+export const HOOKS_DIR = AGENT_HOOKS_DIR;
 export const CODEX_MD_TEMPLATE = path.join(TEMPLATES_DIR, "CODEX.md");
 export const MCP_TOML_TEMPLATE = path.join(
   TEMPLATES_DIR,
@@ -37,24 +52,14 @@ export const MCP_TOML_TEMPLATE = path.join(
 );
 
 /**
- * Codex lifecycle hooks this runtime ships. The first five are wired into
- * Codex hook events (UserPromptSubmit / Stop ×3 / PreToolUse) via
- * `~/.codex/hooks.json`; `dm_m1_emit.py` is the shared M1 event emitter
- * called as a subprocess by the inject + stop hooks (not a hook itself,
- * but installed alongside them so the codex install path is self-contained).
- *
- * Codex hooks are I/O-compatible with Claude Code's (same stdin JSON, same
- * `hookSpecificOutput` / `decision` stdout), so these are adapted ports of
- * the Claude Code hooks. See https://developers.openai.com/codex/hooks.
+ * Files installed into ~/.codex/hooks/. The first five are wired into Codex
+ * hook events (UserPromptSubmit / Stop ×3 / PreToolUse) via
+ * `~/.codex/hooks.json`; `dm_m1_emit.py` is the M1 event emitter called as a
+ * subprocess by the inject + stop hooks and `dm_hook_lib.sh` the runtime
+ * resolution every hook sources (neither is a hook itself, both are
+ * installed alongside so the codex install path is self-contained).
  */
-export const HOOK_NAMES = [
-  "dm_memory_search_inject.sh",
-  "brain_route_inject.sh",
-  "dm_handoff_reminder.sh",
-  "dm_session_extract.sh",
-  "dm_application_rate.sh",
-  "dm_m1_emit.py",
-] as const;
+export const HOOK_NAMES = SHARED_HOOK_FILES;
 
 export type CodexHookName = (typeof HOOK_NAMES)[number];
 
@@ -256,6 +261,9 @@ export const DEFAULT_CODEX_HOOKS_DIR = "$HOME/.codex/hooks";
  *   (e.g. `<home>/.codex/hooks`). The installer passes the resolved
  *   home path so the command entries don't depend on env expansion.
  *
+ * Every command is `<hooksDir>/<script> --runtime codex`: the scripts are
+ * shared with Claude Code and read the runtime from their argv.
+ *
  * Event mapping (parity with the Claude Code runtime):
  *   - UserPromptSubmit → dm_memory_search_inject.sh   (surface + M1 session_start/knowledge_surfaced)
  *   - Stop             → dm_handoff_reminder.sh        (handoff nudge)
@@ -271,7 +279,7 @@ export const DEFAULT_CODEX_HOOKS_DIR = "$HOME/.codex/hooks";
 export function buildCodexHooksManifest(
   hooksDir: string = DEFAULT_CODEX_HOOKS_DIR,
 ): CodexHooksManifest {
-  const cmd = (name: CodexHookName) => `${hooksDir}/${name}`;
+  const cmd = (name: CodexHookName) => hookCommand(`${hooksDir}/${name}`, "codex");
   return {
     UserPromptSubmit: [
       {
@@ -330,32 +338,20 @@ export function buildCodexHooksManifest(
  * Merge our hook stanzas into an existing `hooks.json` object (the parsed
  * contents of `~/.codex/hooks.json`). Preserves the user's other hooks and
  * top-level keys. De-dupes by command string so re-running the installer is
- * idempotent. Pure function — the installer does the disk I/O.
+ * idempotent; a command an older installer registered without `--runtime`
+ * is upgraded in place (never duplicated). Pure function — the installer
+ * does the disk I/O.
  */
 export function mergeCodexHooksJson(
   existing: Record<string, unknown>,
   hooksDir: string = DEFAULT_CODEX_HOOKS_DIR,
 ): Record<string, unknown> {
-  const manifest = buildCodexHooksManifest(hooksDir);
   const existingHooks =
     (existing.hooks as Record<string, CodexHookStanza[]> | undefined) ?? {};
-  const mergedHooks: Record<string, CodexHookStanza[]> = { ...existingHooks };
-  for (const event of Object.keys(manifest) as Array<keyof CodexHooksManifest>) {
-    const ours = manifest[event];
-    const theirs = mergedHooks[event] ?? [];
-    const seen = new Set<string>();
-    for (const stanza of theirs) {
-      for (const h of stanza.hooks) seen.add(h.command);
-    }
-    const ourFiltered = ours
-      .map((s) => ({
-        ...s,
-        hooks: s.hooks.filter((h) => !seen.has(h.command)),
-      }))
-      .filter((s) => s.hooks.length > 0);
-    mergedHooks[event] = [...theirs, ...ourFiltered];
-  }
-  return { ...existing, hooks: mergedHooks };
+  return {
+    ...existing,
+    hooks: mergeHookManifest(existingHooks, buildCodexHooksManifest(hooksDir)),
+  };
 }
 
 /**

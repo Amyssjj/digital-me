@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   CODEX_MD_TEMPLATE,
@@ -383,15 +383,20 @@ describe("mergeShellEnvPolicySet", () => {
 describe("paths", () => {
   it("PACKAGE_ROOT contains templates/ with the canonical filenames", () => {
     expect(TEMPLATES_DIR).toBe(`${PACKAGE_ROOT}/templates`);
-    expect(HOOKS_DIR).toBe(`${PACKAGE_ROOT}/hooks`);
+    // The hooks come from the shared agent-hooks package (the same files the
+    // claude-code runtime installs), not from this package.
+    expect(HOOKS_DIR.endsWith("/agent-hooks/hooks")).toBe(true);
+    for (const name of HOOK_NAMES) {
+      expect(existsSync(`${HOOKS_DIR}/${name}`), name).toBe(true);
+    }
     expect(CODEX_MD_TEMPLATE.endsWith("templates/CODEX.md")).toBe(true);
     expect(MCP_TOML_TEMPLATE.endsWith("templates/openclaw-brain.mcp.toml")).toBe(
       true,
     );
   });
 
-  it("falls back to assets/codex when hooks/ is absent (published CLI bundle layout)", async () => {
-    // In the workspace, hooks/ sits at the package root so the ternary's
+  it("falls back to assets/codex when templates/ is absent (published CLI bundle layout)", async () => {
+    // In the workspace, templates/ sits at the package root so the ternary's
     // first arm wins. The published CLI bundle stages per-package assets
     // under assets/codex/ instead — simulate that layout by mocking
     // existsSync and re-importing the module.
@@ -409,7 +414,7 @@ describe("paths", () => {
 });
 
 describe("HOOK_NAMES", () => {
-  it("ships the 5 lifecycle hooks + the dm_m1_emit.py helper", () => {
+  it("ships the 5 lifecycle hooks + the dm_m1_emit.py and dm_hook_lib.sh helpers", () => {
     expect(HOOK_NAMES).toEqual([
       "dm_memory_search_inject.sh",
       "brain_route_inject.sh",
@@ -417,6 +422,7 @@ describe("HOOK_NAMES", () => {
       "dm_session_extract.sh",
       "dm_application_rate.sh",
       "dm_m1_emit.py",
+      "dm_hook_lib.sh",
     ]);
   });
 });
@@ -429,18 +435,18 @@ describe("buildCodexHooksManifest", () => {
     expect(m.PreToolUse).toHaveLength(1);
 
     expect(m.UserPromptSubmit[0]!.hooks[0]!.command).toBe(
-      "/home/me/.codex/hooks/dm_memory_search_inject.sh",
+      "/home/me/.codex/hooks/dm_memory_search_inject.sh --runtime codex",
     );
     // Stop wires handoff reminder + session extract + application-rate writer.
     expect(m.Stop[0]!.hooks).toHaveLength(3);
     expect(m.Stop[0]!.hooks.map((h) => h.command)).toEqual([
-      "/home/me/.codex/hooks/dm_handoff_reminder.sh",
-      "/home/me/.codex/hooks/dm_session_extract.sh",
-      "/home/me/.codex/hooks/dm_application_rate.sh",
+      "/home/me/.codex/hooks/dm_handoff_reminder.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_session_extract.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_application_rate.sh --runtime codex",
     ]);
     expect(m.PreToolUse[0]!.matcher).toBe("*");
     expect(m.PreToolUse[0]!.hooks[0]!.command).toBe(
-      "/home/me/.codex/hooks/brain_route_inject.sh",
+      "/home/me/.codex/hooks/brain_route_inject.sh --runtime codex",
     );
   });
 
@@ -458,7 +464,7 @@ describe("buildCodexHooksManifest", () => {
   it("defaults hooksDir to $HOME/.codex/hooks when omitted", () => {
     const m = buildCodexHooksManifest();
     expect(m.UserPromptSubmit[0]!.hooks[0]!.command).toBe(
-      "$HOME/.codex/hooks/dm_memory_search_inject.sh",
+      "$HOME/.codex/hooks/dm_memory_search_inject.sh --runtime codex",
     );
   });
 });
@@ -495,7 +501,25 @@ describe("mergeCodexHooksJson", () => {
       s.hooks.map((h) => h.command),
     );
     expect(ups).toContain("/usr/local/bin/mine.sh");
-    expect(ups).toContain(`${DIR}/dm_memory_search_inject.sh`);
+    expect(ups).toContain(`${DIR}/dm_memory_search_inject.sh --runtime codex`);
+  });
+
+  it("upgrades hooks.json entries an older installer wrote without --runtime (no duplicate registration)", () => {
+    const legacy = mergeCodexHooksJson({}, DIR) as {
+      hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string }> }>>;
+    };
+    // Rewind to what the pre-merge installer wrote: bare script paths.
+    for (const stanzas of Object.values(legacy.hooks)) {
+      for (const s of stanzas) {
+        for (const h of s.hooks) h.command = h.command.replace(" --runtime codex", "");
+      }
+    }
+    const out = mergeCodexHooksJson(legacy, DIR) as typeof legacy;
+    const all = Object.values(out.hooks).flatMap((ss) => ss.flatMap((s) => s.hooks.map((h) => h.command)));
+    expect(all).toHaveLength(5);
+    for (const c of all) expect(c.endsWith(" --runtime codex")).toBe(true);
+    expect(out.hooks.PreToolUse![0]!.matcher).toBe("*");
+    expect(out).toEqual(mergeCodexHooksJson({}, DIR));
   });
 
   it("is idempotent — re-merging does not duplicate our command stanzas", () => {

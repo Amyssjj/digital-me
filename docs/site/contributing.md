@@ -51,6 +51,12 @@ Study `packages/runtimes/codex/` as the template — it shows hooks, an MCP
 entry through the `brain-mcp-proxy` transport, and M1 application-rate
 tracking.
 
+If the new CLI speaks the Claude Code hook protocol (stdin JSON,
+`hookSpecificOutput` on stdout), reuse the shared scripts in
+`packages/shared/agent-hooks/hooks/` instead of forking them: add a runtime id
+to `dm_hook_lib.sh` and `RUNTIME_PROFILES` in `dm_m1_emit.py`, and register
+the hooks with `--runtime <id>`.
+
 ## Docs
 
 These docs are generated from the repo by `scripts/gen-docs.mjs` on every

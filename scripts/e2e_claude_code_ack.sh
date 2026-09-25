@@ -9,7 +9,7 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-HOOKS="$REPO_ROOT/packages/runtimes/claude-code/hooks"
+HOOKS="$REPO_ROOT/packages/shared/agent-hooks/hooks"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -36,7 +36,7 @@ PY
 run() {
   echo "{\"session_id\":\"$1\",\"transcript_path\":\"$TRANSCRIPT\"}" \
     | HOME="$TMP" OPENCLAW_GATEWAY_URL="http://127.0.0.1:1" \
-      bash "$HOOKS/dm_application_rate.sh"
+      bash "$HOOKS/dm_application_rate.sh" --runtime claude-code
 }
 
 mk_transcript "[Digital Me] applying m1-universal-event-protocol — here's how."; run "e2e-A"

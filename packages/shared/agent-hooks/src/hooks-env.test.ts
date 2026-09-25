@@ -22,8 +22,12 @@
  * isolated HOME, so nothing from the developer's shell or ~/.openclaw leaks in
  * and the M1 WAL lands under the temp dir, never in the real one.
  *
- * Twin of packages/runtimes/codex/src/hooks-env.test.ts (same contract, the
- * runtime-flavoured constants differ).
+ * Claude Code and Codex install the SAME scripts (this package's hooks/), so
+ * every scenario runs once per runtime: the hooks get `--runtime <id>` in
+ * argv exactly as the installers register them (and the emitter gets the
+ * DM_RUNTIME the hooks export), and the runtime-flavoured expectations — the
+ * M1 runtime label, the WAL name and the /tmp state names — come from
+ * PROFILES below.
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -42,7 +46,7 @@ import {
   vi,
 } from "vitest";
 import { BRAIN_SIDECAR_FILE, renderBrainSidecar } from "@digital-me/contracts";
-import { HOOKS_DIR } from "./installer.js";
+import { AGENT_HOOKS_DIR as HOOKS_DIR, HOOK_RUNTIMES, type HookRuntime } from "./hooks.js";
 
 // The hooks shell out to jq/curl/python3 several times per run; give slow CI
 // runners room.
@@ -50,11 +54,31 @@ vi.setConfig({ testTimeout: 60_000, hookTimeout: 60_000 });
 
 const INJECT = path.join(HOOKS_DIR, "dm_memory_search_inject.sh");
 const EMIT = path.join(HOOKS_DIR, "dm_m1_emit.py");
-const RUNTIME = "claude-code";
-// Per-session state the scripts keep under /tmp (hard-coded there by design).
-const SEEN_PREFIX = "/tmp/dm_hook_seen_";
-const FLAG_PREFIX = "/tmp/dm_m1_started_";
-const WAL_NAME = "m1_events_claude_code.jsonl";
+const LIB = path.join(HOOKS_DIR, "dm_hook_lib.sh");
+
+/**
+ * The genuine per-runtime differences these tests can observe. The /tmp
+ * state names are hard-coded in the scripts by design (dm_hook_lib.sh +
+ * RUNTIME_PROFILES in dm_m1_emit.py); `homeDir` is where the installer puts
+ * the hooks (and so where a hook with no --runtime infers its runtime from).
+ */
+const PROFILES: Record<
+  HookRuntime,
+  { seenPrefix: string; flagPrefix: string; walName: string; homeDir: string }
+> = {
+  "claude-code": {
+    seenPrefix: "/tmp/dm_hook_seen_",
+    flagPrefix: "/tmp/dm_m1_started_",
+    walName: "m1_events_claude_code.jsonl",
+    homeDir: ".claude",
+  },
+  codex: {
+    seenPrefix: "/tmp/dm_hook_seen_codex_",
+    flagPrefix: "/tmp/dm_m1_started_codex_",
+    walName: "m1_events_codex.jsonl",
+    homeDir: ".codex",
+  },
+};
 
 type Seen = { url: string; auth: string | undefined; body: any };
 type Run = { status: number | null; stdout: string; stderr: string };
@@ -63,6 +87,8 @@ let server: http.Server;
 let baseUrl: string;
 let seen: Seen[] = [];
 let cannedSearch: unknown = { results: [] };
+/** Delay before the stub answers an m1_event_record (the request is recorded at once). */
+let m1DelayMs = 0;
 
 beforeAll(async () => {
   server = http.createServer((req, res) => {
@@ -77,10 +103,15 @@ beforeAll(async () => {
         body?.tool === "memory_search"
           ? JSON.stringify(cannedSearch)
           : JSON.stringify({ inserted: true });
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({ ok: true, result: { content: [{ type: "text", text }] } }),
-      );
+      const reply = () => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({ ok: true, result: { content: [{ type: "text", text }] } }),
+        );
+      };
+      const delay = body?.tool === "m1_event_record" ? m1DelayMs : 0;
+      if (delay > 0) setTimeout(reply, delay);
+      else reply();
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
@@ -94,6 +125,7 @@ afterAll(async () => {
 let home: string;
 beforeEach(() => {
   seen = [];
+  m1DelayMs = 0;
   home = fs.mkdtempSync(path.join(os.tmpdir(), "dm-hooks-env-"));
 });
 afterEach(() => {
@@ -128,6 +160,7 @@ function run(cmd: string, args: string[], env: NodeJS.ProcessEnv, input = ""): P
     });
     child.on("error", reject);
     child.on("close", (status) => resolve({ status, stdout, stderr }));
+    child.stdin.on("error", () => {}); // a hook may exit before reading stdin (EPIPE)
     child.stdin.end(input);
   });
 }
@@ -152,16 +185,40 @@ function writeTokenFile(file: string, contents: string): string {
   return file;
 }
 
+/** Poll until `cond` holds (or give up after `timeoutMs`, leaving the assertions to fail). */
+async function waitFor(cond: () => boolean, timeoutMs = 15_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (!cond() && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+}
+
+function m1Seen(sid: string, eventType: string): boolean {
+  return seen.some(
+    (s) =>
+      s.body?.tool === "m1_event_record" &&
+      s.body.args?.session_id === sid &&
+      s.body.args?.event_type === eventType,
+  );
+}
+
+for (const runtime of HOOK_RUNTIMES) runtimeSuite(runtime);
+
+function runtimeSuite(RUNTIME: HookRuntime): void {
+const { seenPrefix: SEEN_PREFIX, flagPrefix: FLAG_PREFIX, walName: WAL_NAME, homeDir: HOME_DIR } =
+  PROFILES[RUNTIME];
+
 /**
- * Install copies of the inject hook + emitter into a temp hooks dir, the way
- * `digital-me install` does, optionally with a sidecar beside them. The
- * scripts look for the sidecar next to their own path, so this is how a test
- * controls it without any test-only switch in production code.
+ * Install copies of the inject hook + emitter + their lib into the runtime's
+ * hooks dir under the temp HOME (<home>/.claude/hooks or <home>/.codex/hooks),
+ * the way `digital-me install` does, optionally with a sidecar beside them.
+ * The scripts look for the sidecar next to their own path, so this is how a
+ * test controls it without any test-only switch in production code.
  */
 function installHooks(sidecar?: string): { inject: string; emit: string; sidecar: string } {
-  const dir = path.join(home, "installed-hooks");
+  const dir = path.join(home, HOME_DIR, "hooks");
   fs.mkdirSync(dir, { recursive: true });
-  for (const src of [INJECT, EMIT]) {
+  for (const src of [INJECT, EMIT, LIB]) {
     const dst = path.join(dir, path.basename(src));
     fs.copyFileSync(src, dst);
     fs.chmodSync(dst, 0o755);
@@ -182,12 +239,13 @@ function sidecarFor(url: string, tokenFile: string): string {
 
 // ─── dm_m1_emit.py ─────────────────────────────────────────────────────────
 
+/** Runs the emitter the way the hooks spawn it: with the DM_RUNTIME they export. */
 async function runEmit(env: Record<string, string>, extraArgs: string[] = [], script = EMIT) {
   const wal = path.join(home, "wal.jsonl");
   const r = await run(
     "python3",
     [script, "knowledge_surfaced", "--session-id", "t", "--wal", wal, ...extraArgs],
-    scrubbedEnv(env),
+    scrubbedEnv({ DM_RUNTIME: RUNTIME, ...env }),
   );
   const walLines = fs.existsSync(wal)
     ? fs.readFileSync(wal, "utf-8").trim().split("\n")
@@ -196,10 +254,45 @@ async function runEmit(env: Record<string, string>, extraArgs: string[] = [], sc
 }
 
 describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
-  it("passes --selftest (offline idempotency checks)", async () => {
-    const r = await run("python3", [EMIT, "--selftest"], scrubbedEnv({}));
+  it("passes --selftest (offline idempotency checks) with this runtime's defaults", async () => {
+    const r = await run("python3", [EMIT, "--selftest"], scrubbedEnv({ DM_RUNTIME: RUNTIME }));
     expect(r.status, r.stderr).toBe(0);
+    expect(r.stdout).toContain(`runtime=${RUNTIME}`);
     expect(r.stdout).toContain("[selftest] PASSED");
+  });
+
+  it("--runtime on the command line picks the label, WAL and flag prefix (beats DM_RUNTIME)", async () => {
+    const other = RUNTIME === "codex" ? "claude-code" : "codex";
+    const sid = `emit-rt-${randomUUID()}`;
+    const r = await run(
+      "python3",
+      [EMIT, "session_start", "--runtime", RUNTIME, "--session-id", sid, "--skip-if-already-started"],
+      scrubbedEnv({ DM_RUNTIME: other, OPENCLAW_GATEWAY_URL: `${baseUrl}/tools/invoke`, OPENCLAW_GATEWAY_TOKEN: "g" }),
+    );
+    try {
+      expect(r.status, r.stderr).toBe(0);
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.body.args.runtime).toBe(RUNTIME);
+      expect(seen[0]!.body.args.agent_id).toBe(RUNTIME);
+      expect(JSON.parse(seen[0]!.body.args.extra).platform).toBe(RUNTIME);
+      expect(fs.existsSync(path.join(home, ".openclaw", "data", WAL_NAME))).toBe(true);
+      expect(fs.existsSync(`${FLAG_PREFIX}${sid}`)).toBe(true);
+    } finally {
+      fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
+    }
+  });
+
+  it("with neither --runtime nor DM_RUNTIME, the install location picks the runtime", async () => {
+    const { emit } = installHooks();
+    const r = await run(
+      "python3",
+      [emit, "knowledge_surfaced", "--session-id", "loc"],
+      scrubbedEnv({ OPENCLAW_GATEWAY_URL: `${baseUrl}/tools/invoke`, OPENCLAW_GATEWAY_TOKEN: "g" }),
+    );
+    expect(r.status, r.stderr).toBe(0);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]!.body.args.runtime).toBe(RUNTIME);
+    expect(fs.readdirSync(path.join(home, ".openclaw", "data"))).toEqual([WAL_NAME]);
   });
 
   it("DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN → POSTs m1_event_record to brain-host with that bearer", async () => {
@@ -481,20 +574,38 @@ function hit(entryPath: string, scores: { score: number; vectorScore?: number })
   };
 }
 
+/**
+ * Run the inject hook the way the installer registers it (`--runtime <id>`
+ * in argv). The M1 emits run detached in the background, so once the hook
+ * has injected something this waits for its knowledge_surfaced to reach the
+ * stub (session_start, when due, is posted before it by the same background
+ * job) — every test then sees the complete set of requests. Unless `keep`,
+ * the per-session /tmp state is removed afterwards.
+ */
 async function runInject(
   env: Record<string, string>,
-  { script = INJECT, prompt = PROMPT }: { script?: string; prompt?: string } = {},
-): Promise<Run> {
-  const sid = randomUUID();
+  {
+    script = INJECT,
+    prompt = PROMPT,
+    sid = randomUUID(),
+    args = ["--runtime", RUNTIME],
+    keep = false,
+  }: { script?: string; prompt?: string; sid?: string; args?: string[]; keep?: boolean } = {},
+): Promise<Run & { ms: number }> {
+  const t0 = Date.now();
   const r = await run(
     "bash",
-    [script],
+    [script, ...args],
     scrubbedEnv(env),
     JSON.stringify({ prompt, session_id: sid }),
   );
-  fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
-  fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
-  return r;
+  const ms = Date.now() - t0;
+  if (r.stdout !== "") await waitFor(() => m1Seen(sid, "knowledge_surfaced"));
+  if (!keep) {
+    fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
+    fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
+  }
+  return { ...r, ms };
 }
 
 function parseContext(stdout: string): string {
@@ -868,3 +979,116 @@ describe(`${RUNTIME} dm_memory_search_inject.sh — slash-command prompts`, () =
     expect(seen).toHaveLength(0);
   });
 });
+
+describe(`${RUNTIME} dm_memory_search_inject.sh — runtime selection and the M1 background emit`, () => {
+  const brainEnv = (wikiRoot: string) => ({
+    DIGITAL_ME_BRAIN_URL: `${baseUrl}/tools/invoke`,
+    DIGITAL_ME_BRAIN_TOKEN: "t",
+    DIGITAL_ME_WIKI_ROOT: wikiRoot,
+  });
+
+  it("keeps its per-session dedup cache under this runtime's /tmp name", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const sid = randomUUID();
+    try {
+      const r = await runInject(brainEnv(wikiRoot), { sid, keep: true });
+      expect(r.status, r.stderr).toBe(0);
+      parseContext(r.stdout);
+      expect(fs.readFileSync(`${SEEN_PREFIX}${sid}.txt`, "utf-8")).toContain(entryPath);
+      const other = PROFILES[RUNTIME === "codex" ? "claude-code" : "codex"];
+      expect(fs.existsSync(`${other.seenPrefix}${sid}.txt`)).toBe(false);
+      // Second prompt, same hit: deduped against this runtime's cache.
+      const again = await runInject(brainEnv(wikiRoot), { sid, keep: true });
+      expect(again.stdout).toBe("");
+    } finally {
+      fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
+      fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
+    }
+  });
+
+  it("an installed copy registered without --runtime (older installer) infers the runtime from its location", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const { inject } = installHooks();
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const sid = randomUUID();
+    try {
+      const r = await runInject(brainEnv(wikiRoot), { script: inject, sid, args: [], keep: true });
+      expect(r.status, r.stderr).toBe(0);
+      parseContext(r.stdout);
+      expect(fs.existsSync(`${SEEN_PREFIX}${sid}.txt`)).toBe(true);
+      const m1 = seen.filter((s) => s.body.tool === "m1_event_record");
+      expect(m1.map((s) => s.body.args.runtime)).toEqual([RUNTIME, RUNTIME]);
+      expect(fs.existsSync(path.join(home, ".openclaw", "data", WAL_NAME))).toBe(true);
+    } finally {
+      fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
+      fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
+    }
+  });
+
+  it("an unknown --runtime fails open: no output, no request", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    const r = await runInject(brainEnv(wikiRoot), { args: ["--runtime", "not-a-runtime"] });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toBe("");
+    expect(seen).toHaveLength(0);
+  });
+
+  it("never waits for the M1 POSTs: a slow brain delays neither the context nor the hook's exit", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+    // Each emit waits up to its 2s POST timeout against this stub; the old
+    // synchronous path therefore took >= 4s.
+    m1DelayMs = 3_000;
+    const r = await runInject(brainEnv(wikiRoot));
+    expect(r.status, r.stderr).toBe(0);
+    expect(parseContext(r.stdout)).toContain(entryPath);
+    expect(r.ms).toBeLessThan(2_000);
+    expect(seen.filter((s) => s.body.tool === "m1_event_record").map((s) => s.body.args.event_type)).toEqual([
+      "session_start",
+      "knowledge_surfaced",
+    ]);
+  });
+
+  it("checks the once-only session_start flag in bash: later prompts spawn the emitter for knowledge_surfaced only", async () => {
+    const { wikiRoot, entryPath } = seedWiki();
+    const second = path.join(wikiRoot, "wiki", "dev", "second-rule.md");
+    fs.writeFileSync(second, "---\ntitle: Second rule\n---\n\n## Rule\nSecond.\n");
+    const { inject, emit } = installHooks();
+    // Wrap the installed emitter so every spawn is logged before it runs.
+    const calls = path.join(home, "emit-calls.log");
+    const real = `${emit}.real`;
+    fs.renameSync(emit, real);
+    fs.writeFileSync(
+      emit,
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$1" >> ${JSON.stringify(calls)}\nexec python3 ${JSON.stringify(real)} "$@"\n`,
+    );
+    fs.chmodSync(emit, 0o755);
+    const sid = randomUUID();
+    try {
+      cannedSearch = { results: [hit(entryPath, { score: 0.9, vectorScore: 0.9 })] };
+      const first = await runInject(brainEnv(wikiRoot), { script: inject, sid, keep: true });
+      parseContext(first.stdout);
+      expect(fs.existsSync(`${FLAG_PREFIX}${sid}`)).toBe(true);
+      cannedSearch = {
+        results: [{ ...hit(second, { score: 0.9, vectorScore: 0.9 }), relPath: "wiki/dev/second-rule.md", title: "Second rule" }],
+      };
+      seen = [];
+      const later = await runInject(brainEnv(wikiRoot), { script: inject, sid, keep: true });
+      expect(parseContext(later.stdout)).toContain(second);
+      expect(seen.filter((s) => s.body.tool === "m1_event_record").map((s) => s.body.args.event_type)).toEqual([
+        "knowledge_surfaced",
+      ]);
+      expect(fs.readFileSync(calls, "utf-8").trim().split("\n")).toEqual([
+        "session_start",
+        "knowledge_surfaced",
+        "knowledge_surfaced",
+      ]);
+    } finally {
+      fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
+      fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
+    }
+  });
+});
+}
