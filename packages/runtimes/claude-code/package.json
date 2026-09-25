@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/runtime-claude-code",
   "version": "0.1.0-pre",
-  "description": "Claude Code runtime adapter for the digital-me brain: hooks wired into 3 Claude Code events (UserPromptSubmit / Stop / PreToolUse), the `digital-me` skill, and a settings.json template.",
+  "description": "Claude Code runtime adapter for the digital-me brain: hooks wired into 3 Claude Code events (UserPromptSubmit / Stop / PreToolUse) — the scripts live in the shared @digital-me/agent-hooks package — the `digital-me` skill, and a settings.json template.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,14 +11,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./hooks/*": "./hooks/*",
     "./skills/*": "./skills/*",
     "./templates/*": "./templates/*"
   },
   "files": [
     "dist",
     "src",
-    "hooks",
     "skills",
     "templates",
     "README.md"
@@ -31,6 +29,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@digital-me/agent-hooks": "workspace:*",
     "@digital-me/contracts": "workspace:*"
   },
   "devDependencies": {

@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import {
   CODEX_MD_TEMPLATE,
@@ -18,6 +18,7 @@ import {
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  renameLegacyMcpServers,
   mergeShellEnvPolicySet,
   splitInlineTable,
   stripDuplicatedSubTables,
@@ -32,9 +33,9 @@ describe("buildCodexMcpConfig", () => {
     agentId: "codex",
   };
 
-  it("emits a complete [mcp_servers.openclaw-brain] block", () => {
+  it("emits a complete [mcp_servers.digital-me-brain] block", () => {
     const toml = buildCodexMcpConfig(inputs);
-    expect(toml).toContain("[mcp_servers.openclaw-brain]");
+    expect(toml).toContain("[mcp_servers.digital-me-brain]");
     expect(toml).toContain(`command = "${inputs.nodeBin}"`);
     expect(toml).toContain(`args = ["${inputs.proxyBinPath}"]`);
   });
@@ -113,7 +114,7 @@ describe("buildCodexMcpConfig", () => {
     expect(envLine).toContain(`OPENCLAW_AGENT_ID = "codex"`);
     expect(envLine).toContain("PATH = ");
     // One inline table, still 4 keys + trailing newline: no env sub-table.
-    expect(toml).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(toml).not.toContain("[mcp_servers.digital-me-brain.env]");
     expect(toml.split("\n")).toHaveLength(5);
     expect(inlineKeysOf(toml)).toEqual(["command", "args", "env"]);
   });
@@ -149,7 +150,7 @@ describe("buildCodexMcpConfig", () => {
   it("re-install REMOVES a DIGITAL_ME_BRAIN_TOKEN an earlier installer wrote — inline or as an env sub-table", () => {
     // Pre-token-file installer output: the secret inline in the env table.
     const legacyInline = [
-      "[mcp_servers.openclaw-brain]",
+      "[mcp_servers.digital-me-brain]",
       `command = "${inputs.nodeBin}"`,
       `args = ["${inputs.proxyBinPath}"]`,
       `env = { OPENCLAW_HOME = "${inputs.openclawHome}", DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}", DIGITAL_ME_BRAIN_TOKEN = "old-secret" }`,
@@ -167,17 +168,17 @@ describe("buildCodexMcpConfig", () => {
 
     // Codex's own rewrite spelling: env as a sub-table.
     const legacySubTable = [
-      "[mcp_servers.openclaw-brain]",
+      "[mcp_servers.digital-me-brain]",
       `command = "${inputs.nodeBin}"`,
       "",
-      "[mcp_servers.openclaw-brain.env]",
+      "[mcp_servers.digital-me-brain.env]",
       `DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}"`,
       'DIGITAL_ME_BRAIN_TOKEN = "old-secret"',
       "",
     ].join("\n");
     const merged2 = mergeMcpServer(legacySubTable, fresh);
     expect(merged2).not.toContain("old-secret");
-    expect(merged2).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(merged2).not.toContain("[mcp_servers.digital-me-brain.env]");
     expect(merged2).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "${TOKEN_FILE}"`);
   });
 
@@ -383,15 +384,20 @@ describe("mergeShellEnvPolicySet", () => {
 describe("paths", () => {
   it("PACKAGE_ROOT contains templates/ with the canonical filenames", () => {
     expect(TEMPLATES_DIR).toBe(`${PACKAGE_ROOT}/templates`);
-    expect(HOOKS_DIR).toBe(`${PACKAGE_ROOT}/hooks`);
+    // The hooks come from the shared agent-hooks package (the same files the
+    // claude-code runtime installs), not from this package.
+    expect(HOOKS_DIR.endsWith("/agent-hooks/hooks")).toBe(true);
+    for (const name of HOOK_NAMES) {
+      expect(existsSync(`${HOOKS_DIR}/${name}`), name).toBe(true);
+    }
     expect(CODEX_MD_TEMPLATE.endsWith("templates/CODEX.md")).toBe(true);
-    expect(MCP_TOML_TEMPLATE.endsWith("templates/openclaw-brain.mcp.toml")).toBe(
+    expect(MCP_TOML_TEMPLATE.endsWith("templates/digital-me-brain.mcp.toml")).toBe(
       true,
     );
   });
 
-  it("falls back to assets/codex when hooks/ is absent (published CLI bundle layout)", async () => {
-    // In the workspace, hooks/ sits at the package root so the ternary's
+  it("falls back to assets/codex when templates/ is absent (published CLI bundle layout)", async () => {
+    // In the workspace, templates/ sits at the package root so the ternary's
     // first arm wins. The published CLI bundle stages per-package assets
     // under assets/codex/ instead — simulate that layout by mocking
     // existsSync and re-importing the module.
@@ -409,7 +415,7 @@ describe("paths", () => {
 });
 
 describe("HOOK_NAMES", () => {
-  it("ships the 5 lifecycle hooks + the dm_m1_emit.py helper", () => {
+  it("ships the 5 lifecycle hooks + the dm_m1_emit.py and dm_hook_lib.sh helpers", () => {
     expect(HOOK_NAMES).toEqual([
       "dm_memory_search_inject.sh",
       "brain_route_inject.sh",
@@ -417,6 +423,7 @@ describe("HOOK_NAMES", () => {
       "dm_session_extract.sh",
       "dm_application_rate.sh",
       "dm_m1_emit.py",
+      "dm_hook_lib.sh",
     ]);
   });
 });
@@ -429,18 +436,18 @@ describe("buildCodexHooksManifest", () => {
     expect(m.PreToolUse).toHaveLength(1);
 
     expect(m.UserPromptSubmit[0]!.hooks[0]!.command).toBe(
-      "/home/me/.codex/hooks/dm_memory_search_inject.sh",
+      "/home/me/.codex/hooks/dm_memory_search_inject.sh --runtime codex",
     );
     // Stop wires handoff reminder + session extract + application-rate writer.
     expect(m.Stop[0]!.hooks).toHaveLength(3);
     expect(m.Stop[0]!.hooks.map((h) => h.command)).toEqual([
-      "/home/me/.codex/hooks/dm_handoff_reminder.sh",
-      "/home/me/.codex/hooks/dm_session_extract.sh",
-      "/home/me/.codex/hooks/dm_application_rate.sh",
+      "/home/me/.codex/hooks/dm_handoff_reminder.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_session_extract.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_application_rate.sh --runtime codex",
     ]);
     expect(m.PreToolUse[0]!.matcher).toBe("*");
     expect(m.PreToolUse[0]!.hooks[0]!.command).toBe(
-      "/home/me/.codex/hooks/brain_route_inject.sh",
+      "/home/me/.codex/hooks/brain_route_inject.sh --runtime codex",
     );
   });
 
@@ -458,7 +465,7 @@ describe("buildCodexHooksManifest", () => {
   it("defaults hooksDir to $HOME/.codex/hooks when omitted", () => {
     const m = buildCodexHooksManifest();
     expect(m.UserPromptSubmit[0]!.hooks[0]!.command).toBe(
-      "$HOME/.codex/hooks/dm_memory_search_inject.sh",
+      "$HOME/.codex/hooks/dm_memory_search_inject.sh --runtime codex",
     );
   });
 });
@@ -495,7 +502,25 @@ describe("mergeCodexHooksJson", () => {
       s.hooks.map((h) => h.command),
     );
     expect(ups).toContain("/usr/local/bin/mine.sh");
-    expect(ups).toContain(`${DIR}/dm_memory_search_inject.sh`);
+    expect(ups).toContain(`${DIR}/dm_memory_search_inject.sh --runtime codex`);
+  });
+
+  it("upgrades hooks.json entries an older installer wrote without --runtime (no duplicate registration)", () => {
+    const legacy = mergeCodexHooksJson({}, DIR) as {
+      hooks: Record<string, Array<{ matcher?: string; hooks: Array<{ command: string }> }>>;
+    };
+    // Rewind to what the pre-merge installer wrote: bare script paths.
+    for (const stanzas of Object.values(legacy.hooks)) {
+      for (const s of stanzas) {
+        for (const h of s.hooks) h.command = h.command.replace(" --runtime codex", "");
+      }
+    }
+    const out = mergeCodexHooksJson(legacy, DIR) as typeof legacy;
+    const all = Object.values(out.hooks).flatMap((ss) => ss.flatMap((s) => s.hooks.map((h) => h.command)));
+    expect(all).toHaveLength(5);
+    for (const c of all) expect(c.endsWith(" --runtime codex")).toBe(true);
+    expect(out.hooks.PreToolUse![0]!.matcher).toBe("*");
+    expect(out).toEqual(mergeCodexHooksJson({}, DIR));
   });
 
   it("is idempotent — re-merging does not duplicate our command stanzas", () => {
@@ -568,26 +593,26 @@ describe("mergeCodexMd", () => {
 
 describe("mergeMcpServer", () => {
   const FRAGMENT = `
-[mcp_servers.openclaw-brain]
+[mcp_servers.digital-me-brain]
 command = "digital-me-brain-proxy"
 args = []
 `;
 
   it("appends the fragment when no matching header exists", () => {
     const out = mergeMcpServer("[other_section]\nfoo = 1\n", FRAGMENT);
-    expect(out).toContain("[mcp_servers.openclaw-brain]");
+    expect(out).toContain("[mcp_servers.digital-me-brain]");
     expect(out).toContain('command = "digital-me-brain-proxy"');
     expect(out).toContain("[other_section]");
   });
 
   it("appends when starting from empty input", () => {
     const out = mergeMcpServer("", FRAGMENT);
-    expect(out.trim().startsWith("[mcp_servers.openclaw-brain]")).toBe(true);
+    expect(out.trim().startsWith("[mcp_servers.digital-me-brain]")).toBe(true);
   });
 
   it("replaces an existing block under the same header", () => {
     const existing =
-      "[mcp_servers.openclaw-brain]\n" +
+      "[mcp_servers.digital-me-brain]\n" +
       'command = "old-binary"\n' +
       "args = [\"--legacy\"]\n" +
       "\n" +
@@ -603,7 +628,7 @@ args = []
   it("replaces a block at EOF (no trailing section)", () => {
     const existing =
       "[other]\nq = true\n\n" +
-      "[mcp_servers.openclaw-brain]\n" +
+      "[mcp_servers.digital-me-brain]\n" +
       'command = "stale"\n';
     const out = mergeMcpServer(existing, FRAGMENT);
     expect(out).not.toContain("stale");
@@ -616,7 +641,7 @@ args = []
     // so lines.slice(0, headerIdx).join("\n") yields content without a
     // trailing newline → triggers the beforeSep branch.
     const existing =
-      "[other]\nq = true\n[mcp_servers.openclaw-brain]\ncommand = \"stale\"\n";
+      "[other]\nq = true\n[mcp_servers.digital-me-brain]\ncommand = \"stale\"\n";
     const out = mergeMcpServer(existing, FRAGMENT);
     expect(out).not.toContain("stale");
     expect(out).toContain("[other]");
@@ -626,7 +651,7 @@ args = []
   it("inserts a separator newline when appending to TOML missing a trailing newline", () => {
     const existing = "[other]\nx = 1"; // no trailing newline
     const out = mergeMcpServer(existing, FRAGMENT);
-    expect(out).toContain("[mcp_servers.openclaw-brain]");
+    expect(out).toContain("[mcp_servers.digital-me-brain]");
     expect(out.startsWith("[other]\nx = 1")).toBe(true);
   });
 
@@ -650,7 +675,7 @@ describe("mergeMcpServer — duplicate sub-table regression (2026-09-01)", () =>
   // MCP server in config.toml disappears, not just ours. Re-installing the
   // codex runtime did exactly this on a live machine.
   const fragment = [
-    "[mcp_servers.openclaw-brain]",
+    "[mcp_servers.digital-me-brain]",
     'command = "/opt/homebrew/bin/node"',
     'args = ["/main/brain-mcp-proxy.mjs"]',
     'env = { OPENCLAW_HOME = "/h", OPENCLAW_AGENT_ID = "codex" }',
@@ -661,30 +686,30 @@ describe("mergeMcpServer — duplicate sub-table regression (2026-09-01)", () =>
     "[mcp_servers.other]",
     'command = "x"',
     "",
-    "[mcp_servers.openclaw-brain]",
+    "[mcp_servers.digital-me-brain]",
     'command = "/opt/homebrew/Cellar/node/25.4.0/bin/node"',
     'args = ["/worktree/brain-mcp-proxy.mjs"]',
     "",
-    "[mcp_servers.openclaw-brain.env]",
+    "[mcp_servers.digital-me-brain.env]",
     'OPENCLAW_HOME = "/h"',
     'OPENCLAW_AGENT_ID = "codex"',
     "",
-    "[mcp_servers.openclaw-brain.tools.memory_search]",
+    "[mcp_servers.digital-me-brain.tools.memory_search]",
     'approval_mode = "approve"',
     "",
   ].join("\n");
 
   it("removes the colliding env sub-table so the result is valid TOML", () => {
     const out = mergeMcpServer(existing, fragment);
-    expect(out).not.toContain("[mcp_servers.openclaw-brain.env]");
+    expect(out).not.toContain("[mcp_servers.digital-me-brain.env]");
     expect(out).toContain('env = { OPENCLAW_HOME = "/h"');
     // exactly one declaration of env for this server
-    expect(out.match(/openclaw-brain\.env\]/g)).toBeNull();
+    expect(out.match(/digital-me-brain\.env\]/g)).toBeNull();
   });
 
   it("PRESERVES per-tool approval settings, which are not ours to delete", () => {
     const out = mergeMcpServer(existing, fragment);
-    expect(out).toContain("[mcp_servers.openclaw-brain.tools.memory_search]");
+    expect(out).toContain("[mcp_servers.digital-me-brain.tools.memory_search]");
     expect(out).toContain('approval_mode = "approve"');
   });
 
@@ -703,8 +728,68 @@ describe("mergeMcpServer — duplicate sub-table regression (2026-09-01)", () =>
   it("is idempotent — merging twice does not reintroduce a duplicate", () => {
     const once = mergeMcpServer(existing, fragment);
     const twice = mergeMcpServer(once, fragment);
-    expect(twice.match(/openclaw-brain\.env\]/g)).toBeNull();
+    expect(twice.match(/digital-me-brain\.env\]/g)).toBeNull();
     expect(twice).toBe(once);
+  });
+});
+
+describe("renameLegacyMcpServers — openclaw-brain → digital-me-brain", () => {
+  const legacy = [
+    "[mcp_servers.other]",
+    'command = "x"',
+    "",
+    "[mcp_servers.openclaw-brain]",
+    'command = "/old/node"',
+    'args = ["/old/brain-mcp-proxy.mjs"]',
+    "",
+    "[mcp_servers.openclaw-brain.env]",
+    'OPENCLAW_HOME = "/h"',
+    "",
+    "[mcp_servers.openclaw-brain.tools.memory_search]",
+    'approval_mode = "approve"',
+    "",
+    "[shell_environment_policy]",
+    'inherit = "core"',
+  ].join("\n");
+  const fragment = [
+    "[mcp_servers.digital-me-brain]",
+    'command = "/new/node"',
+    'args = ["/new/brain-mcp-proxy.mjs"]',
+    'env = { OPENCLAW_HOME = "/h" }',
+    "",
+  ].join("\n");
+
+  it("renames the legacy server and every sub-table, keeping the operator's tool approvals", () => {
+    const out = renameLegacyMcpServers(legacy);
+    expect(out).not.toContain("openclaw-brain");
+    expect(out).toContain("[mcp_servers.digital-me-brain]");
+    expect(out).toContain("[mcp_servers.digital-me-brain.tools.memory_search]");
+    expect(out).toContain('approval_mode = "approve"');
+    expect(out).toContain("[mcp_servers.other]");
+    expect(out).toContain("[shell_environment_policy]");
+  });
+
+  it("then merges into exactly one brain server with the new command and no duplicate env", () => {
+    const out = mergeMcpServer(renameLegacyMcpServers(legacy), fragment);
+    expect(out.match(/^\[mcp_servers\.digital-me-brain\]$/gm)).toHaveLength(1);
+    expect(out).not.toContain("[mcp_servers.digital-me-brain.env]");
+    expect(out).toContain("/new/brain-mcp-proxy.mjs");
+    expect(out).not.toContain("/old/brain-mcp-proxy.mjs");
+    expect(out).toContain("[mcp_servers.digital-me-brain.tools.memory_search]");
+  });
+
+  it("drops the legacy tables when a digital-me-brain server already exists (no duplicate headers)", () => {
+    const both = `${legacy}\n\n${fragment}`;
+    const out = renameLegacyMcpServers(both);
+    expect(out).not.toContain("openclaw-brain");
+    expect(out.match(/^\[mcp_servers\.digital-me-brain\]$/gm)).toHaveLength(1);
+    expect(out).toContain("/new/brain-mcp-proxy.mjs");
+    expect(out).toContain("[shell_environment_policy]");
+  });
+
+  it("leaves a config without a legacy server untouched", () => {
+    const plain = "[mcp_servers.other]\ncommand = \"x\"\n";
+    expect(renameLegacyMcpServers(plain)).toBe(plain);
   });
 });
 

@@ -7,9 +7,5 @@
     "types": ["node"]
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.test.ts", "node_modules", "dist"],
-  "references": [
-    { "path": "../../shared/contracts" },
-    { "path": "../../shared/agent-hooks" }
-  ]
+  "exclude": ["src/**/*.test.ts", "node_modules", "dist"]
 }

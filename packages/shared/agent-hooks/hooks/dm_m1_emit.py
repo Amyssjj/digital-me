@@ -1,30 +1,40 @@
 #!/usr/bin/env python3
 """
-dm_m1_emit — Claude Code-side M1 universal-protocol event emitter.
+dm_m1_emit — M1 universal-protocol event emitter for the Claude Code and
+Codex hooks.
 
-Called from the existing `dm_memory_search_inject.sh` (UserPromptSubmit)
-and `dm_application_rate.sh` (Stop) hooks to emit canonical M1 events:
+Called from `dm_memory_search_inject.sh` (UserPromptSubmit) and
+`dm_application_rate.sh` (Stop) to emit canonical M1 events:
 
   - session_start       once per session_id, on first surfaced injection
   - knowledge_surfaced  every successful recall inject
-  - assistant_ack       per surfaced turn after Stop, with parsed ack signal
+  - assistant_ack       per surfaced session after Stop, with parsed ack signal
   - session_end         at Stop, with rollup of session totals
 
-Pillar 4 of the universal protocol (per wiki entry
-infrastructure/m1-universal-event-protocol.md):
+One script serves both runtimes; the runtime picks the defaults (see
+RUNTIME_PROFILES): the runtime/agent_id/platform labels, the WAL
+(~/.openclaw/data/m1_events_claude_code.jsonl | m1_events_codex.jsonl) and the
+once-only session_start flag prefix. It is resolved from, in order:
+`--runtime <id>` on the command line, DM_RUNTIME in the environment (the
+hooks export it — see dm_hook_lib.sh), the install location (a copy under a
+`.codex/` directory is Codex), else claude-code. The brain de-dupes on
+event_id regardless of which runtime emitted. See wiki:
+  infrastructure/m1-universal-event-protocol.md
 
-  1. Append the canonical event to ~/.openclaw/data/m1_events_claude_code.jsonl
+Pillar 4 of the universal protocol:
+
+  1. Append the canonical event to the runtime's WAL
      (durable — survives brain outages).
   2. Best-effort POST to brain MCP `m1_event_record` (idempotent on event_id).
 
 Brain's INSERT OR IGNORE handles retries — failed POSTs get replayed by
-the same m1_backfill.py script (with --wal pointed at the cc log) when
-brain is reachable again.
+the shared m1_backfill.py script (with --wal pointed at the runtime's log)
+when brain is reachable again.
 
 Self-contained: only stdlib, no extra deps.
 
 Usage:
-  dm_m1_emit.py session_start    --session-id S --platform claude-code
+  dm_m1_emit.py session_start    --session-id S [--runtime claude-code|codex]
   dm_m1_emit.py knowledge_surfaced --session-id S --turn-id 1 \
                                     --entries-json '[{"path":"x.md"}]'
   dm_m1_emit.py assistant_ack    --session-id S --turn-id 1 \
@@ -59,7 +69,6 @@ from typing import Any, Dict, List, Optional
 
 
 HOME = Path.home()
-DEFAULT_WAL = HOME / ".openclaw" / "data" / "m1_events_claude_code.jsonl"
 DEFAULT_GATEWAY = "http://localhost:18789/tools/invoke"
 
 # Brain sidecar: `digital-me install` writes digital-me-brain.env next to the
@@ -151,15 +160,55 @@ def _resolve_gateway_url() -> str:
     return DEFAULT_GATEWAY
 
 
-DEFAULT_RUNTIME = "claude-code"
-DEFAULT_AGENT_ID = "claude-code"
-DEFAULT_PLATFORM = "claude-code"
+# Per-runtime defaults. The flag prefixes are shared with dm_hook_lib.sh
+# (DM_M1_FLAG_PREFIX), which checks the flag before spawning this script.
+RUNTIME_PROFILES: Dict[str, Dict[str, str]] = {
+    "claude-code": {
+        "wal": "m1_events_claude_code.jsonl",
+        "flag_prefix": "dm_m1_started_",
+    },
+    "codex": {
+        "wal": "m1_events_codex.jsonl",
+        "flag_prefix": "dm_m1_started_codex_",
+    },
+}
+FALLBACK_RUNTIME = "claude-code"
+
+
+def _runtime_from_argv(argv: List[str]) -> Optional[str]:
+    for i, arg in enumerate(argv):
+        if arg.startswith("--runtime="):
+            return arg.split("=", 1)[1]
+        if arg == "--runtime" and i + 1 < len(argv):
+            return argv[i + 1]
+    return None
+
+
+def resolve_runtime(argv: List[str], env: Dict[str, str], script_dir: str) -> str:
+    """--runtime > DM_RUNTIME > install location > claude-code. Only a
+    runtime with a profile is accepted; anything else falls through."""
+    for candidate in (_runtime_from_argv(argv), env.get("DM_RUNTIME")):
+        if candidate in RUNTIME_PROFILES:
+            return candidate
+    if "/.codex/" in script_dir.replace(os.sep, "/") + "/":
+        return "codex"
+    return FALLBACK_RUNTIME
+
+
+HOOK_RUNTIME = resolve_runtime(
+    sys.argv[1:], dict(os.environ), str(Path(os.path.abspath(__file__)).parent)
+)
+DEFAULT_RUNTIME = HOOK_RUNTIME
+DEFAULT_AGENT_ID = HOOK_RUNTIME
+DEFAULT_PLATFORM = HOOK_RUNTIME
+DEFAULT_WAL = HOME / ".openclaw" / "data" / RUNTIME_PROFILES[HOOK_RUNTIME]["wal"]
 
 # Once-only-per-session session_start guard. Same idea as the hermes
 # plugin's _SESSION_M1_STARTED set, but our process is a one-shot CLI —
-# so the guard is a flag file scoped to /tmp.
+# so the guard is a flag file scoped to /tmp. The per-runtime prefix keeps
+# Claude Code and Codex sessions apart.
 SESSION_START_FLAG_DIR = Path("/tmp")
-SESSION_START_FLAG_PREFIX = "dm_m1_started_"
+SESSION_START_FLAG_PREFIX = RUNTIME_PROFILES[HOOK_RUNTIME]["flag_prefix"]
 
 V1_EVENT_TYPES = {
     "session_start",
@@ -392,7 +441,7 @@ def run_selftest() -> int:
     assert diff != a
     print("  ✓ different entries → different id")
 
-    print("[selftest] build_event shape")
+    print(f"[selftest] build_event shape ({DEFAULT_RUNTIME} defaults)")
     ev = build_event(
         event_type="knowledge_surfaced",
         session_id="S1",
@@ -400,11 +449,21 @@ def run_selftest() -> int:
         entries=[{"path": "x.md", "title": "X"}],
     )
     assert ev["schema_version"] == 1
-    assert ev["runtime"] == "claude-code"
-    assert ev["agent_id"] == "claude-code"
+    assert ev["runtime"] == DEFAULT_RUNTIME
+    assert ev["agent_id"] == DEFAULT_RUNTIME
     assert ev["entries"][0]["path"] == "x.md"
-    assert ev["extra"]["platform"] == "claude-code"
-    print("  ✓ canonical schema fields present")
+    assert ev["extra"]["platform"] == DEFAULT_RUNTIME
+    assert DEFAULT_WAL.name == RUNTIME_PROFILES[DEFAULT_RUNTIME]["wal"]
+    print(f"  ✓ canonical schema fields present, runtime={DEFAULT_RUNTIME}")
+
+    print("[selftest] runtime resolution")
+    assert resolve_runtime(["x", "--runtime", "codex"], {"DM_RUNTIME": "claude-code"}, "/h/.claude/hooks") == "codex"
+    assert resolve_runtime(["--runtime=claude-code"], {}, "/h/.codex/hooks") == "claude-code"
+    assert resolve_runtime([], {"DM_RUNTIME": "codex"}, "/h/.claude/hooks") == "codex"
+    assert resolve_runtime(["--runtime", "other"], {"DM_RUNTIME": "bogus"}, "/h/.codex/hooks") == "codex"
+    assert resolve_runtime([], {}, "/h/.claude/hooks") == "claude-code"
+    assert resolve_runtime(["--runtime"], {}, "/repo/hooks") == "claude-code"
+    print("  ✓ --runtime > DM_RUNTIME > install dir > claude-code")
 
     print("[selftest] WAL append")
     with tempfile.TemporaryDirectory() as td:
@@ -627,7 +686,7 @@ def _selftest_brain_sidecar() -> None:
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         prog="dm_m1_emit",
-        description="Emit one Claude-Code-side M1 universal-protocol event.",
+        description="Emit one M1 universal-protocol event for the Claude Code / Codex hooks.",
     )
     parser.add_argument(
         "event_type", nargs="?",

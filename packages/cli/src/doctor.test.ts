@@ -264,7 +264,7 @@ describe("runDoctor", () => {
     const failing = r.checks.filter(
       (c) => c.label.startsWith("claude-code:") && !c.ok,
     );
-    expect(failing.length).toBe(6); // 5 hooks + 1 skill
+    expect(failing.length).toBe(9); // 7 shared hook files + analyze_brain_inject.py + 1 skill
     if (!failing[0]!.ok)
       expect(failing[0]!.reason).toMatch(
         /digital-me install --runtime claude-code/,

@@ -8,5 +8,8 @@
   },
   "include": ["src/**/*"],
   "exclude": ["src/**/*.test.ts", "node_modules", "dist"],
-  "references": [{ "path": "../../shared/contracts" }]
+  "references": [
+    { "path": "../../shared/contracts" },
+    { "path": "../../shared/agent-hooks" }
+  ]
 }

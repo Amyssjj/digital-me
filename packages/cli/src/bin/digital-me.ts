@@ -64,6 +64,7 @@ import {
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  renameLegacyMcpServers,
   mergeShellEnvPolicySet,
 } from "@digital-me/runtime-codex";
 import { BIN_PATH as BRAIN_MCP_PROXY_BIN } from "@digital-me/brain-mcp-proxy";
@@ -717,7 +718,9 @@ function installCodex(home: string): void {
   const tomlExisting = existsSync(tomlTarget)
     ? readFileSync(tomlTarget, "utf-8")
     : "";
-  let tomlMerged = mergeMcpServer(tomlExisting, tomlFragment);
+  // A pre-rename [mcp_servers.openclaw-brain] becomes digital-me-brain first
+  // (tool approvals kept), so the merge leaves exactly one brain server.
+  let tomlMerged = mergeMcpServer(renameLegacyMcpServers(tomlExisting), tomlFragment);
   // [shell_environment_policy.set] gives the commands Codex runs through its
   // shell tool the same two variables (merged; other keys in that table are
   // kept). It does NOT reach hook processes — the hooks get the pair from the
@@ -2273,8 +2276,8 @@ function printHelp(): void {
       "    inline-Python LLM. Requires an imported workflow + a running brain.",
       "",
       "Runtimes:",
-      "  claude-code   5 hooks + digital-me skill into ~/.claude/",
-      "  codex         CODEX.md + digital-me-brain MCP into ~/.codex/",
+      "  claude-code   shared lifecycle hooks + digital-me skill into ~/.claude/",
+      "  codex         CODEX.md + digital-me-brain MCP + shared lifecycle hooks into ~/.codex/",
       "  hermes        SOUL.md digital-me protocol into ~/.hermes/",
       "  openclaw      (optional) gateway plugin — see @digital-me/runtime-openclaw README",
       "  brain-host    the hub: retriever + orchestrator service on :18791 (installed by setup)",

@@ -73,6 +73,13 @@ What lands:
 - `~/.codex/hooks/*` wired through `~/.codex/hooks.json` — UserPromptSubmit /
   Stop / PreToolUse, with M1 application-rate tracking
 
+Claude Code and Codex install the **same** hook scripts (one source,
+`packages/shared/agent-hooks/hooks/`). Each installer registers them with the
+runtime on the command line — `… --runtime claude-code` or `… --runtime codex`
+— which selects the few genuinely different bits: the home directory
+(`~/.claude` vs `~/.codex`), the transcript format the Stop hook parses, and
+the runtime label on M1 events.
+
 ## Hermes
 
 ```bash

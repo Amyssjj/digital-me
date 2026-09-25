@@ -1,4 +1,4 @@
-# Codex MCP-server fragment for the openclaw-brain proxy.
+# Codex MCP-server fragment for the digital-me-brain proxy.
 # Append (or merge) into ~/.codex/config.toml. The digital-me CLI's
 # `install --runtime codex` command does this idempotently (with absolute
 # node + proxy paths resolved at install time).
@@ -28,7 +28,7 @@
 # the hooks read when DIGITAL_ME_BRAIN_URL is not in their environment, and
 # also merges them into `[shell_environment_policy.set]` for shell commands.
 
-[mcp_servers.openclaw-brain]
+[mcp_servers.digital-me-brain]
 command = "digital-me-brain-proxy"
 args = []
 env = { OPENCLAW_AGENT_ID = "codex", DIGITAL_ME_BRAIN_URL = "http://127.0.0.1:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN_FILE = "/home/<you>/digital-me/.data/brain-host.token" }

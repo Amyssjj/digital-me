@@ -1,7 +1,7 @@
 {
-  "name": "@digital-me/runtime-codex",
+  "name": "@digital-me/agent-hooks",
   "version": "0.1.0-pre",
-  "description": "Codex CLI runtime adapter for the digital-me brain: CODEX.md instructions template, config.toml MCP-server fragment, and lifecycle hooks (UserPromptSubmit / Stop / PreToolUse, the scripts shared with the Claude Code runtime via @digital-me/agent-hooks) with M1 application_rate metrics, plus a TypeScript installer for merging into ~/.codex/.",
+  "description": "The single source of the Digital Me lifecycle hook scripts shared by the Claude Code and Codex runtimes (UserPromptSubmit / Stop / PreToolUse), with the runtime baked into each registered hook command line.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -11,13 +11,12 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
-    "./templates/*": "./templates/*"
+    "./hooks/*": "./hooks/*"
   },
   "files": [
     "dist",
     "src",
-    "templates",
-    "README.md"
+    "hooks"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
@@ -26,11 +25,8 @@
     "test": "vitest run",
     "test:coverage": "vitest run --coverage"
   },
-  "dependencies": {
-    "@digital-me/agent-hooks": "workspace:*",
-    "@digital-me/contracts": "workspace:*"
-  },
   "devDependencies": {
+    "@digital-me/contracts": "workspace:*",
     "@types/node": "^22.0.0",
     "@vitest/coverage-v8": "^5.0.1",
     "typescript": "^6.0.3",

@@ -33,8 +33,8 @@ packages/
 │   ├── dream-cycle/      (Python pipeline — distills learnings into wiki entries, nightly)
 │   └── digest/           (Python — the morning activity digest; Discord webhook or openclaw transport)
 ├── runtimes/       ← per-CLI auto-injection + protocol bundles (the spokes, client-side)
-│   ├── claude-code/      (settings.json hooks + dm_*.sh scripts + skill + MCP registration)
-│   ├── codex/            (CODEX.md + config.toml MCP entry + hooks.json lifecycle hooks w/ M1)
+│   ├── claude-code/      (settings.json hook registration + skill + MCP registration)
+│   ├── codex/            (CODEX.md + config.toml MCP entry + hooks.json hook registration w/ M1)
 │   ├── hermes/           (SOUL.md protocol + recall plugin + MCP stanza)
 │   └── openclaw/         (optional: plugin overlay so openclaw agents share the brain; also the
 │                          cli-exec alias resolver + dispatcher brain-host reuses)
@@ -42,7 +42,9 @@ packages/
 │   └── brain-mcp-proxy/  (stdio MCP server forwarding to brain-host's HTTP wire)
 ├── cli/            ← user-invoked installer/orchestrator (`digital-me <command>`)
 └── shared/         ← cross-package primitives
-    └── contracts/        (env-var registry, the brain-path rule, config schemas)
+    ├── contracts/        (env-var registry, the brain-path rule, config schemas)
+    └── agent-hooks/      (the ONE copy of the dm_*.sh lifecycle hooks + M1 emitter that both
+                           claude-code and codex install, each with `--runtime <id>`)
 ```
 
 (Sanitization is enforced by `scripts/sanitize-check.sh` at the repo root — run via `pnpm sanitize:check` — not by a shared package.)

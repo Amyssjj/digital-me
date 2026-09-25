@@ -1,5 +1,5 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   HOOK_NAMES,
@@ -13,15 +13,18 @@ import {
 } from "./installer.js";
 
 describe("PACKAGE_ROOT + paths", () => {
-  it("PACKAGE_ROOT points at a directory that contains hooks/ and skills/", () => {
-    // We don't actually access the filesystem here — just verify the
-    // path string shape so downstream tooling can rely on the layout.
-    expect(HOOKS_DIR).toBe(`${PACKAGE_ROOT}/hooks`);
+  it("PACKAGE_ROOT carries skills/; the hooks come from the shared agent-hooks package", () => {
     expect(SKILLS_DIR).toBe(`${PACKAGE_ROOT}/skills`);
+    // One hook source for Claude Code and Codex: not under this package.
+    expect(basename(HOOKS_DIR)).toBe("hooks");
+    expect(basename(dirname(HOOKS_DIR))).toBe("agent-hooks");
+    for (const name of HOOK_NAMES) {
+      expect(existsSync(join(HOOKS_DIR, name)), name).toBe(true);
+    }
   });
 
-  it("falls back to assets/claude-code when hooks/ is absent (published CLI bundle layout)", async () => {
-    // In the workspace, hooks/ sits at the package root so the ternary's
+  it("falls back to assets/claude-code when skills/ is absent (published CLI bundle layout)", async () => {
+    // In the workspace, skills/ sits at the package root so the ternary's
     // first arm wins. The published CLI bundle stages per-package assets
     // under assets/claude-code/ instead — simulate that layout by mocking
     // existsSync and re-importing the module.
@@ -30,24 +33,26 @@ describe("PACKAGE_ROOT + paths", () => {
     try {
       const fresh = await import("./installer.js");
       expect(fresh.PACKAGE_ROOT.endsWith("assets/claude-code")).toBe(true);
-      expect(fresh.HOOKS_DIR).toBe(`${fresh.PACKAGE_ROOT}/hooks`);
+      expect(fresh.SKILLS_DIR).toBe(`${fresh.PACKAGE_ROOT}/skills`);
     } finally {
       vi.doUnmock("node:fs");
       vi.resetModules();
     }
   });
 
-  it("exposes the 6 hooks + 1 helper script + 1 skill name", () => {
+  it("exposes the 5 hooks + 2 helpers + the analyser + 1 skill name", () => {
     expect(HOOK_NAMES).toEqual([
       "dm_memory_search_inject.sh",
       "brain_route_inject.sh",
       "dm_handoff_reminder.sh",
       "dm_session_extract.sh",
       "dm_application_rate.sh",
-      "analyze_brain_inject.py",
-      // dm_m1_emit.py is a helper called as a subprocess by the inject
-      // and stop hooks — not a hook itself, but ships with them.
+      // Helpers, not hooks: dm_m1_emit.py is spawned by the inject and stop
+      // hooks, dm_hook_lib.sh is sourced by every hook.
       "dm_m1_emit.py",
+      "dm_hook_lib.sh",
+      // Claude-Code-only offline analyser.
+      "analyze_brain_inject.py",
     ]);
     expect(SKILL_NAMES).toEqual(["digital-me"]);
   });
@@ -60,19 +65,40 @@ describe("buildClaudeHooksManifest", () => {
     expect(m.Stop).toHaveLength(1);
     expect(m.PreToolUse).toHaveLength(1);
     expect(m.UserPromptSubmit[0]!.hooks[0]!.command).toBe(
-      "$HOME/.claude/hooks/dm_memory_search_inject.sh",
+      "$HOME/.claude/hooks/dm_memory_search_inject.sh --runtime claude-code",
     );
     expect(m.PreToolUse[0]!.hooks[0]!.command).toBe(
-      "$HOME/.claude/hooks/brain_route_inject.sh",
+      "$HOME/.claude/hooks/brain_route_inject.sh --runtime claude-code",
     );
     // Stop has three hooks: handoff reminder + session extract (async) +
     // application-rate writer (async, M1 live writer, 2026-05-22).
     expect(m.Stop[0]!.hooks).toHaveLength(3);
     expect(m.Stop[0]!.hooks[1]!.async).toBe(true);
     expect(m.Stop[0]!.hooks[2]!.command).toBe(
-      "$HOME/.claude/hooks/dm_application_rate.sh",
+      "$HOME/.claude/hooks/dm_application_rate.sh --runtime claude-code",
     );
     expect(m.Stop[0]!.hooks[2]!.async).toBe(true);
+  });
+
+  it("bakes `--runtime claude-code` into every command (the scripts are shared with Codex)", () => {
+    const m = buildClaudeHooksManifest();
+    const all = [...m.UserPromptSubmit, ...m.Stop, ...m.PreToolUse].flatMap((s) => s.hooks);
+    expect(all).toHaveLength(5);
+    for (const h of all) {
+      expect(h.command).toMatch(/^\$HOME\/\.claude\/hooks\/[a-z_]+\.sh --runtime claude-code$/);
+    }
+  });
+
+  it("the shipped settings.json template registers exactly the manifest's commands", () => {
+    const template = JSON.parse(
+      readFileSync(join(PACKAGE_ROOT, "templates", "settings.json"), "utf-8"),
+    ) as { hooks: Record<string, Array<{ hooks: Array<{ command: string }> }>> };
+    const m = buildClaudeHooksManifest();
+    for (const event of Object.keys(m) as Array<keyof typeof m>) {
+      expect(template.hooks[event]!.flatMap((s) => s.hooks.map((h) => h.command))).toEqual(
+        m[event].flatMap((s) => s.hooks.map((h) => h.command)),
+      );
+    }
   });
 });
 
@@ -132,19 +158,55 @@ describe("mergeHooksIntoSettings", () => {
   });
 
   it("preserves user hooks AND ours when the user already added one of ours by hand", () => {
-    const ourCmd = "$HOME/.claude/hooks/dm_memory_search_inject.sh";
+    const ourCmd = "$HOME/.claude/hooks/dm_memory_search_inject.sh --runtime claude-code";
     const merged = mergeHooksIntoSettings({
       hooks: {
         UserPromptSubmit: [
-          { hooks: [{ type: "command" as const, command: ourCmd }] },
+          { hooks: [{ type: "command" as const, command: ourCmd, timeout: 30 }] },
         ],
       },
     });
-    const ups = (merged.hooks as Record<string, unknown[]>)[
+    const ups = (merged.hooks as Record<string, Array<{ hooks: Array<{ command: string; timeout?: number }> }>>)[
       "UserPromptSubmit"
     ]!;
-    // De-dup: user-added entry kept, ours not re-added.
+    // De-dup: user-added entry kept (with the user's timeout), ours not re-added.
     expect(ups).toHaveLength(1);
+    expect(ups[0]!.hooks[0]).toEqual({ type: "command", command: ourCmd, timeout: 30 });
+  });
+
+  it("upgrades a command an older installer registered without --runtime in place instead of adding a second copy", () => {
+    const legacy = "$HOME/.claude/hooks/dm_memory_search_inject.sh";
+    const merged = mergeHooksIntoSettings({
+      hooks: {
+        UserPromptSubmit: [
+          { hooks: [{ type: "command" as const, command: "user-custom.sh" }] },
+          { hooks: [{ type: "command" as const, command: legacy, timeout: 12 }] },
+        ],
+        Stop: [
+          {
+            hooks: [
+              { type: "command" as const, command: "$HOME/.claude/hooks/dm_handoff_reminder.sh", timeout: 5 },
+              { type: "command" as const, command: "$HOME/.claude/hooks/dm_session_extract.sh", timeout: 8, async: true },
+            ],
+          },
+        ],
+      },
+    });
+    const hooks = merged.hooks as Record<string, Array<{ hooks: Array<{ command: string }> }>>;
+    const commands = (event: string) => hooks[event]!.flatMap((s) => s.hooks.map((h) => h.command));
+    expect(commands("UserPromptSubmit")).toEqual([
+      "user-custom.sh",
+      `${legacy} --runtime claude-code`,
+    ]);
+    // The two legacy Stop commands are upgraded where they were; only the
+    // hook the old install lacked (dm_application_rate.sh) is appended.
+    expect(commands("Stop")).toEqual([
+      "$HOME/.claude/hooks/dm_handoff_reminder.sh --runtime claude-code",
+      "$HOME/.claude/hooks/dm_session_extract.sh --runtime claude-code",
+      "$HOME/.claude/hooks/dm_application_rate.sh --runtime claude-code",
+    ]);
+    // Idempotent from there on.
+    expect(mergeHooksIntoSettings(merged)).toEqual(merged);
   });
 
   it("skips events where all our commands are already present", () => {

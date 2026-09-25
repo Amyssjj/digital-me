@@ -2,8 +2,9 @@
  * @digital-me/runtime-claude-code
  *
  * Claude Code runtime adapter for the digital-me brain. Ships:
- *   - 5 hook scripts (UserPromptSubmit, Stop x2, PreToolUse) under
- *     packages/runtimes/claude-code/hooks/.
+ *   - The shared Digital Me hooks (UserPromptSubmit, Stop x3, PreToolUse)
+ *     from @digital-me/agent-hooks — the same scripts the Codex runtime
+ *     installs, registered here with `--runtime claude-code`.
  *   - The `digital-me` skill bundle (skills/digital-me/SKILL.md).
  *   - A settings.json template (templates/settings.json).
  *

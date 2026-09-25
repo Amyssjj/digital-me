@@ -20,6 +20,8 @@ LOG_PATH = os.path.expanduser('~/.claude/logs/brain_route_inject.jsonl')
 PROJECTS_DIR = os.path.expanduser('~/.claude/projects')
 EXPERIMENT_START = datetime(2026, 4, 30, 21, 50, tzinfo=timezone.utc)  # 14:50 PT = 21:50 UTC
 TIMESTAMP_TOLERANCE_SEC = 10
+# Current and pre-rename (openclaw-brain) spellings of the brain tasks tool.
+BRAIN_TASKS_TOOLS = {'mcp__digital-me-brain__tasks', 'mcp__openclaw-brain__tasks'}
 LOOKAHEAD_TOOL_CALLS = 3
 
 
@@ -120,9 +122,9 @@ def check_compliance(rule, tus, fire_idx):
         return ('no-followup', 'no subsequent tool calls in session')
 
     if rule == 'brain-write-via-tasks':
-        # R1a: did the agent switch to mcp__openclaw-brain__tasks?
+        # R1a: did the agent switch to the brain tasks tool?
         for tu in after:
-            if tu['name'] == 'mcp__openclaw-brain__tasks':
+            if tu['name'] in BRAIN_TASKS_TOOLS:
                 return ('compliant', f"next switched to tasks MCP ({tu['input'].get('action','?')})")
         # Did they keep using sqlite3 writes?
         for tu in after:
@@ -137,7 +139,7 @@ def check_compliance(rule, tus, fire_idx):
         # handoff/run_goal/checkpoint/etc. don't need format — skip those.
         parsable_actions = {'board', 'status', 'schedule_list', 'workflow_list'}
         for tu in after:
-            if tu['name'] != 'mcp__openclaw-brain__tasks':
+            if tu['name'] not in BRAIN_TASKS_TOOLS:
                 continue
             action = tu['input'].get('action', '')
             if action not in parsable_actions:
@@ -151,7 +153,7 @@ def check_compliance(rule, tus, fire_idx):
     elif rule == 'stringify-tasks':
         # R3: did next tasks call pass tasks/variables as strings?
         for tu in after:
-            if tu['name'] == 'mcp__openclaw-brain__tasks':
+            if tu['name'] in BRAIN_TASKS_TOOLS:
                 inp = tu['input']
                 tasks_v = inp.get('tasks')
                 vars_v = inp.get('variables')
