@@ -35,6 +35,7 @@ import {
   instantiateWorkflow as instantiateWorkflowHandler,
   LEARNINGS_MIGRATIONS,
   M1_EVENTS_MIGRATIONS,
+  dispatchByMode,
   registerMigration,
   resetMigrationRegistryForTests,
   runMigrations,
@@ -275,11 +276,7 @@ export class Orchestrator {
       if (task.dispatch.mode !== "spawn" && task.dispatch.mode !== "exec") continue;
       // Dispatchers report failure by returning false / logging; they do not
       // throw, and stragglers are picked up by the tick's orphan sweep.
-      const ok =
-        task.dispatch.mode === "exec"
-          ? await this.dispatcher.dispatchExecTask(task)
-          : await this.dispatcher.dispatchSpawnTask(task);
-      if (ok) dispatched++;
+      if (await dispatchByMode(this.dispatcher, task)) dispatched++;
     }
     return { ok: true, goalId: r.goalId, taskCount: r.taskCount, dispatched };
   };

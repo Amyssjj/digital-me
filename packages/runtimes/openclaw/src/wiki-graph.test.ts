@@ -52,6 +52,11 @@ describe("parseRelatedField — list form", () => {
     expect(parseRelatedField(fm)).toEqual(["a/b.md"]);
   });
 
+  it("keeps collecting across blank and indented non-item lines", () => {
+    const fm = "related:\n  - a/b.md\n\n    # a comment\n  - c/d.md\npriority: search\n";
+    expect(parseRelatedField(fm)).toEqual(["a/b.md", "c/d.md"]);
+  });
+
   it("returns empty when related: missing", () => {
     expect(parseRelatedField("title: foo\npriority: search\n")).toEqual([]);
   });

@@ -280,6 +280,7 @@ export type {
 
 export {
   CRON_GOAL_RETENTION_MS,
+  dispatchByMode,
   dispatchOrphanedReadyTasks,
   finalizeTerminalGoals,
   reconcileCompletedDependencies,
