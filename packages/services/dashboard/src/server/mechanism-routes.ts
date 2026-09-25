@@ -1,11 +1,11 @@
 /**
- * Express router for the §D Mechanism view + §E Kanban view.
+ * Express router for the §D Mechanism view.
  *
- * Mounted at /api/mechanism/* and /api/kanban by server.ts. Both views
- * filter brain state to the SAME set of "mechanism-eligible" workflows so
- * they show a consistent picture — a workflow either teaches the user
- * something about system logic (mechanism + its tasks on kanban) or it's
- * hidden from both.
+ * Mounted at /api/mechanism/* by app.ts. The Kanban view (useKanban) filters
+ * its goals client-side through this same endpoint, so both views show the
+ * SAME set of "mechanism-eligible" workflows — a workflow either teaches the
+ * user something about system logic (mechanism + its tasks on kanban) or
+ * it's hidden from both.
  *
  * Inclusion rule (NUX scope-down §D):
  *
@@ -18,12 +18,7 @@
 
 import { Router } from "express";
 
-import {
-  brainBoard,
-  brainWorkflowList,
-  type BrainGoal,
-  type BrainWorkflowTemplate,
-} from "./brain-client.mc.js";
+import type { BrainWorkflowTemplate } from "./brain-client.js";
 import type { WorkflowRunStats } from "./brain-kanban.js";
 
 /** The flag we look for inside a workflow's top-level `display` block.
@@ -33,13 +28,29 @@ type WorkflowDisplay = {
   readonly mechanism_view?: boolean;
 };
 
-type MechanismWorkflow = BrainWorkflowTemplate & {
+/** The fields this router reads from a brain workflow template. The brain
+ *  serialises either naming convention, so both are accepted. */
+type MechanismWorkflow = {
+  readonly id: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly version?: number;
+  readonly steps?: ReadonlyArray<{
+    readonly step_key?: string;
+    readonly stepKey?: string;
+    readonly name: string;
+    readonly blocked_by_keys?: string | string[];
+    readonly blockedByKeys?: string[];
+    readonly sort_order?: number;
+    readonly sortOrder?: number;
+  }>;
+  readonly latestRun?: unknown;
+  readonly totalRuns?: number;
+  readonly successRate?: number;
   readonly display?: WorkflowDisplay;
 };
 
-/** The single source of truth for "is this workflow mechanism-eligible?"
- *  Used by /api/mechanism/workflows AND /api/kanban so the two views stay
- *  consistent. */
+/** The single source of truth for "is this workflow mechanism-eligible?" */
 function isMechanismEligible(w: MechanismWorkflow): boolean {
   const explicit = w.display?.mechanism_view;
   if (typeof explicit === "boolean") return explicit;
@@ -52,12 +63,19 @@ function isMechanismEligible(w: MechanismWorkflow): boolean {
  *  every card showed "0 runs". */
 export type RunStatsSource = () => ReadonlyMap<string, WorkflowRunStats>;
 
-export function buildMechanismRouter(deps: { readonly runStats?: RunStatsSource } = {}): Router {
+/** Workflow-template source — the brain client's `workflowList`, injected so
+ *  the router holds no connection state of its own. */
+export type WorkflowListSource = () => Promise<readonly BrainWorkflowTemplate[]>;
+
+export function buildMechanismRouter(deps: {
+  readonly workflowList: WorkflowListSource;
+  readonly runStats?: RunStatsSource;
+}): Router {
   const router = Router();
 
   router.get("/workflows", async (_req, res) => {
     try {
-      const templates = (await brainWorkflowList()) as MechanismWorkflow[];
+      const templates = (await deps.workflowList()) as readonly MechanismWorkflow[];
       const eligible = templates.filter(isMechanismEligible);
       // Stats are an enrichment: an unreadable brain.db degrades to whatever
       // the template carries rather than failing the whole view.
@@ -106,75 +124,6 @@ export function buildMechanismRouter(deps: { readonly runStats?: RunStatsSource 
     } catch (err) {
       console.error("[/api/mechanism/workflows]", err);
       res.status(500).json({ error: "Failed to fetch mechanism workflows" });
-    }
-  });
-
-  return router;
-}
-
-// ── Kanban (§E) ───────────────────────────────────────────────────────────
-
-type KanbanTask = {
-  readonly id: string;
-  readonly workflow_id: string;
-  readonly workflow_name: string;
-  readonly status: string;
-  readonly name: string;
-  readonly last_update_ts: string | null;
-};
-
-/**
- * Map brain.tasks.board() goals → flat task list, filtered to only tasks
- * whose parent workflow is mechanism-eligible (per the same rule above).
- * Kept in this module so the eligibility predicate is shared with §D.
- */
-export function buildKanbanRouter(): Router {
-  const router = Router();
-
-  router.get("/", async (_req, res) => {
-    try {
-      const [board, templates] = await Promise.all([
-        brainBoard(),
-        brainWorkflowList() as Promise<MechanismWorkflow[]>,
-      ]);
-
-      const eligibleIds = new Set(
-        templates.filter(isMechanismEligible).map((w) => w.id),
-      );
-
-      const tasks: KanbanTask[] = [];
-      for (const goal of board.goals ?? []) {
-        const g = goal as BrainGoal & {
-          sourceWorkflowId?: string;
-          source_workflow_id?: string;
-          name?: string;
-          tasks?: Array<{
-            id: string;
-            name: string;
-            status: string;
-            updated_at?: string;
-            updatedAt?: string;
-          }>;
-        };
-        const wfId = g.sourceWorkflowId ?? g.source_workflow_id;
-        if (!wfId || !eligibleIds.has(wfId)) continue;
-        const wfName = templates.find((w) => w.id === wfId)?.name ?? wfId;
-        for (const t of g.tasks ?? []) {
-          tasks.push({
-            id: t.id,
-            workflow_id: wfId,
-            workflow_name: wfName,
-            status: t.status,
-            name: t.name,
-            last_update_ts: t.updated_at ?? t.updatedAt ?? null,
-          });
-        }
-      }
-
-      res.json({ tasks });
-    } catch (err) {
-      console.error("[/api/kanban]", err);
-      res.status(500).json({ error: "Failed to fetch kanban tasks" });
     }
   });
 

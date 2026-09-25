@@ -632,7 +632,7 @@ function DependencyFlow({ tasks }: { tasks: KanbanTask[] }) {
         Task Flow
       </span>
       <div className="flex items-center gap-1 flex-wrap">
-        {tasks.map((t, i) => {
+        {tasks.map((t) => {
           const hasOutgoing = edges.some((e) => e.from === t.id);
           return (
             <div key={t.id} className="flex items-center gap-1">

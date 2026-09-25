@@ -13,7 +13,6 @@ import {
 import {
   CHART_MARGIN,
   GRID_STROKE,
-  HIGHLIGHT,
   HIGHLIGHT_SECONDARY,
   TooltipDivider,
   TooltipHeader,

@@ -1,336 +1,71 @@
-import express from "express";
-import http from "node:http";
+/**
+ * Dashboard server entry point — the composition root. Resolves config,
+ * opens the (lazy) brain connection, builds the app via createDashboardApp
+ * and binds the loopback sockets. Everything with logic lives in tested
+ * modules (config.ts, app.ts, brain-client.ts, brain-proxy-client.ts).
+ */
+
 import fs from "node:fs";
-import path from "path";
-import { fileURLToPath } from "url";
-// NOTE: imports point to the .mc siblings during the §0 → §F migration window.
-// The legacy endpoints below will be deleted incrementally in §D-§F as each
-// view is rewritten; §G's final pass collapses .mc duplicates into canonical
-// filenames once nothing imports the legacy modules anymore.
-import { fetchDashboardData } from "./data.mc.js";
-import { getRecentTraces, getTraceById, getLayerHealth, getWorkflowsForMechanism } from "./db.js";
-import { getSystemStatus, loadSkillsConfig } from "./drift-status.mc.js";
-import { brainMemorySearch, initBrainClient } from "./brain-client.mc.js";
-// Feed search: ranked memory_search results with containment-checked previews.
-import { buildSearchRouter } from "./search.js";
+import http from "node:http";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-// NUX scope-down §C: new minimal metrics router for the 4-chart Metrics view.
-// Mounted alongside the legacy routes during the §C-§F transition window.
-import { buildMetricsRouter } from "./metrics-routes.js";
-// NUX scope-down §D + §E: mechanism workflows + kanban (share inclusion rule).
-import { buildKanbanRouter, buildMechanismRouter } from "./mechanism-routes.js";
-// Delivery view: unified agent-activity feed, read live from the brain DB.
-import { buildActivityFeedRouter } from "./activity-feed.js";
-// Remote MCP clients: external CLIs (other machines) that reach the brain over
-// the HTTP transport and thus never appear in the openclaw agent roster.
-import { buildRemoteClientsRouter, cachedRoster, defaultListRosterIds } from "./remote-clients-routes.js";
-// Kanban board + Mechanism run stats: read-only SQL over brain.db.
-import { buildBrainKanbanRouter, queryWorkflowRunStats, withBrainDb } from "./brain-kanban.js";
-// DNS-rebinding guard: reject any request whose Host isn't a loopback name.
-import { isLoopbackHost } from "./host-guard.js";
-import { resolveBrainDbPath } from "@digital-me/contracts";
+import { createDashboardApp } from "./app.js";
+import { createBrainClient } from "./brain-client.js";
+import { connectBrainProxy } from "./brain-proxy-client.js";
+import { migrateLegacyDashboardDb, resolveDashboardConfig } from "./config.js";
+import { cachedRoster, defaultListRosterIds } from "./remote-clients-routes.js";
 
-const app = express();
-// DNS-rebinding guard — MUST be the first middleware, before body parsing and
-// every route. This API is unauthenticated and its only perimeter is loopback
-// binding + no CORS (see below). That perimeter is defeated by DNS rebinding
-// unless we also validate the Host header: a site the browser visits can
-// re-resolve its hostname to 127.0.0.1 and read this personal-data API under
-// its own origin. Legit local clients (browser → localhost, Vite proxy →
-// 127.0.0.1) always send a loopback Host; rebound requests carry the attacker's
-// hostname and are rejected here. See host-guard.ts for the full rationale.
-app.use((req, res, next) => {
-  if (!isLoopbackHost(req.headers.host)) {
-    res.status(403).json({ error: "forbidden host" });
-    return;
-  }
-  next();
+const config = resolveDashboardConfig({
+  env: process.env,
+  home: process.env["HOME"] ?? "",
+  exists: (p) => fs.existsSync(p),
 });
-// No CORS middleware on purpose: the SPA is served same-origin from this app,
-// and the Vite dev server proxies /api here (see vite.config.ts), so no
-// cross-origin requests exist. A `cors()` wildcard would let any website the
-// browser visits read this unauthenticated personal-data API.
-app.use(express.json());
+migrateLegacyDashboardDb(config.legacyMigration);
 
-
-// Canonical dashboard DB path. Honors $DASHBOARD_DB for dev (matches the
-// Python intake side in dashboard_intake/__init__.py).
-//
-// Default lives at ~/digital-me/.data/dashboard.db — the single
-// digital-me-owned root, with hidden .data/ for machine-managed binaries
-// alongside the user-edited wiki/ and tastes/ trees.
-//
-// Auto-migrate legacy path on boot: if ~/.local/share/digital-me/dashboard/
-// data/system_monitor.db exists and the new canonical path doesn't, move
-// it. One-shot, idempotent — only fires the first time a server upgrades
-// past this commit.
-const HOME = process.env["HOME"] ?? "";
-const DEFAULT_DB_PATH = path.join(HOME, "digital-me", ".data", "dashboard.db");
-const LEGACY_DB_PATH = path.join(
-  HOME, ".local", "share", "digital-me", "dashboard", "data", "system_monitor.db",
-);
-const DASHBOARD_DB_PATH = process.env["DASHBOARD_DB"] ?? DEFAULT_DB_PATH;
-
-// Brain traces store. This is a DIFFERENT DB from dashboard.db: traces +
-// brain_agents live in brain.db, written by brain-host and the proxy's
-// trace-writer. Honor the dashboard's own $BRAIN_DB / $OPENCLAW_DATA_DIR
-// overrides first (existing installs), then the rule every reader shares
-// (@digital-me/contracts resolveBrainDbPath: $DIGITAL_ME_BRAIN_DB →
-// <wiki-root>/.data/brain.db → legacy ~/.openclaw/data/brain.db while only
-// that exists → canonical).
-const BRAIN_DB_PATH =
-  process.env["BRAIN_DB"] ??
-  (process.env["OPENCLAW_DATA_DIR"]
-    ? path.join(process.env["OPENCLAW_DATA_DIR"], "brain.db")
-    : resolveBrainDbPath({ env: process.env, home: HOME, exists: (p) => fs.existsSync(p) }).path);
-
-(function migrateLegacyDbIfNeeded() {
-  if (process.env["DASHBOARD_DB"]) return; // explicit override — don't touch.
-  if (!fs.existsSync(LEGACY_DB_PATH) || fs.existsSync(DEFAULT_DB_PATH)) return;
-  try {
-    fs.mkdirSync(path.dirname(DEFAULT_DB_PATH), { recursive: true });
-    // Copy (don't move) so the legacy DB stays put as a rollback backup. Copy
-    // WAL sidecars before the main DB so the new path is never in a state where
-    // the DB exists without its companions (SQLite replays -wal on open).
-    for (const suffix of ["-wal", "-shm"] as const) {
-      const legacySidecar = LEGACY_DB_PATH + suffix;
-      if (fs.existsSync(legacySidecar)) {
-        fs.copyFileSync(legacySidecar, DEFAULT_DB_PATH + suffix);
-      }
-    }
-    fs.copyFileSync(LEGACY_DB_PATH, DEFAULT_DB_PATH);
-    console.log(
-      `[digital-me dashboard] auto-migrated legacy DB: ${LEGACY_DB_PATH} -> ${DEFAULT_DB_PATH} ` +
-        `(original kept as rollback backup at ${LEGACY_DB_PATH})`,
-    );
-  } catch (err) {
-    console.error(
-      `[digital-me dashboard] legacy DB auto-migration failed: ${(err as Error).message}. ` +
-        `Set $DASHBOARD_DB to the path you want explicitly.`,
-    );
-  }
-})();
-
-// ── NUX §C: 4-metric router ──
-app.use("/api/metrics", buildMetricsRouter(DASHBOARD_DB_PATH));
-
-// ── Delivery view: unified agent-activity feed ──
-// Reads the `activity` snapshot table from dashboard.db (same producer/consumer
-// split as the metrics endpoints); the stream_activity intake step owns the
-// brain → row mapping. See activity-feed.ts + intake/.../stream_activity.py.
-app.use("/api/activity-feed", buildActivityFeedRouter(DASHBOARD_DB_PATH));
-
-// ── NUX §D: Mechanism router (eligibility-filtered workflow list) ──
-// Run counts / success rate / latest run come from brain.db: the brain's
-// workflow_list carries none, so every card read "0 runs".
-app.use(
-  "/api/mechanism",
-  buildMechanismRouter({ runStats: () => withBrainDb(BRAIN_DB_PATH, queryWorkflowRunStats) }),
-);
-
-// ── Kanban Board: read-only SQL over brain.db (see brain-kanban.ts) ──
-app.use("/api/kanban", buildBrainKanbanRouter(BRAIN_DB_PATH));
-
-// ── Remote MCP clients ──
-// External MCP clients (a second machine's Claude Code / Codex CLI) reach the
-// brain over the Streamable-HTTP transport, attributed by X-Agent-Id. They
-// leave a footprint only in brain.db `traces`, never in the openclaw roster, so
-// no agent-card surfaces them. This endpoint aggregates the non-roster clients.
-// The roster (`openclaw agents list`, ~12 s) is fetched async behind a TTL
-// cache and warmed at boot so the first panel load doesn't wait on it.
-const rosterIds = cachedRoster(defaultListRosterIds);
-void rosterIds();
-app.use("/api/remote-clients", buildRemoteClientsRouter(BRAIN_DB_PATH, rosterIds));
-
-// ── Feed search: ranked knowledge search over the brain's memory_search ──
-// Preview markdown is read from disk, restricted to the user-owned knowledge
-// roots (the digital-me tree + the openclaw agent workspace) — a hit whose
-// path resolves outside them just previews as snippet-only.
-app.use(
-  "/api/search",
-  buildSearchRouter({
-    memorySearch: brainMemorySearch,
-    contentRoots: [
-      path.join(HOME, "digital-me"),
-      path.join(process.env["OPENCLAW_HOME"] ?? path.join(HOME, ".openclaw"), "workspace"),
-    ],
-  }),
-);
-// NUX §E note: buildKanbanRouter is exported but intentionally NOT mounted at
-// /api/kanban. The /api/kanban endpoint above (brain-kanban.ts) returns a rich
-// {goals, stats, pagination} shape that TaskKanban consumes; replacing it
-// would require an 887-line component rewrite. Instead useKanban filters
-// goals client-side via /api/mechanism/workflows. The simpler endpoint can be
-// activated later if/when the frontend converges on the flat-tasks shape.
-void buildKanbanRouter;
-
-// ── Existing v1 endpoint ──
-app.get("/api/dashboard", (_req, res) => {
-  try { res.json(fetchDashboardData()); }
-  catch (err) { console.error(err); res.status(500).json({ error: "Failed" }); }
+// Brain MCP connection: connects lazily on first call and reconnects after
+// the proxy child exits. Warmed here, non-blocking — the server starts (and
+// the SQLite-backed views work) even when the brain is unavailable.
+const brain = createBrainClient({
+  clientFactory: () => connectBrainProxy(process.env),
+  warn: (msg) => console.warn(msg),
+});
+void brain.init().then((r) => {
+  if (!r.ok) console.warn(`[brain-client] brain unavailable (${r.error}); brain-backed routes will error until it is`);
 });
 
-// ── Legacy endpoints removed in dashboard cutover PR ──
-// The following endpoints read from legacy tables (goal_metrics, issues,
-// feedback, insights, cron_runs, daily_agent_activity) that no longer exist
-// in the new dashboard.db schema. The frontend views have been rewritten to
-// use the new /api/metrics/* and /api/mechanism/* endpoints that read from
-// the new schema or brain MCP tools directly. This removal is part of §B-§G
-// migration cleanup. See git history for original implementations.
+// The orchestrator roster (`openclaw agents list`, ~12 s) sits behind a TTL
+// cache and is warmed at boot so the first remote-clients load doesn't wait.
+const listRosterIds = cachedRoster(defaultListRosterIds);
+void listRosterIds();
 
-// ── Workflow (View 3) endpoints ──
-
-// GET /api/system-status — skills + drift checks + system health
-app.get("/api/system-status", (_req, res) => {
-  try {
-    const status = getSystemStatus();
-    res.json(status);
-  } catch (err) {
-    console.error("[/api/system-status]", err);
-    res.status(500).json({ error: "Failed to fetch system status" });
-  }
+const app = createDashboardApp({
+  dashboardDbPath: config.dashboardDbPath,
+  brainDbPath: config.brainDbPath,
+  // src/server (tsx) and dist/server (compiled) both sit two levels below the
+  // package root, where Vite writes dist/.
+  distPath: path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "dist"),
+  workflowList: () => brain.workflowList(),
+  memorySearch: (query, opts) => brain.memorySearch(query, opts),
+  contentRoots: config.contentRoots,
+  listRosterIds,
 });
 
-// GET /api/workflows — LEGACY redirect (returns system-status format)
-app.get("/api/workflows", (_req, res) => {
-  try {
-    const status = getSystemStatus();
-    const config = loadSkillsConfig();
-    // Backwards compat: wrap in workflows format so old UI doesn't break during transition
-    res.json({
-      workflows: [],
-      systemHealth: status.overallHealth,
-      totalDriftIssues: status.drift.length,
-      checkedAt: status.checkedAt,
-      skills: config.skills,
-      drift: status.drift,
-    });
-  } catch (err) {
-    console.error("[/api/workflows]", err);
-    res.status(500).json({ error: "Failed to fetch workflows" });
-  }
-});
-// ── Workflow Templates for Mechanism View ──
-app.get("/api/workflows-v2", async (_req, res) => {
-  try {
-    res.json(await getWorkflowsForMechanism());
-  } catch (err) {
-    console.error("[/api/workflows-v2]", err);
-    res.status(500).json({ error: "Failed to fetch workflow templates" });
-  }
-});
-
-// ── Layer Health (evergreen goals) ──
-app.get("/api/layer-health", async (_req, res) => {
-  try {
-    const data = await getLayerHealth();
-    res.json(data);
-  } catch (err) {
-    console.error("[/api/layer-health]", err);
-    res.status(500).json({ error: "Failed to fetch layer health" });
-  }
-});
-
-// ── Traces (via brain API) ──
-app.get("/api/traces", async (req, res) => {
-  try {
-    const days = parseInt(req.query.days as string) || 7;
-    const limit = parseInt(req.query.limit as string) || 50;
-    const traces = await getRecentTraces(days, limit);
-    res.json({ traces, total: traces.length });
-  } catch (err) {
-    console.error("[/api/traces]", err);
-    res.status(500).json({ error: "Failed to fetch traces" });
-  }
-});
-
-app.get("/api/traces/:traceId", async (req, res) => {
-  try {
-    const trace = await getTraceById(req.params.traceId);
-    if (!trace) {
-      res.status(404).json({ error: "Trace not found" });
-      return;
-    }
-    res.json(trace);
-  } catch (err) {
-    console.error("[/api/traces/:id]", err);
-    res.status(500).json({ error: "Failed to fetch trace" });
-  }
-});
-
-app.get("/api/workflow-status", (_req, res) => {
-  try {
-    const status = getSystemStatus();
-    res.json({ statuses: [status], checkedAt: status.checkedAt });
-  } catch (err) {
-    console.error("[/api/workflow-status]", err);
-    res.status(500).json({ error: "Failed to check system status" });
-  }
-});
-
-// ── Serve frontend static files (production mode) ──
-// __dirname resolves to .../packages/services/dashboard/src/server. The
-// Vite build outputs to .../packages/services/dashboard/dist — that's
-// two levels up from __dirname, not one. The old "../dist" path
-// resolved to src/dist/index.html which doesn't exist, causing ENOENT
-// on every non-API request in production mode.
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const distPath = path.join(__dirname, "..", "..", "dist");
-app.use(express.static(distPath));
-
-// SPA fallback — serve index.html for any non-API route.
-// In DEV mode (vite dev server on $VITE_PORT proxying /api → here),
-// dist/ doesn't exist yet and this returns 404 instead of ENOENT-crashing.
-// Open the Vite dev URL directly when developing.
-// Express 5 (path-to-regexp v8) rejects a bare "*" at registration time, so the
-// catch-all is a named wildcard; "/{*splat}" also matches "/" itself.
-app.get("/{*splat}", (_req, res) => {
-  const indexFile = path.join(distPath, "index.html");
-  res.sendFile(indexFile, (err) => {
-    if (err) {
-      res.status(404).json({
-        error: "frontend bundle not built",
-        hint:
-          "Run `npm run build` from packages/services/dashboard, or visit " +
-          "the Vite dev server (see VITE_PORT) directly.",
-        looked_at: indexFile,
-      });
-    }
-  });
-});
-
-// Initialize brain MCP connection (non-blocking — server starts even if brain is unavailable)
-initBrainClient().catch(() => {});
-
-// Port: honour $DASHBOARD_DB's sibling $DASHBOARD_PORT (the documented env
-// contract), then $PORT (testing / conventional parity), else 3458 — distinct
-// from the legacy mission-control server at :3456 so a fresh user can run the
-// dashboard side-by-side without port juggling. Vite's dev proxy targets the
-// same default (see vite.config.ts) so the zero-config path "just works".
-const PORT_ENV = process.env["DASHBOARD_PORT"] || process.env["PORT"];
-const PORT = PORT_ENV ? parseInt(PORT_ENV, 10) : 3458;
-
-// Bind loopback only, on BOTH families. This server exposes the user's personal
-// brain with no auth, so it must never be reachable off-host — the previous "::"
-// wildcard bind also accepted LAN connections. We listen on two sockets sharing
-// the same Express app: 127.0.0.1 for IPv4 clients (incl. the Vite dev proxy)
-// and ::1 for browsers that resolve "localhost" to IPv6. Binding a single host
-// can't cover both loopback families, and a single host reintroduces the
-// localhost→::1 ECONNREFUSED footgun.
-const LOOPBACK_HOSTS = ["127.0.0.1", "::1"] as const;
+// Bind loopback only, on BOTH families: this server exposes the user's
+// personal brain with no auth, so it must never be reachable off-host.
+// 127.0.0.1 serves IPv4 clients (incl. the Vite dev proxy) and ::1 serves
+// browsers that resolve "localhost" to IPv6; ::1 may fail on hosts with IPv6
+// disabled, which is tolerated as long as one socket binds.
 let announced = false;
-for (const host of LOOPBACK_HOSTS) {
+for (const host of ["127.0.0.1", "::1"]) {
   const server = http.createServer(app);
   server.on("error", (err) => {
-    // ::1 can fail on hosts with IPv6 disabled — tolerate as long as one binds.
-    console.warn(
-      `[digital-me dashboard] could not bind ${host}:${PORT}: ${(err as Error).message}`,
-    );
+    console.warn(`[digital-me dashboard] could not bind ${host}:${config.port}: ${err.message}`);
   });
-  server.listen(PORT, host, () => {
+  server.listen(config.port, host, () => {
     if (!announced) {
       announced = true;
-      console.log(`[digital-me dashboard] http://localhost:${PORT} (loopback only)`);
+      console.log(`[digital-me dashboard] http://localhost:${config.port} (loopback only)`);
     }
   });
 }

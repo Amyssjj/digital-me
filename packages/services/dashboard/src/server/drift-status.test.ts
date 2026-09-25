@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
-import type { DatabaseSync } from "node:sqlite";
 const require = createRequire(import.meta.url);
 const { DatabaseSync: Database } = require("node:sqlite") as typeof import("node:sqlite");
 import fs from "node:fs";
@@ -505,6 +504,22 @@ describe("buildSystemStatus (integration)", () => {
     });
     expect(result.overallHealth).toBe("healthy");
     expect(result.drift).toEqual([]);
+  });
+
+  it("runs a file check for every configured liveChecks.files path", () => {
+    const present = path.join(tmpDir, "present.md");
+    fs.writeFileSync(present, "x");
+    const missing = path.join(tmpDir, "missing.md");
+    const result = buildSystemStatus({
+      config: { skills: [], liveChecks: { files: [present, missing] } },
+      homeDir: tmpDir,
+      dbPath: tmpDb,
+      now: () => new Date("2026-05-15T12:00:00Z"),
+    });
+    expect(result.files.map((f) => [f.name, f.exists])).toEqual([
+      ["present.md", true],
+      ["missing.md", false],
+    ]);
   });
 
   it("defaults `now` to real time when caller omits it", () => {

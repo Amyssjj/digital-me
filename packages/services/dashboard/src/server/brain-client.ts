@@ -15,7 +15,7 @@
  *     next call reconnects instead of failing forever with "Not connected"
  *
  * The spawn contract for the default (stdio proxy) client lives in
- * proxy-spawn.ts; live wiring is done in brain-client.mc.ts / server.ts.
+ * proxy-spawn.ts; the live connection is brain-proxy-client.ts, wired in server.ts.
  */
 
 import { TtlCache } from "./cache.js";
