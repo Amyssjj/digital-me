@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createRequire } from "node:module";
-import type { DatabaseSync } from "node:sqlite";
 const require = createRequire(import.meta.url);
 const { DatabaseSync: Database } = require("node:sqlite") as typeof import("node:sqlite");
 import fs from "node:fs";

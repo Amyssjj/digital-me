@@ -49,11 +49,9 @@ export default tseslint.config(
       },
     },
     rules: {
-      // Dead bindings are the cleanliness signal the audit asked for. The repo
-      // is mid-cutover (legacy db.ts / *.mc.ts files + dead frontend are being
-      // removed in parallel PRs), so surface these as WARNINGS for the initial
-      // rollout rather than blocking CI on files that are already being deleted.
-      // Tighten to "error" once the cutover lands.
+      // Dead bindings are the cleanliness signal the audit asked for. Still a
+      // WARNING because a few remain outside the dashboard (cli, openclaw,
+      // brain-orchestrator tests); tighten to "error" once those are cleared.
       "@typescript-eslint/no-unused-vars": [
         "warn",
         {
@@ -69,11 +67,9 @@ export default tseslint.config(
       // Empty catch blocks are an intentional "best-effort, ignore failure"
       // pattern in several spots; allow them, flag other empty blocks.
       "no-empty": ["error", { allowEmptyCatch: true }],
-      // The dashboard cutover left a few legacy files marked `@ts-nocheck`
-      // on purpose (db.ts, *.mc.ts); allow the directive rather than fail.
       "@typescript-eslint/ban-ts-comment": [
         "error",
-        { "ts-nocheck": false, "ts-expect-error": "allow-with-description" },
+        { "ts-expect-error": "allow-with-description" },
       ],
     },
   },

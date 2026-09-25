@@ -3,28 +3,19 @@ import express from "express";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 
-import { buildKanbanRouter, buildMechanismRouter, type RunStatsSource } from "./mechanism-routes.js";
-import { brainBoard, brainWorkflowList } from "./brain-client.mc.js";
+import type { BrainWorkflowTemplate } from "./brain-client.js";
+import { buildMechanismRouter, type RunStatsSource } from "./mechanism-routes.js";
 
-// The routers import module-level singletons from the legacy brain client —
-// mock the whole module so tests control what the brain "returns" without a
-// live proxy (the .mc module itself is migration-window code, excluded from
-// coverage; these tests target mechanism-routes.ts only).
-vi.mock("./brain-client.mc.js", () => ({
-  brainBoard: vi.fn(),
-  brainWorkflowList: vi.fn(),
-}));
-
-const mockBoard = vi.mocked(brainBoard);
-const mockWorkflowList = vi.mocked(brainWorkflowList);
+// The router takes its workflow list as an injected source, so tests control
+// what the brain "returns" without a live proxy.
+const mockWorkflowList = vi.fn<() => Promise<readonly BrainWorkflowTemplate[]>>();
 
 let server: http.Server;
 let base: string;
 
 async function listen(): Promise<void> {
   const app = express();
-  app.use("/api/mechanism", buildMechanismRouter());
-  app.use("/api/kanban", buildKanbanRouter());
+  app.use("/api/mechanism", buildMechanismRouter({ workflowList: mockWorkflowList }));
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
   base = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
@@ -39,17 +30,10 @@ afterEach(async () => {
   await new Promise((r) => server.close(r));
 });
 
-type Awaitable<T> = T | Promise<T>;
-type WorkflowListResult = Awaited<ReturnType<typeof brainWorkflowList>>;
-type BoardResult = Awaited<ReturnType<typeof brainBoard>>;
-
-/** Loosely-shaped brain payloads: the routes normalize snake_case/camelCase
+/** Loosely-shaped brain payloads: the route normalizes snake_case/camelCase
  *  variants at runtime, so mocks are authored untyped and cast once here. */
 function givenWorkflows(templates: unknown[]): void {
-  mockWorkflowList.mockResolvedValue(templates as Awaitable<never> & WorkflowListResult);
-}
-function givenBoard(board: unknown): void {
-  mockBoard.mockResolvedValue(board as Awaitable<never> & BoardResult);
+  mockWorkflowList.mockResolvedValue(templates as BrainWorkflowTemplate[]);
 }
 
 interface WorkflowRow {
@@ -160,7 +144,7 @@ describe("buildMechanismRouter run stats", () => {
 
   async function listenWith(runStats: RunStatsSource): Promise<void> {
     const app = express();
-    app.use("/api/mechanism", buildMechanismRouter({ runStats }));
+    app.use("/api/mechanism", buildMechanismRouter({ workflowList: mockWorkflowList, runStats }));
     statsServer = http.createServer(app);
     await new Promise<void>((r) => statsServer.listen(0, "127.0.0.1", r));
     statsBase = `http://127.0.0.1:${(statsServer.address() as AddressInfo).port}`;
@@ -210,113 +194,6 @@ describe("buildMechanismRouter run stats", () => {
         "[/api/mechanism/workflows] run stats unavailable:",
         expect.any(Error),
       );
-    } finally {
-      spy.mockRestore();
-    }
-  });
-});
-
-describe("buildKanbanRouter (HTTP)", () => {
-  const eligibleTemplates = [
-    {
-      id: "wf-auto",
-      name: "Auto",
-      steps: [{ name: "a" }, { name: "b" }, { name: "c" }],
-    },
-    { id: "wf-short", name: "Short", steps: [{ name: "only" }] }, // ineligible
-  ];
-
-  it("flattens tasks of mechanism-eligible workflows only, normalizing field variants", async () => {
-    givenWorkflows(eligibleTemplates);
-    givenBoard({
-      goals: [
-        {
-          id: "g1",
-          sourceWorkflowId: "wf-auto", // camelCase variant
-          tasks: [
-            { id: "t1", name: "Task 1", status: "done", updated_at: "2026-06-01T00:00:00Z" },
-            { id: "t2", name: "Task 2", status: "running", updatedAt: "2026-06-02T00:00:00Z" },
-            { id: "t3", name: "Task 3", status: "queued" }, // no timestamp variant
-          ],
-        },
-        {
-          id: "g2",
-          source_workflow_id: "wf-auto", // snake_case variant, no tasks array
-        },
-        {
-          id: "g3",
-          source_workflow_id: "wf-short", // ineligible workflow → skipped
-          tasks: [{ id: "tx", name: "X", status: "done" }],
-        },
-        { id: "g4" }, // no workflow id at all → skipped
-      ],
-    });
-
-    const res = await fetch(`${base}/api/kanban`);
-    expect(res.status).toBe(200);
-    const json = (await res.json()) as { tasks: Array<Record<string, unknown>> };
-    expect(json.tasks).toEqual([
-      {
-        id: "t1",
-        workflow_id: "wf-auto",
-        workflow_name: "Auto",
-        status: "done",
-        name: "Task 1",
-        last_update_ts: "2026-06-01T00:00:00Z",
-      },
-      {
-        id: "t2",
-        workflow_id: "wf-auto",
-        workflow_name: "Auto",
-        status: "running",
-        name: "Task 2",
-        last_update_ts: "2026-06-02T00:00:00Z",
-      },
-      {
-        id: "t3",
-        workflow_id: "wf-auto",
-        workflow_name: "Auto",
-        status: "queued",
-        name: "Task 3",
-        last_update_ts: null,
-      },
-    ]);
-  });
-
-  it("falls back to the workflow id when the template has no name, and to [] without goals", async () => {
-    // A brain payload may omit `name`; the route echoes the id instead.
-    givenWorkflows([{ id: "wf-anon", steps: [{ name: "a" }, { name: "b" }, { name: "c" }] }]);
-    givenBoard({
-      goals: [
-        {
-          id: "g1",
-          sourceWorkflowId: "wf-anon",
-          tasks: [{ id: "t1", name: "Task 1", status: "done" }],
-        },
-      ],
-    });
-    const withAnon = (await (await fetch(`${base}/api/kanban`)).json()) as {
-      tasks: Array<{ workflow_name: string }>;
-    };
-    expect(withAnon.tasks[0]!.workflow_name).toBe("wf-anon");
-
-    // A board without a goals array degrades to an empty task list.
-    givenWorkflows(eligibleTemplates);
-    givenBoard({});
-    const empty = (await (await fetch(`${base}/api/kanban`)).json()) as { tasks: unknown[] };
-    expect(empty.tasks).toEqual([]);
-  });
-
-  it("500s when the brain board is unavailable", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      givenWorkflows(eligibleTemplates);
-      mockBoard.mockRejectedValue(new Error("brain down"));
-      const res = await fetch(`${base}/api/kanban`);
-      expect(res.status).toBe(500);
-      const json = (await res.json()) as { error: string };
-      expect(json.error).toBe("Failed to fetch kanban tasks");
-      expect(spy).toHaveBeenCalled();
     } finally {
       spy.mockRestore();
     }

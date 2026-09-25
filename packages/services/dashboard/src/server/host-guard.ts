@@ -40,7 +40,8 @@ export function extractHostname(hostHeader: string | undefined | null): string |
     if (end === -1) return null; // malformed — no closing bracket
     name = hostHeader.slice(1, end);
   } else {
-    name = hostHeader.split(":")[0];
+    const colon = hostHeader.indexOf(":");
+    name = colon === -1 ? hostHeader : hostHeader.slice(0, colon);
   }
   return name.length > 0 ? name.toLowerCase() : null;
 }
