@@ -7,6 +7,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { TRACE_KINDS } from "@digital-me/contracts";
 import type {
   TraceKind,
   TraceQueryFilters,
@@ -14,15 +15,14 @@ import type {
   TracesStore,
 } from "../store/traces.js";
 
-export const VALID_TRACE_KINDS: ReadonlySet<TraceKind> = new Set<TraceKind>([
-  "tool_call",
-  "task_start",
-  "task_complete",
-  "task_failed",
-  "learning_captured",
-  "session_start",
-  "session_end",
-]);
+/**
+ * Set view of the shared `TRACE_KINDS` vocabulary (@digital-me/contracts) —
+ * includes `mcp_tool_call`, the kind the MCP proxy writes itself, so its
+ * rows are queryable through `traces_query`.
+ */
+export const VALID_TRACE_KINDS: ReadonlySet<TraceKind> = new Set<TraceKind>(
+  TRACE_KINDS,
+);
 
 export type RecordTraceInput = {
   readonly agentId: string;

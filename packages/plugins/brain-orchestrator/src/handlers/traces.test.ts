@@ -113,8 +113,8 @@ describe("queryTraces", () => {
 });
 
 describe("VALID_TRACE_KINDS", () => {
-  it("exposes the closed seven-kind vocabulary", () => {
-    expect(VALID_TRACE_KINDS.size).toBe(7);
+  it("exposes the closed eight-kind vocabulary (incl. the proxy's mcp_tool_call)", () => {
+    expect(VALID_TRACE_KINDS.size).toBe(8);
     for (const k of [
       "tool_call",
       "task_start",
@@ -123,6 +123,7 @@ describe("VALID_TRACE_KINDS", () => {
       "learning_captured",
       "session_start",
       "session_end",
+      "mcp_tool_call",
     ] as const) {
       expect(VALID_TRACE_KINDS.has(k)).toBe(true);
     }

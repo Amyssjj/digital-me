@@ -8,15 +8,33 @@
  */
 
 import { Type, type Static } from "typebox";
+import {
+  LEARNING_KINDS,
+  M1_EVENT_TYPES,
+  TASKS_ACTIONS,
+  TRACE_KINDS,
+} from "@digital-me/contracts";
+
+/**
+ * A string enum derived from a shared @digital-me/contracts vocabulary — the
+ * same arrays brain-orchestrator validates against, so these schemas can't
+ * advertise a value the brain rejects.
+ */
+function stringEnum<const V extends readonly string[]>(
+  values: V,
+  description: string,
+) {
+  return Type.Enum([...values] as [...V], { type: "string", description });
+}
 
 // ── tasks ──────────────────────────────────────────────────────────────────
 
 export const TasksToolSchema = Type.Object(
   {
-    action: Type.String({
-      description:
-        "Action to perform. One of: run_goal, run_workflow, board, status, checkpoint, handoff, approve, reject, cancel, claim, complete, schedule_add, schedule_list, schedule_remove, schedule_enable, schedule_disable, schedule_tick, workflow_import, workflow_list, workflow_delete.",
-    }),
+    action: stringEnum(
+      TASKS_ACTIONS,
+      `Action to perform. One of: ${TASKS_ACTIONS.join(", ")}.`,
+    ),
     description: Type.Optional(
       Type.String({ description: "Goal description for run_goal." }),
     ),
@@ -160,9 +178,10 @@ export const AgentIdentifyToolSchema = Type.Object(
 export const LearningCaptureToolSchema = Type.Object(
   {
     agent_id: Type.String({ description: "Caller agent identity." }),
-    kind: Type.String({
-      description: "Learning kind: feedback | project | reference | rejection.",
-    }),
+    kind: stringEnum(
+      LEARNING_KINDS,
+      `Learning kind: ${LEARNING_KINDS.join(" | ")}.`,
+    ),
     text: Type.String({ description: "The learning content." }),
     why: Type.Optional(
       Type.String({ description: "Why this learning matters." }),
@@ -198,10 +217,7 @@ export const LearningCaptureToolSchema = Type.Object(
 export const TracesRecordToolSchema = Type.Object(
   {
     agent_id: Type.String({ description: "Caller agent identity." }),
-    kind: Type.String({
-      description:
-        "Trace kind: tool_call | task_start | task_complete | task_failed | learning_captured | session_start | session_end.",
-    }),
+    kind: stringEnum(TRACE_KINDS, `Trace kind: ${TRACE_KINDS.join(" | ")}.`),
     payload: Type.Optional(
       Type.String({
         description: "JSON object with trace-specific data.",
@@ -239,9 +255,7 @@ export const TracesQueryToolSchema = Type.Object(
     task_id: Type.Optional(
       Type.String({ description: "Filter by task ID." }),
     ),
-    kind: Type.Optional(
-      Type.String({ description: "Filter by trace kind." }),
-    ),
+    kind: Type.Optional(stringEnum(TRACE_KINDS, "Filter by trace kind.")),
     since: Type.Optional(
       Type.Number({
         description: "Only traces after this epoch ms timestamp.",
@@ -283,10 +297,10 @@ export const M1EventRecordToolSchema = Type.Object(
         description: "Monotonic per-session turn id. Required for knowledge_surfaced and assistant_ack.",
       }),
     ),
-    event_type: Type.String({
-      description:
-        "Event type. v1: session_start | knowledge_surfaced | assistant_ack | session_snapshot | session_end.",
-    }),
+    event_type: stringEnum(
+      M1_EVENT_TYPES,
+      `Event type. v1: ${M1_EVENT_TYPES.join(" | ")}.`,
+    ),
     entries: Type.Optional(
       Type.String({
         description:
