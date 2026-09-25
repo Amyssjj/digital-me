@@ -2885,17 +2885,13 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
       return null;
     }
   })();
-  const logPath = resolveGatewayLog(process.env, home);
-  if (!logPath) {
-    console.log(
-      "deploy openclaw: no gateway log found — restart succeeded but cannot verify the live marker yet. " +
-        "Marker will confirm on the first agent turn after the gateway emits its log.",
-    );
-    return true;
-  }
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    if (existsSync(logPath)) {
+    // Re-resolve every poll: a first-boot host has no gateway log until a few
+    // seconds after the restart, and a restart can start a newer dated log.
+    // Resolving once up front skipped the whole wait window in the first case.
+    const logPath = resolveGatewayLog(process.env, home);
+    if (logPath && existsSync(logPath)) {
       const live = parseRecallAckMode(readFileSync(logPath, "utf-8").slice(-20000));
       if (live) {
         if (!expected || live === expected) {
@@ -2916,7 +2912,8 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
   }
   // Registration is lazy (fires on the first agent turn) — restart succeeded.
   console.log(
-    "deploy openclaw: gateway restarted; recall marker will confirm on the next agent turn.",
+    "deploy openclaw: gateway restarted; no gateway log or recall marker within 30s — " +
+      "the marker will confirm on the next agent turn.",
   );
   return true;
 }
