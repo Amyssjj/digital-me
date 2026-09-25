@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
+import { WIKI_ACTIONS } from "@digital-me/contracts";
 import { HashEmbedder } from "./retriever/embedder.js";
 import { buildIndex } from "./retriever/index-builder.js";
 import { VectorCache } from "./retriever/search.js";
@@ -83,6 +84,13 @@ describe("invokeTool", () => {
     expect(st.ok && st.result.details).toMatchObject({ status: "ok", version: "test", entries: 1, sections: 2 });
     const bad = await invokeTool(deps, "wiki", { action: "read" });
     expect(!bad.ok && bad.error.type).toBe("invalid_request");
+  });
+
+  it("serves every wiki action the MCP proxy advertises (shared WIKI_ACTIONS)", async () => {
+    const deps = await setup();
+    for (const action of WIKI_ACTIONS) {
+      expect((await invokeTool(deps, "wiki", { action })).ok, action).toBe(true);
+    }
   });
 
   it("unknown tools name the served set", async () => {

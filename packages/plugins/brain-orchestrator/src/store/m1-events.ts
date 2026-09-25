@@ -20,25 +20,18 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import { M1_EVENT_TYPES, type M1EventType } from "@digital-me/contracts";
 import type { Migration } from "./migrations.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
 /** v1 event types. Unknown values are accepted but ignored by the scorer. */
-export type M1EventType =
-  | "session_start"
-  | "knowledge_surfaced"
-  | "assistant_ack"
-  | "session_snapshot"
-  | "session_end";
+export type { M1EventType };
 
-export const M1_EVENT_TYPES_V1: ReadonlySet<M1EventType> = new Set<M1EventType>([
-  "session_start",
-  "knowledge_surfaced",
-  "assistant_ack",
-  "session_snapshot",
-  "session_end",
-]);
+/** Set view of the shared `M1_EVENT_TYPES` vocabulary (@digital-me/contracts). */
+export const M1_EVENT_TYPES_V1: ReadonlySet<M1EventType> = new Set<M1EventType>(
+  M1_EVENT_TYPES,
+);
 
 export type M1AckSignal =
   | "explicit_path"

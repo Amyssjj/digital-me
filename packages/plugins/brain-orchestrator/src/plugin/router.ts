@@ -65,6 +65,7 @@ import type {
 import type { WorkflowsStore } from "../store/workflows.js";
 import type { SchedulesStore } from "../store/schedules.js";
 import type { DatabaseSync } from "node:sqlite";
+import { isOneOf, TASKS_ACTIONS, type TasksAction } from "@digital-me/contracts";
 
 export type RouterDeps = {
   readonly db: DatabaseSync;
@@ -90,30 +91,72 @@ export type RouterResult = {
   readonly json?: unknown;
 };
 
-export const TASKS_ACTIONS = [
-  "run_goal",
-  "run_workflow",
-  "board",
-  "status",
-  "checkpoint",
-  "handoff",
-  "approve",
-  "reject",
-  "cancel",
-  "claim",
-  "complete",
-  "schedule_add",
-  "schedule_list",
-  "schedule_remove",
-  "schedule_enable",
-  "schedule_disable",
-  "schedule_tick",
-  "workflow_import",
-  "workflow_list",
-  "workflow_delete",
-] as const;
+/**
+ * The action vocabulary lives in @digital-me/contracts so the MCP proxy and
+ * the openclaw schemas advertise exactly what this router serves. Re-exported
+ * here for existing consumers.
+ */
+export { TASKS_ACTIONS, type TasksAction };
 
-export type TasksAction = (typeof TASKS_ACTIONS)[number];
+type ActionHandler = (
+  deps: RouterDeps,
+  params: Readonly<Record<string, unknown>>,
+  json: boolean,
+) => RouterResult | Promise<RouterResult>;
+
+/**
+ * One handler per action. Typed as a total `Record<TasksAction, …>` so an
+ * action added to TASKS_ACTIONS without a handler — or a handler for an
+ * action that isn't in TASKS_ACTIONS — is a compile error, not a runtime
+ * "Unknown action".
+ */
+const ACTION_HANDLERS: Readonly<Record<TasksAction, ActionHandler>> = {
+  run_goal: (deps, params) => handleRunGoal(deps, params),
+  run_workflow: (deps, params) => handleRunWorkflow(deps, params),
+  board: (deps, params, json) =>
+    json ? handleBoardJson(deps, params) : handleBoardMarkdown(deps),
+  status: (deps, params, json) =>
+    json ? handleStatusJson(deps, params) : handleStatusMarkdown(deps, params),
+  checkpoint: (deps, params) => handleCheckpoint(deps, params),
+  handoff: (deps, params) => handleHandoff(deps, params),
+  approve: (deps, params) =>
+    fromTransition(approveTask(deps, asString(params.taskId))),
+  reject: (deps, params) =>
+    fromTransition(
+      rejectTask(deps, asString(params.taskId), asOptString(params.reason)),
+    ),
+  cancel: (deps, params) =>
+    fromTransition(cancelGoal(deps, asString(params.goalId))),
+  claim: (deps, params) =>
+    fromTransition(claimTask(deps, asString(params.taskId))),
+  complete: (deps, params) =>
+    fromTransition(completeTask(deps, asString(params.taskId))),
+  schedule_add: (deps, params) => handleScheduleAdd(deps, params),
+  schedule_list: (deps, _params, json) =>
+    json ? handleScheduleListJson(deps) : handleScheduleListMarkdown(deps),
+  schedule_remove: (deps, params) =>
+    fromRemoveSchedule(removeSchedule(deps, asString(params.scheduleId))),
+  schedule_enable: (deps, params) =>
+    fromToggleSchedule(
+      setScheduleEnabled(deps, asString(params.scheduleId), true),
+    ),
+  schedule_disable: (deps, params) =>
+    fromToggleSchedule(
+      setScheduleEnabled(deps, asString(params.scheduleId), false),
+    ),
+  schedule_tick: (deps) => handleScheduleTick(deps),
+  workflow_import: (deps, params) =>
+    fromBuilder(
+      importWorkflowFromJson(
+        { ...deps, defaultDispatchAgentId: undefined },
+        asString(params.workflowJson),
+        asOptString(params.importMode) === "upsert" ? "upsert" : "create",
+      ),
+    ),
+  workflow_list: (deps, _params, json) =>
+    json ? handleWorkflowListJson(deps) : handleWorkflowListMarkdown(deps),
+  workflow_delete: (deps, params) => handleWorkflowDelete(deps, params),
+};
 
 // ── Entry point ────────────────────────────────────────────────────────────
 
@@ -122,65 +165,10 @@ export async function dispatchAction(
   action: string,
   params: Readonly<Record<string, unknown>>,
 ): Promise<RouterResult> {
-  const json = params.format === "json";
-  switch (action) {
-    case "run_goal":
-      return await handleRunGoal(deps, params);
-    case "run_workflow":
-      return await handleRunWorkflow(deps, params);
-    case "board":
-      return json ? handleBoardJson(deps, params) : handleBoardMarkdown(deps);
-    case "status":
-      return json ? handleStatusJson(deps, params) : handleStatusMarkdown(deps, params);
-    case "checkpoint":
-      return handleCheckpoint(deps, params);
-    case "handoff":
-      return handleHandoff(deps, params);
-    case "approve":
-      return fromTransition(approveTask(deps, asString(params.taskId)));
-    case "reject":
-      return fromTransition(
-        rejectTask(deps, asString(params.taskId), asOptString(params.reason)),
-      );
-    case "cancel":
-      return fromTransition(cancelGoal(deps, asString(params.goalId)));
-    case "claim":
-      return fromTransition(claimTask(deps, asString(params.taskId)));
-    case "complete":
-      return fromTransition(completeTask(deps, asString(params.taskId)));
-    case "schedule_add":
-      return handleScheduleAdd(deps, params);
-    case "schedule_list":
-      return json ? handleScheduleListJson(deps) : handleScheduleListMarkdown(deps);
-    case "schedule_remove":
-      return fromRemoveSchedule(
-        removeSchedule(deps, asString(params.scheduleId)),
-      );
-    case "schedule_enable":
-      return fromToggleSchedule(
-        setScheduleEnabled(deps, asString(params.scheduleId), true),
-      );
-    case "schedule_disable":
-      return fromToggleSchedule(
-        setScheduleEnabled(deps, asString(params.scheduleId), false),
-      );
-    case "schedule_tick":
-      return await handleScheduleTick(deps);
-    case "workflow_import":
-      return fromBuilder(
-        importWorkflowFromJson(
-          { ...deps, defaultDispatchAgentId: undefined },
-          asString(params.workflowJson),
-          asOptString(params.importMode) === "upsert" ? "upsert" : "create",
-        ),
-      );
-    case "workflow_list":
-      return json ? handleWorkflowListJson(deps) : handleWorkflowListMarkdown(deps);
-    case "workflow_delete":
-      return handleWorkflowDelete(deps, params);
-    default:
-      return { ok: false, text: `Unknown action: ${action}` };
+  if (!isOneOf(TASKS_ACTIONS, action)) {
+    return { ok: false, text: `Unknown action: ${action}` };
   }
+  return await ACTION_HANDLERS[action](deps, params, params.format === "json");
 }
 
 // ── Action handlers ───────────────────────────────────────────────────────

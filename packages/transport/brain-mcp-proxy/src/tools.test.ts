@@ -1,5 +1,44 @@
 import { describe, expect, it } from "vitest";
+import {
+  LEARNING_KINDS,
+  M1_EVENT_TYPES,
+  MEMORY_CORPORA,
+  TASKS_ACTIONS,
+  TRACE_KINDS,
+  WIKI_ACTIONS,
+} from "@digital-me/contracts";
 import { TOOLS, PROXY_TRACE_KIND } from "./tools.js";
+
+type EnumProp = { enum?: readonly string[] };
+
+function enumOf(tool: string, prop: string): readonly string[] | undefined {
+  const t = TOOLS.find((x) => x.name === tool)!;
+  return (t.inputSchema.properties as Record<string, EnumProp>)[prop]?.enum;
+}
+
+describe("TOOLS enums come from the shared brain-tool vocabulary", () => {
+  // The brain (brain-orchestrator router/handlers, brain-host) validates
+  // against these same @digital-me/contracts arrays, so an exact match here
+  // means the proxy never advertises a value the brain rejects.
+  it.each([
+    ["tasks", "action", TASKS_ACTIONS],
+    ["wiki", "action", WIKI_ACTIONS],
+    ["traces_record", "kind", TRACE_KINDS],
+    ["traces_query", "kind", TRACE_KINDS],
+    ["learning_capture", "kind", LEARNING_KINDS],
+    ["m1_event_record", "event_type", M1_EVENT_TYPES],
+    ["memory_search", "corpus", MEMORY_CORPORA],
+    ["memory_get", "corpus", MEMORY_CORPORA],
+  ] as const)("%s.%s", (tool, prop, expected) => {
+    expect(enumOf(tool, prop)).toEqual([...expected]);
+  });
+
+  it("no longer advertises actions the brain does not serve", () => {
+    expect(enumOf("tasks", "action")).not.toContain("plan_goal");
+    expect(enumOf("tasks", "action")).not.toContain("retry");
+    expect(enumOf("wiki", "action")).toEqual(["status"]);
+  });
+});
 
 describe("TOOLS schema", () => {
   it("exposes the ten expected tool names", () => {

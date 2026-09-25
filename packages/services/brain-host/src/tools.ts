@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, normalize as normalizePath, resolve, sep } from "node:path";
 import type { BrainTool, MCPToolResult } from "@digital-me/brain-orchestrator";
+import { isOneOf, WIKI_ACTIONS } from "@digital-me/contracts";
 import { errorMessage } from "./errors.js";
 import type { Embedder } from "./retriever/embedder.js";
 import { search, type VectorCache } from "./retriever/search.js";
@@ -127,7 +128,10 @@ function memoryGet(deps: ToolDeps, args: Record<string, unknown>): ToolEnvelope 
 
 function wikiTool(deps: ToolDeps, args: Record<string, unknown>): ToolEnvelope {
   const action = str(args.action) ?? "status";
-  if (action !== "status") return errEnvelope("invalid_request", `wiki action "${action}" is not served by brain-host (only: status)`);
+  // WIKI_ACTIONS is what the MCP proxy advertises; this is the only one served.
+  if (!isOneOf(WIKI_ACTIONS, action)) {
+    return errEnvelope("invalid_request", `wiki action "${action}" is not served by brain-host (only: ${WIKI_ACTIONS.join(", ")})`);
+  }
   const stats = deps.store.stats();
   return okEnvelope({
     status: "ok",

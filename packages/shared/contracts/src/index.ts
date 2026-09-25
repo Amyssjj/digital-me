@@ -26,6 +26,25 @@ export type { BrainPathDeps, BrainPathSource, ResolvedBrainPath } from "./paths.
 
 export { BRAIN_SIDECAR_FILE, renderBrainSidecar } from "./brain-sidecar.js";
 
+export {
+  TASKS_ACTIONS,
+  PROXY_TRACE_KIND,
+  TRACE_KINDS,
+  LEARNING_KINDS,
+  M1_EVENT_TYPES,
+  WIKI_ACTIONS,
+  MEMORY_CORPORA,
+  isOneOf,
+} from "./brain-tools.js";
+
+export type {
+  TasksAction,
+  TraceKind,
+  LearningKind,
+  M1EventType,
+  WikiAction,
+} from "./brain-tools.js";
+
 export type { BrainSidecarValues } from "./brain-sidecar.js";
 
 export type {

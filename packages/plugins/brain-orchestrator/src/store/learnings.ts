@@ -11,11 +11,13 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import type { LearningKind } from "@digital-me/contracts";
 import type { Migration } from "./migrations.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type LearningKind = "feedback" | "project" | "reference" | "rejection";
+/** Derived from the shared `LEARNING_KINDS` vocabulary (@digital-me/contracts). */
+export type { LearningKind };
 
 export type LearningRecord = {
   readonly id: string;
