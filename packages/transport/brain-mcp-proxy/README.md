@@ -176,7 +176,7 @@ Testable modules + two entry points (stdio and HTTP share the same handler stack
 | `handler.ts` | CallTool: agent_id injection + attribution + invoke | 100% |
 | `lifecycle.ts` | Parent-PID death watcher | 100% |
 | `http-config.ts` | HTTP transport config (secure defaults) | 100% |
-| `http-auth.ts` | Bearer auth (timing-safe) + agent-id resolution | 100% |
+| `http-auth.ts` | Agent-id resolution (bearer parsing, timing-safe compare, body reading, loopback check come from `@digital-me/contracts`) | 100% |
 | `http-app.ts` | Stateless Streamable HTTP request handling | 100% |
 | `server.ts` | Wire modules to MCP SDK + Node process (stdio entry) | excluded from coverage — exercised end-to-end |
 | `http-server.ts` | Wire modules to node:http (HTTP service entry) | excluded from coverage — exercised end-to-end |

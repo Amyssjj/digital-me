@@ -158,7 +158,8 @@ The brain is [`@digital-me/brain-host`](packages/services/brain-host/): one Node
 
 ```bash
 digital-me service brain-host status                 # process, port, health
-curl -s http://127.0.0.1:18791/health | jq .         # index size, scheduler, brain.db location
+curl -s -H "Authorization: Bearer $(cat ~/digital-me/.data/brain-host.token)" \
+  http://127.0.0.1:18791/health | jq .               # index size, scheduler, brain.db location (tokenless: {ok, version} only)
 DIGITAL_ME_BRAIN_SCHEDULER=off digital-me service brain-host install   # hand the tick to another host
 ```
 

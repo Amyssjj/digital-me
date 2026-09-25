@@ -25,6 +25,7 @@ If a required env var is missing, `loadConfig()` throws `MissingRequiredEnvError
 - **`env.ts`** — environment variables, defaults, derived defaults, resolution logic
 - **`schemas.ts`** — TypeScript types for the `config.yaml` shape consumed by various packages
 - **`brain-sidecar.ts`** — the `digital-me-brain.env` file the installers write next to the hooks (brain-host URL + token-file path; see `docs/CONTRACTS.md`)
+- **`http.ts`** — HTTP hardening shared by brain-host and the brain MCP proxy: bearer parsing, sha256 constant-time token compare, `readJsonBody` (byte cap, never rejects on client abort), `isLoopbackHost`, `MIN_TOKEN_LENGTH`
 
 ## Adding a new variable
 

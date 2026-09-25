@@ -1,45 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  extractBearerToken,
-  resolveAgentId,
-  timingSafeTokenEqual,
-} from "./http-auth.js";
-
-describe("extractBearerToken", () => {
-  it("returns null when the header is absent", () => {
-    expect(extractBearerToken(undefined)).toBeNull();
-  });
-
-  it("returns null for a non-Bearer scheme", () => {
-    expect(extractBearerToken("Basic dXNlcjpwdw==")).toBeNull();
-  });
-
-  it("returns null for a Bearer header without a token", () => {
-    expect(extractBearerToken("Bearer")).toBeNull();
-  });
-
-  it("extracts the token from a Bearer header", () => {
-    expect(extractBearerToken("Bearer sekrit-token")).toBe("sekrit-token");
-  });
-
-  it("is case-insensitive about the scheme and tolerant of padding", () => {
-    expect(extractBearerToken("  bearer sekrit-token  ")).toBe("sekrit-token");
-  });
-});
-
-describe("timingSafeTokenEqual", () => {
-  it("accepts an exact match", () => {
-    expect(timingSafeTokenEqual("abc123", "abc123")).toBe(true);
-  });
-
-  it("rejects a mismatch", () => {
-    expect(timingSafeTokenEqual("abc123", "abc124")).toBe(false);
-  });
-
-  it("rejects tokens of different lengths without throwing", () => {
-    expect(timingSafeTokenEqual("abc123", "abc")).toBe(false);
-  });
-});
+import { resolveAgentId } from "./http-auth.js";
 
 describe("resolveAgentId", () => {
   it("falls back when no value is provided", () => {

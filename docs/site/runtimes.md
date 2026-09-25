@@ -37,8 +37,9 @@ What lands:
 - `~/digital-me/.data/.env` — where you put `GEMINI_API_KEY`; the service loads
   it and every worker it dispatches inherits it
 
-Verify: `curl -s http://127.0.0.1:18791/health` reports the index size, the
-scheduler state and which `brain.db` it opened.
+Verify: `curl -s -H "Authorization: Bearer $(cat ~/digital-me/.data/brain-host.token)" http://127.0.0.1:18791/health`
+reports the index size, the scheduler state and which `brain.db` it opened.
+Without the token, `/health` answers only `{ ok, version }` (liveness).
 
 ## Claude Code
 

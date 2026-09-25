@@ -9,7 +9,15 @@ Until `1.0.0`, minor versions may include breaking changes.
 
 ## [Unreleased]
 
-_Nothing yet._
+### Security
+
+- brain-host: a client aborting mid-upload can no longer crash the process
+  (unhandled rejection); `/health` without a bearer token now returns only
+  `{ ok, version }` — paths, index and orchestrator detail need the token;
+  `serve` rejects tokens shorter than 16 characters and warns on a
+  non-loopback `DIGITAL_ME_BRAIN_HOST`; the token compare no longer leaks the
+  token length. The HTTP helpers are now shared with brain-mcp-proxy via
+  `@digital-me/contracts`.
 
 ## [0.1.0] - 2026-06-26
 

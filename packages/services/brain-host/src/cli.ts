@@ -5,7 +5,7 @@
 
 import { createRequire } from "node:module";
 import { parseArgs, USAGE } from "./cli-args.js";
-import { loadConfig } from "./config.js";
+import { checkServeConfig, loadConfig } from "./config.js";
 import { startServer } from "./http-server.js";
 import { BrainHostRuntime } from "./runtime.js";
 
@@ -61,12 +61,14 @@ export async function main(argv: readonly string[]): Promise<number> {
       process.stdout.write(`${JSON.stringify(runtime.health(), null, 2)}\n`);
       return 0;
     case "serve": {
-      if (config.token === undefined) {
-        process.stderr.write("brain-host: DIGITAL_ME_BRAIN_TOKEN must be set to serve\n");
+      const check = checkServeConfig(config);
+      if (!check.ok) {
+        process.stderr.write(`brain-host: ${check.message}\n`);
         return 2;
       }
+      for (const warning of check.warnings) log(warning);
       const port = cmd.port ?? config.port;
-      const server = await startServer({ runtime, token: config.token, host: config.host, port, log });
+      const server = await startServer({ runtime, token: check.token, host: config.host, port, log });
       runtime.startIndexRefresh();
       const toolList = ["memory_search", "memory_get", "wiki", ...(runtime.orchestrator?.tools.keys() ?? [])];
       log(`serving http://${config.host}:${port} (tools: ${toolList.join(", ")}; scheduler ${config.schedulerEnabled ? "ON" : "off"})`);

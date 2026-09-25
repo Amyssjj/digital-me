@@ -28,6 +28,16 @@ export { BRAIN_SIDECAR_FILE, renderBrainSidecar } from "./brain-sidecar.js";
 
 export type { BrainSidecarValues } from "./brain-sidecar.js";
 
+export {
+  MIN_TOKEN_LENGTH,
+  extractBearerToken,
+  timingSafeTokenEqual,
+  isLoopbackHost,
+  readJsonBody,
+} from "./http.js";
+
+export type { JsonBodyResult } from "./http.js";
+
 export type {
   InjectionRule,
   InjectionRulesConfig,
