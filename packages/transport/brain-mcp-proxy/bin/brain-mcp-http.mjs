@@ -2,6 +2,6 @@
 import { mainHttp } from "../dist/index.js";
 
 mainHttp().catch((err) => {
-  process.stderr.write(`openclaw-brain MCP HTTP transport fatal error: ${err?.stack ?? String(err)}\n`);
+  process.stderr.write(`digital-me-brain MCP HTTP transport fatal error: ${err?.stack ?? String(err)}\n`);
   process.exit(1);
 });

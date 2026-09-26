@@ -9,7 +9,6 @@ import type { CallToolResult } from "./gateway.js";
 import {
   createRequestListener,
   handleMcpRequest,
-  readJsonBody,
   withEnforcedAgentId,
   type RequestListenerDeps,
   type ToolHandler,
@@ -46,62 +45,6 @@ function makeDeps(overrides?: Partial<RequestListenerDeps>): {
   };
   return { deps, calls, logs };
 }
-
-// ─── readJsonBody ───────────────────────────────────────────────────────────
-
-describe("readJsonBody", () => {
-  function streamWith(payload: string): IncomingMessage {
-    const stream = new PassThrough();
-    stream.end(payload);
-    return stream as unknown as IncomingMessage;
-  }
-
-  it("parses a valid JSON body", async () => {
-    const result = await readJsonBody(streamWith('{"a":1}'), 1024);
-    expect(result).toEqual({ ok: true, value: { a: 1 } });
-  });
-
-  it("rejects an empty body", async () => {
-    const result = await readJsonBody(streamWith(""), 1024);
-    expect(result).toEqual({
-      ok: false,
-      status: 400,
-      message: "empty request body",
-    });
-  });
-
-  it("rejects malformed JSON", async () => {
-    const result = await readJsonBody(streamWith("{nope"), 1024);
-    expect(result).toMatchObject({ ok: false, status: 400 });
-  });
-
-  it("rejects a body over the byte cap with 413", async () => {
-    const result = await readJsonBody(streamWith("x".repeat(64)), 10);
-    expect(result).toMatchObject({ ok: false, status: 413 });
-  });
-
-  it("maps a stream error to 400", async () => {
-    const stream = new PassThrough();
-    const pending = readJsonBody(stream as unknown as IncomingMessage, 1024);
-    stream.emit("error", new Error("boom"));
-    const result = await pending;
-    expect(result).toMatchObject({ ok: false, status: 400 });
-    if (!result.ok) {
-      expect(result.message).toContain("boom");
-    }
-  });
-
-  it("stringifies non-Error stream failures", async () => {
-    const stream = new PassThrough();
-    const pending = readJsonBody(stream as unknown as IncomingMessage, 1024);
-    stream.emit("error", "raw-string-failure" as unknown as Error);
-    const result = await pending;
-    expect(result).toMatchObject({ ok: false, status: 400 });
-    if (!result.ok) {
-      expect(result.message).toContain("raw-string-failure");
-    }
-  });
-});
 
 // ─── withEnforcedAgentId branch coverage ────────────────────────────────────
 

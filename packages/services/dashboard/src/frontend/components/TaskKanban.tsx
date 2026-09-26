@@ -173,7 +173,7 @@ function AgentFilterBar({
             }}
           >
             <span
-              className="w-2 h-2 rounded-full flex-shrink-0"
+              className="w-2 h-2 rounded-full shrink-0"
               style={{ background: color }}
             />
             {agentLabel(agentId)}
@@ -296,7 +296,7 @@ function AttemptHistory({ attempts }: { attempts: KanbanAttempt[] }) {
           style={{ background: STATUS_BG[a.status] }}
         >
           <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{ background: STATUS_COLORS[a.status] }}
           />
           <span className="font-mono text-gray-500">#{a.attemptNumber}</span>
@@ -350,17 +350,17 @@ function TaskCard({
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-1.5 min-w-0">
           <span
-            className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+            className="w-1.5 h-1.5 rounded-full shrink-0"
             style={{ background: STATUS_COLORS[task.status] }}
           />
           <span className="text-[11px] font-semibold text-gray-700 truncate">
             {task.name}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 flex-shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
           {task.priority !== "normal" && (
             <span
-              className="text-[8px] font-bold uppercase px-1 py-0.5 rounded"
+              className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm"
               style={{
                 color: PRIORITY_COLORS[task.priority],
                 background: `${PRIORITY_COLORS[task.priority]}15`,
@@ -388,7 +388,7 @@ function TaskCard({
           {blockerNames.map((name) => (
             <span
               key={name}
-              className="text-[8px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-mono"
+              className="text-[8px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 font-mono"
             >
               {name}
             </span>
@@ -493,7 +493,7 @@ function GoalCard({ goal, index }: { goal: KanbanGoal; index: number }) {
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
               <span
-                className="w-2 h-2 rounded-full flex-shrink-0"
+                className="w-2 h-2 rounded-full shrink-0"
                 style={{ background: STATUS_COLORS[goal.status] }}
               />
               <h3 className="text-sm font-semibold text-gray-800 truncate">
@@ -501,7 +501,7 @@ function GoalCard({ goal, index }: { goal: KanbanGoal; index: number }) {
               </h3>
               {goal.agentId && (
                 <span
-                  className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full flex-shrink-0"
+                  className="text-[8px] font-bold uppercase px-1.5 py-0.5 rounded-full shrink-0"
                   style={{
                     background: `${agentColor(goal.agentId)}18`,
                     color: agentColor(goal.agentId),
@@ -518,7 +518,7 @@ function GoalCard({ goal, index }: { goal: KanbanGoal; index: number }) {
               </p>
             )}
           </div>
-          <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex items-center gap-2 shrink-0">
             <span
               className="text-[9px] font-medium px-2 py-0.5 rounded-full"
               style={{
@@ -564,7 +564,7 @@ function GoalCard({ goal, index }: { goal: KanbanGoal; index: number }) {
           <span>by {goal.createdBy}</span>
           <span>updated {timeAgo(goal.updatedAt)}</span>
           {goal.sourceWorkflowId && (
-            <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-400 font-mono">
+            <span className="px-1.5 py-0.5 rounded-sm bg-blue-50 text-blue-400 font-mono">
               workflow
             </span>
           )}
@@ -632,12 +632,12 @@ function DependencyFlow({ tasks }: { tasks: KanbanTask[] }) {
         Task Flow
       </span>
       <div className="flex items-center gap-1 flex-wrap">
-        {tasks.map((t, i) => {
+        {tasks.map((t) => {
           const hasOutgoing = edges.some((e) => e.from === t.id);
           return (
             <div key={t.id} className="flex items-center gap-1">
               <span
-                className="text-[9px] font-mono px-1.5 py-0.5 rounded"
+                className="text-[9px] font-mono px-1.5 py-0.5 rounded-sm"
                 style={{
                   background: STATUS_BG[t.status],
                   color: STATUS_COLORS[t.status],

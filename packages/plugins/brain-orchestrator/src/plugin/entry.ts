@@ -19,6 +19,7 @@
  * descriptors by adapting them to their own framework.
  */
 
+import { M1_EVENT_TYPES } from "@digital-me/contracts";
 import {
   identifyAgent,
   type IdentifyAgentDeps,
@@ -170,7 +171,7 @@ export function handleM1EventRecord(
   if (!isV1EventType(eventType)) {
     return {
       ok: false,
-      text: `m1_event_record: unknown event_type "${eventType}" for schema_version 1. Allowed: session_start, knowledge_surfaced, assistant_ack, session_snapshot, session_end.`,
+      text: `m1_event_record: unknown event_type "${eventType}" for schema_version 1. Allowed: ${M1_EVENT_TYPES.join(", ")}.`,
     };
   }
 

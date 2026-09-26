@@ -15,7 +15,7 @@
 import http from "node:http";
 import { homedir } from "node:os";
 import path from "node:path";
-import { loadConfig } from "@digital-me/contracts";
+import { isLoopbackHost, loadConfig } from "@digital-me/contracts";
 import {
   createAppRateWriter,
   defaultLogPathForAgent,
@@ -25,7 +25,7 @@ import { invokeGatewayTool } from "./gateway.js";
 import { resolveGatewayAgentId } from "./config.js";
 import { createCallToolHandler, resolveMaxResultBytes } from "./handler.js";
 import { createRequestListener, MCP_PATH } from "./http-app.js";
-import { isLoopbackHost, loadHttpConfig } from "./http-config.js";
+import { loadHttpConfig } from "./http-config.js";
 import {
   createSqliteTraceWriter,
   defaultBrainDbPath,
@@ -105,7 +105,7 @@ export async function mainHttp(): Promise<void> {
   const server = http.createServer(listener);
 
   const shutdown = (reason: string): void => {
-    emitStderr(`openclaw-brain MCP HTTP transport: ${reason}, shutting down`);
+    emitStderr(`digital-me-brain MCP HTTP transport: ${reason}, shutting down`);
     server.close();
     try {
       appRateWriter.shutdown();
@@ -120,7 +120,7 @@ export async function mainHttp(): Promise<void> {
 
   server.listen(httpConfig.port, httpConfig.host, () => {
     emitStderr(
-      `openclaw-brain MCP HTTP transport listening on ` +
+      `digital-me-brain MCP HTTP transport listening on ` +
         `http://${httpConfig.host}:${httpConfig.port}${MCP_PATH} ` +
         `(gateway: ${gateway.host}:${gateway.port}, default agent_id: ` +
         `${httpConfig.defaultAgentId ?? "(unset — clients should send X-Agent-Id)"})`,

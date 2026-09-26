@@ -19,6 +19,8 @@
 
 import JSON5 from "json5";
 import { resolveEnvFilePath } from "@digital-me/contracts";
+import { HOOK_NAMES as CLAUDE_HOOK_FILES } from "@digital-me/runtime-claude-code";
+import { HOOK_NAMES as CODEX_HOOK_FILES } from "@digital-me/runtime-codex";
 import {
   CONVERSATION_HOOK_PLUGIN_IDS,
   KEY_OPTIONAL_EMBEDDING_PROVIDERS,
@@ -109,20 +111,18 @@ export const RUNTIME_EXPECTATIONS: Readonly<
   Record<RuntimeId, ReadonlyArray<string>>
 > = {
   "claude-code": [
-    "$HOME/.claude/hooks/dm_memory_search_inject.sh",
-    "$HOME/.claude/hooks/brain_route_inject.sh",
-    "$HOME/.claude/hooks/dm_handoff_reminder.sh",
-    "$HOME/.claude/hooks/dm_session_extract.sh",
-    "$HOME/.claude/hooks/analyze_brain_inject.py",
+    // Every file the installer copies — the shared hooks, their helpers
+    // (dm_m1_emit.py, dm_hook_lib.sh — a hook without its lib fails open
+    // silently) and the Claude-Code-only analyser.
+    ...CLAUDE_HOOK_FILES.map((name) => `$HOME/.claude/hooks/${name}`),
     "$HOME/.claude/skills/digital-me/SKILL.md",
   ],
   codex: [
     "$HOME/.codex/CODEX.md",
     "$HOME/.codex/config.toml",
     "$HOME/.codex/hooks.json",
-    "$HOME/.codex/hooks/dm_memory_search_inject.sh",
-    "$HOME/.codex/hooks/dm_application_rate.sh",
-    "$HOME/.codex/hooks/dm_m1_emit.py",
+    // The same shared hook files the claude-code runtime installs.
+    ...CODEX_HOOK_FILES.map((name) => `$HOME/.codex/hooks/${name}`),
   ],
   hermes: ["$HOME/.hermes/SOUL.md"],
   // dream-cycle is a Python sibling package. After `digital-me install

@@ -13,7 +13,7 @@ staging dirs were removed in the §A unification.)
 Three call surfaces:
   1. Python function: `taste_distill(text, apply=False)`
   2. Slash skill: `/taste-distill` (loads ~/.agents/skills/taste-distill/SKILL.md)
-  3. MCP tool (future): `mcp__openclaw-brain__taste_distill` —
+  3. MCP tool (future): `mcp__digital-me-brain__taste_distill` —
      wrapper lives in the openclaw task-orchestrator extension where
      learning_capture already lives.
 

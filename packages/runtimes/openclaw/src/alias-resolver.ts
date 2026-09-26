@@ -28,6 +28,7 @@ import type {
   AliasResolver,
   TaskDispatch,
 } from "@digital-me/brain-orchestrator";
+import { migrateLegacyBrainServerRefs } from "@digital-me/contracts";
 
 export type CliAliasConfig = {
   /** Absolute path or PATH-resolvable binary name (e.g. "claude"). */
@@ -178,7 +179,8 @@ export function createOpenClawAliasResolver(
       artifactDir: taskArtifactDir,
       timeoutMs,
       binary: rule.binary,
-      args: rule.args,
+      // Aliases saved before the openclaw-brain → digital-me-brain rename.
+      args: rule.args.map(migrateLegacyBrainServerRefs),
       env: rule.env ?? {},
       prompt_template: rule.promptTemplate,
       final_message_arg: rule.finalMessageArg ?? null,

@@ -15,7 +15,7 @@ import yaml
 # Preference order for the CLI-exec worker that runs the agent steps.
 #
 # claude-code-cli first: runs on a local Claude subscription, has full file
-# tools + the openclaw-brain MCP, and is proven end-to-end for these steps.
+# tools + the digital-me-brain MCP, and is proven end-to-end for these steps.
 #
 # codex-cli second, deliberately: Codex-CLI on ChatGPT Plus has produced
 # multi-day quota blackouts on critical cron paths, and a rate-limited

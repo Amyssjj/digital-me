@@ -143,9 +143,9 @@ function AgentRow({ agent, maxValue }: { agent: AgentTotal; maxValue: number }) 
       <span className="text-gray-600 truncate" title={agent.agent_id}>
         {agent.agent_id}
       </span>
-      <div className="relative h-2 rounded-sm bg-gray-100 overflow-hidden">
+      <div className="relative h-2 rounded-xs bg-gray-100 overflow-hidden">
         <motion.div
-          className="absolute inset-y-0 left-0 rounded-sm"
+          className="absolute inset-y-0 left-0 rounded-xs"
           initial={{ width: 0 }}
           animate={{ width: `${widthPct}%` }}
           transition={{ duration: 0.5, ease: [0.25, 0.46, 0.45, 0.94] }}

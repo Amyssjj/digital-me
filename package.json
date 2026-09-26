@@ -2,7 +2,7 @@
   "name": "digital-me-os",
   "version": "0.1.0-pre",
   "private": true,
-  "description": "Digital Me OS — openclaw-based personal brain stack (operations, knowledge, runtime adapters).",
+  "description": "Digital Me OS \u2014 one brain (digital-me-brain, served by brain-host) shared by every agent runtime: knowledge, taste, operations, runtime adapters.",
   "license": "MIT",
   "type": "module",
   "engines": {
@@ -25,12 +25,12 @@
     "prepare": "[ -d .git ] && command -v husky >/dev/null && husky install || true"
   },
   "devDependencies": {
-    "@eslint/js": "^9.39.4",
+    "@eslint/js": "^10.0.1",
     "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
     "globals": "^17.11.0",
-    "knip": "^5",
-    "typescript": "^5.6.0",
+    "knip": "^6",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.67.0"
   }
 }

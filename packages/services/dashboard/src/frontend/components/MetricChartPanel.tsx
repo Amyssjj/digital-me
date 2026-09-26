@@ -289,7 +289,7 @@ function MetricsDefinitionPanel({
   return (
     <>
       <motion.div
-        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+        className="fixed inset-0 bg-black/20 backdrop-blur-xs z-40"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -325,7 +325,7 @@ function MetricsDefinitionPanel({
             </h4>
             <div className="flex items-center gap-1.5 mt-1.5">
               <span className="text-[9px] text-gray-400">Datasource:</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-gray-100 text-gray-500">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-sm bg-gray-100 text-gray-500">
                 {info.datasource}
               </span>
             </div>

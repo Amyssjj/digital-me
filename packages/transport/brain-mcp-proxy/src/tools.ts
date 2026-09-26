@@ -1,5 +1,5 @@
 /**
- * Tool definitions exposed by the openclaw-brain MCP proxy.
+ * Tool definitions exposed by the digital-me-brain MCP proxy.
  *
  * These declare the MCP tool shapes only — they don't implement anything.
  * The actual implementations live in openclaw plugins (memory-core,
@@ -8,6 +8,16 @@
  * The shape mirrors openclaw's gateway-exposed tools 1:1 so any MCP client
  * that knew the upstream proxy keeps working unchanged.
  */
+
+import {
+  LEARNING_KINDS,
+  M1_EVENT_TYPES,
+  MEMORY_CORPORA,
+  PROXY_TRACE_KIND,
+  TASKS_ACTIONS,
+  TRACE_KINDS,
+  WIKI_ACTIONS,
+} from "@digital-me/contracts";
 
 const AGENT_ID_PROP = {
   agent_id: {
@@ -18,65 +28,13 @@ const AGENT_ID_PROP = {
 } as const;
 
 /** The kind this proxy stamps on the trace rows it writes (see trace-writer.ts).
- * Exported + included in TRACE_KINDS so `traces_query`'s `kind` enum accepts it
- * — otherwise a client can't filter for the rows the proxy itself records. */
-export const PROXY_TRACE_KIND = "mcp_tool_call" as const;
+ * Part of the shared TRACE_KINDS vocabulary, so `traces_query`'s `kind` enum
+ * accepts it and the brain can serve queries for the rows the proxy records. */
+export { PROXY_TRACE_KIND };
 
-const TRACE_KINDS = [
-  "tool_call",
-  "task_start",
-  "task_complete",
-  "task_failed",
-  "learning_captured",
-  "session_start",
-  "session_end",
-  PROXY_TRACE_KIND,
-] as const;
-
-const M1_EVENT_TYPES = [
-  "session_start",
-  "knowledge_surfaced",
-  "assistant_ack",
-  "session_snapshot",
-  "session_end",
-] as const;
-
-const TASK_ACTIONS = [
-  "board",
-  "run_goal",
-  "plan_goal",
-  "run_workflow",
-  "workflow_list",
-  "workflow_import",
-  "workflow_delete",
-  "schedule_list",
-  "schedule_add",
-  "schedule_remove",
-  "schedule_enable",
-  "schedule_disable",
-  "schedule_tick",
-  "checkpoint",
-  "handoff",
-  "retry",
-  "status",
-  "claim",
-  "complete",
-  "approve",
-  "reject",
-  "cancel",
-] as const;
-
-const WIKI_ACTIONS = [
-  "index",
-  "status",
-  "ingest_raw",
-  "tag",
-  "prime",
-  "compile",
-  "query",
-  "file_back",
-  "lint",
-] as const;
+// Every action list / enum below is derived from @digital-me/contracts — the
+// same arrays brain-orchestrator's router and handlers validate against — so
+// the proxy can never advertise a value the brain rejects.
 
 export const TOOLS = [
   {
@@ -112,14 +70,14 @@ export const TOOLS = [
   },
   {
     name: "tasks",
-    description: `Task Orchestrator — manage goals, tasks, workflows, and schedules. Actions: ${TASK_ACTIONS.join(", ")}`,
+    description: `Task Orchestrator — manage goals, tasks, workflows, and schedules. Actions: ${TASKS_ACTIONS.join(", ")}`,
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          description: `Action to perform: ${TASK_ACTIONS.join(", ")}`,
-          enum: [...TASK_ACTIONS],
+          description: `Action to perform: ${TASKS_ACTIONS.join(", ")}`,
+          enum: [...TASKS_ACTIONS],
         },
         ...AGENT_ID_PROP,
         format: {
@@ -160,7 +118,10 @@ export const TOOLS = [
         },
         templateId: { type: "string", description: "Workflow template ID (for run_workflow)" },
         variables: { type: "object", description: "Workflow variables (for run_workflow)" },
-        taskId: { type: "string", description: "Task ID (for checkpoint, handoff, retry)" },
+        taskId: {
+          type: "string",
+          description: "Task ID (for status, checkpoint, handoff, approve, reject, claim, complete)",
+        },
         phase: { type: "string", description: "Current phase (for checkpoint)" },
         summary: { type: "string", description: "Progress summary (for checkpoint/handoff)" },
         progressPercent: { type: "number", description: "Progress 0-100 (for checkpoint)" },
@@ -168,12 +129,6 @@ export const TOOLS = [
           type: "array",
           items: { type: "string" },
           description: "Artifact paths (for handoff)",
-        },
-        mode: { type: "string", enum: ["restart", "resume"], description: "Retry mode" },
-        retryMode: {
-          type: "string",
-          enum: ["restart", "resume"],
-          description: "Retry mode (for retry)",
         },
         goalId: { type: "string", description: "Goal ID (for cancel)" },
         deliverableState: {
@@ -191,25 +146,16 @@ export const TOOLS = [
   },
   {
     name: "wiki",
-    description: `Knowledge Wiki — personal research wiki with raw notes, compiled concepts, and Q&A. Actions: ${WIKI_ACTIONS.join(", ")}`,
+    description: `Knowledge Wiki — health of the brain's wiki search index. Search and read wiki content with memory_search / memory_get (corpus "wiki"). Actions: ${WIKI_ACTIONS.join(", ")}`,
     inputSchema: {
       type: "object",
       properties: {
         action: {
           type: "string",
-          description:
-            "Action: index (rebuild), status (health), ingest_raw (add article), tag (assign topics), prime (concept context), compile (recompile concept), query (Q&A), file_back (enrich concept), lint (health check)",
+          description: `Action: ${WIKI_ACTIONS.join(", ")} (index health, provenance, last index time)`,
           enum: [...WIKI_ACTIONS],
         },
         ...AGENT_ID_PROP,
-        query: { type: "string", description: "Search query, question, or task description" },
-        slug: { type: "string", description: "Concept slug (e.g. 'task-orchestration')" },
-        title: { type: "string", description: "Title for new raw article" },
-        content: { type: "string", description: "Markdown content for new raw article" },
-        topics: { type: "string", description: "Comma-separated topic slugs" },
-        rawPath: { type: "string", description: "Raw article relative path" },
-        section: { type: "string", description: "Section heading for file_back" },
-        insight: { type: "string", description: "Insight text for file_back" },
       },
       required: ["action"],
     },
@@ -224,8 +170,8 @@ export const TOOLS = [
         agent_id: { type: "string", description: "Caller agent identity" },
         kind: {
           type: "string",
-          description: "Learning kind: feedback, project, reference, or rejection",
-          enum: ["feedback", "project", "reference", "rejection"],
+          description: `Learning kind: ${LEARNING_KINDS.join(", ")}`,
+          enum: [...LEARNING_KINDS],
         },
         text: { type: "string", description: "The learning content" },
         why: { type: "string", description: "Why this learning matters" },
@@ -317,7 +263,7 @@ export const TOOLS = [
         limit: { type: "number", description: "Max results (default 5)" },
         corpus: {
           type: "string",
-          enum: ["memory", "wiki", "all"],
+          enum: [...MEMORY_CORPORA],
           description:
             "Search corpus: memory (default, wiki learnings), wiki (knowledge wiki concepts), all (both merged)",
         },
@@ -344,7 +290,7 @@ export const TOOLS = [
         },
         corpus: {
           type: "string",
-          enum: ["memory", "wiki", "all"],
+          enum: [...MEMORY_CORPORA],
           description:
             "Which corpus to read from: memory (default — the agent's own MEMORY.md + memory/*.md), wiki (registered compiled-wiki supplements — may be empty on this host), all (both). Mirror of memory_search's corpus.",
         },

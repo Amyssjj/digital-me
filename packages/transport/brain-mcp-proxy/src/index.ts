@@ -63,17 +63,11 @@ export {
   DEFAULT_HTTP_HOST,
   DEFAULT_HTTP_PORT,
   DEFAULT_MAX_BODY_BYTES,
-  MIN_TOKEN_LENGTH,
   HttpConfigError,
-  isLoopbackHost,
   loadHttpConfig,
 } from "./http-config.js";
 export type { HttpConfig } from "./http-config.js";
-export {
-  extractBearerToken,
-  resolveAgentId,
-  timingSafeTokenEqual,
-} from "./http-auth.js";
+export { resolveAgentId } from "./http-auth.js";
 export type { AgentIdResolution } from "./http-auth.js";
 export {
   AGENT_ID_HEADER,
@@ -82,7 +76,6 @@ export {
   MCP_PATH,
   createRequestListener,
   handleMcpRequest,
-  readJsonBody,
   withEnforcedAgentId,
 } from "./http-app.js";
 export type { RequestListenerDeps, ToolHandler } from "./http-app.js";

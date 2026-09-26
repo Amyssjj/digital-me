@@ -25,10 +25,12 @@ import {
 import type { CallToolResult } from "./gateway.js";
 import type { CallToolRequest } from "./handler.js";
 import {
+  BRAIN_MCP_SERVER_NAME,
   extractBearerToken,
-  resolveAgentId,
+  readJsonBody,
   timingSafeTokenEqual,
-} from "./http-auth.js";
+} from "@digital-me/contracts";
+import { resolveAgentId } from "./http-auth.js";
 import { TOOLS } from "./tools.js";
 
 export const MCP_PATH = "/mcp";
@@ -51,48 +53,6 @@ export interface RequestListenerDeps {
    */
   readonly createToolHandler: (agentId: string | undefined) => ToolHandler;
   readonly log: (line: string) => void;
-}
-
-type BodyResult =
-  | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly status: 400 | 413; readonly message: string };
-
-/** Read and JSON-parse a request body, enforcing the byte cap. */
-export async function readJsonBody(
-  req: IncomingMessage,
-  maxBytes: number,
-): Promise<BodyResult> {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  try {
-    for await (const chunk of req) {
-      const buf = Buffer.from(chunk as Uint8Array);
-      total += buf.length;
-      if (total > maxBytes) {
-        return {
-          ok: false,
-          status: 413,
-          message: `request body exceeds ${maxBytes} bytes`,
-        };
-      }
-      chunks.push(buf);
-    }
-  } catch (err) {
-    return {
-      ok: false,
-      status: 400,
-      message: `failed to read request body: ${errorMessage(err)}`,
-    };
-  }
-  const raw = Buffer.concat(chunks).toString("utf-8");
-  if (raw === "") {
-    return { ok: false, status: 400, message: "empty request body" };
-  }
-  try {
-    return { ok: true, value: JSON.parse(raw) };
-  } catch {
-    return { ok: false, status: 400, message: "request body is not valid JSON" };
-  }
 }
 
 function errorMessage(err: unknown): string {
@@ -218,7 +178,7 @@ export async function handleMcpRequest(
         ? withEnforcedAgentId(baseHandler, resolution.agentId, deps.log)
         : baseHandler;
     const server = new Server(
-      { name: "openclaw-brain", version: "1.0.0" },
+      { name: BRAIN_MCP_SERVER_NAME, version: "1.0.0" },
       { capabilities: { tools: {} } },
     );
     server.setRequestHandler(ListToolsRequestSchema, async () => ({

@@ -1,7 +1,9 @@
 /**
- * Claude Code runtime installer — copies the 5 hooks + the `digital-me`
- * skill into the user's `~/.claude/` directory, and merges the relevant
- * `settings.json` stanzas.
+ * Claude Code runtime installer — copies the shared Digital Me hooks
+ * (@digital-me/agent-hooks, the same scripts the Codex runtime installs) +
+ * the `digital-me` skill into the user's `~/.claude/` directory, and merges
+ * the relevant `settings.json` stanzas with `--runtime claude-code` baked
+ * into every hook command.
  *
  * Used by `@digital-me/cli`'s `install` step. Pure data layer: every
  * external effect (fs read/write, path resolution) is injected so the
@@ -11,10 +13,17 @@
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import {
+  AGENT_HOOKS_DIR,
+  CLAUDE_CODE_ONLY_HOOK_FILES,
+  SHARED_HOOK_FILES,
+  hookCommand,
+  mergeHookManifest,
+} from "@digital-me/agent-hooks";
 
 /**
  * Absolute path to the runtime-claude-code package root. Resolved at
- * import time so callers can find the bundled hooks/ and skills/
+ * import time so callers can find the bundled skills/ and templates/
  * directories without knowing the package's npm layout.
  */
 const MODULE_ROOT = path.resolve(
@@ -23,33 +32,32 @@ const MODULE_ROOT = path.resolve(
 );
 
 // Workspace layout: this module compiles to <pkg>/dist/*.js, so MODULE_ROOT
-// is the package root, which carries hooks/ directly. Published CLI
+// is the package root, which carries skills/ directly. Published CLI
 // bundle: esbuild inlines every workspace module into <npm-pkg>/bin/*.js, so
 // MODULE_ROOT is the npm package root for EVERY package — per-package assets
 // are staged by scripts/build-cli-bundle.mjs under assets/claude-code/ to
-// avoid cross-package collisions (e.g. claude-code and codex both ship hooks/).
-export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "hooks"))
+// avoid cross-package collisions.
+export const PACKAGE_ROOT = existsSync(path.join(MODULE_ROOT, "skills"))
   ? MODULE_ROOT
   : path.join(MODULE_ROOT, "assets", "claude-code");
 
-export const HOOKS_DIR = path.join(PACKAGE_ROOT, "hooks");
+/**
+ * Source of the hook scripts: the shared @digital-me/agent-hooks package
+ * (one copy for Claude Code and Codex — the runtime is selected by the
+ * `--runtime claude-code` the manifest bakes into each command).
+ */
+export const HOOKS_DIR = AGENT_HOOKS_DIR;
 export const SKILLS_DIR = path.join(PACKAGE_ROOT, "skills");
 export const TEMPLATES_DIR = path.join(PACKAGE_ROOT, "templates");
 
+/**
+ * Every file installed into ~/.claude/hooks/: the shared hooks + their two
+ * helpers (dm_m1_emit.py, dm_hook_lib.sh), plus the Claude-Code-only
+ * analyze_brain_inject.py.
+ */
 export const HOOK_NAMES = [
-  "dm_memory_search_inject.sh",
-  "brain_route_inject.sh",
-  "dm_handoff_reminder.sh",
-  "dm_session_extract.sh",
-  "dm_application_rate.sh",
-  "analyze_brain_inject.py",
-  // M1 universal-protocol event emitter — called as a subprocess by
-  // dm_memory_search_inject.sh (session_start + knowledge_surfaced) and
-  // dm_application_rate.sh (assistant_ack + session_end). Not a hook
-  // itself, just a shared helper that ships alongside the hooks so it's
-  // on the same install path. See wiki:
-  // infrastructure/m1-universal-event-protocol.md
-  "dm_m1_emit.py",
+  ...SHARED_HOOK_FILES,
+  ...CLAUDE_CODE_ONLY_HOOK_FILES,
 ] as const;
 
 export type HookName = (typeof HOOK_NAMES)[number];
@@ -80,9 +88,10 @@ export type ClaudeHooksManifest = {
 
 /**
  * Build the hook-manifest fragment to merge into the user's
- * `~/.claude/settings.json`. Uses `$HOME/.claude/hooks/<name>` paths so
- * the installed location is canonical regardless of where the runtime
- * package itself lives.
+ * `~/.claude/settings.json`. Uses `$HOME/.claude/hooks/<name> --runtime
+ * claude-code` commands (Claude Code runs them through a shell) so the
+ * installed location is canonical regardless of where the runtime package
+ * itself lives, and the shared scripts know which host they serve.
  *
  * Timeouts:
  *   - memory_search inject: 12s to match the hook script's curl default
@@ -90,7 +99,8 @@ export type ClaudeHooksManifest = {
  *     the hook before curl finishes, making slow searches look like empty injects.
  */
 export function buildClaudeHooksManifest(): ClaudeHooksManifest {
-  const cmd = (name: HookName) => `$HOME/.claude/hooks/${name}`;
+  const cmd = (name: HookName) =>
+    hookCommand(`$HOME/.claude/hooks/${name}`, "claude-code");
   return {
     UserPromptSubmit: [
       {
@@ -148,32 +158,19 @@ export function buildClaudeHooksManifest(): ClaudeHooksManifest {
 
 /**
  * Merge our hook stanzas into an existing settings.json object. Preserves
- * the user's other hooks and settings. Pure function — the installer
- * does the actual disk I/O.
+ * the user's other hooks and settings; a command an older installer
+ * registered without `--runtime` is upgraded in place (never duplicated).
+ * Pure function — the installer does the actual disk I/O.
  */
 export function mergeHooksIntoSettings(
   existing: Record<string, unknown>,
 ): Record<string, unknown> {
-  const manifest = buildClaudeHooksManifest();
   const existingHooks =
     (existing.hooks as Record<string, ClaudeHookStanza[]> | undefined) ?? {};
-  const mergedHooks: Record<string, ClaudeHookStanza[]> = { ...existingHooks };
-  for (const event of Object.keys(manifest) as Array<keyof ClaudeHooksManifest>) {
-    const ours = manifest[event];
-    const theirs = mergedHooks[event] ?? [];
-    // De-dupe by command string — re-running the installer is idempotent.
-    const seen = new Set<string>();
-    for (const stanza of theirs) {
-      for (const h of stanza.hooks) seen.add(h.command);
-    }
-    const ourFiltered = ours
-      .map((s) => ({
-        hooks: s.hooks.filter((h) => !seen.has(h.command)),
-      }))
-      .filter((s) => s.hooks.length > 0);
-    mergedHooks[event] = [...theirs, ...ourFiltered];
-  }
-  return { ...existing, hooks: mergedHooks };
+  return {
+    ...existing,
+    hooks: mergeHookManifest(existingHooks, buildClaudeHooksManifest()),
+  };
 }
 
 /**

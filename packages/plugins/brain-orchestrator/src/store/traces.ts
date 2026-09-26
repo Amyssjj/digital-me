@@ -12,18 +12,13 @@
  */
 
 import type { DatabaseSync } from "node:sqlite";
+import type { TraceKind } from "@digital-me/contracts";
 import type { Migration } from "./migrations.js";
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-export type TraceKind =
-  | "tool_call"
-  | "task_start"
-  | "task_complete"
-  | "task_failed"
-  | "learning_captured"
-  | "session_start"
-  | "session_end";
+/** Derived from the shared `TRACE_KINDS` vocabulary (@digital-me/contracts). */
+export type { TraceKind };
 
 export type TraceRecord = {
   readonly id: string;

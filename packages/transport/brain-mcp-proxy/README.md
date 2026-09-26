@@ -1,6 +1,6 @@
 # @digital-me/brain-mcp-proxy
 
-Stdio MCP server that forwards tool calls to the brain's HTTP wire — brain-host (`DIGITAL_ME_BRAIN_URL`, the hub) or, on installs that predate it, a legacy openclaw gateway. Lets any MCP-capable CLI (Claude Code, Codex, Hermes, future ones) reach the brain without each CLI implementing the `/tools/invoke` protocol directly. The MCP server is registered under the historical name `openclaw-brain`.
+Stdio MCP server that forwards tool calls to the brain's HTTP wire — brain-host (`DIGITAL_ME_BRAIN_URL`, the hub) or, on installs that predate it, a legacy openclaw gateway. Lets any MCP-capable CLI (Claude Code, Codex, Hermes, future ones) reach the brain without each CLI implementing the `/tools/invoke` protocol directly. The MCP server is registered as `digital-me-brain` (it was `openclaw-brain` before the rename; `digital-me install` replaces the old registration).
 
 ## What it does
 
@@ -33,7 +33,7 @@ Register with your MCP client by pointing at the binary. For Claude Code (`~/.cl
 ```json
 {
   "mcpServers": {
-    "openclaw-brain": {
+    "digital-me-brain": {
       "command": "digital-me-brain-mcp-proxy",
       "env": {
         "OPENCLAW_AGENT_ID": "claude-code-main"
@@ -46,10 +46,10 @@ Register with your MCP client by pointing at the binary. For Claude Code (`~/.cl
 For Codex CLI (`~/.codex/config.toml`):
 
 ```toml
-[mcp_servers.openclaw-brain]
+[mcp_servers.digital-me-brain]
 command = "digital-me-brain-mcp-proxy"
 
-[mcp_servers.openclaw-brain.env]
+[mcp_servers.digital-me-brain.env]
 OPENCLAW_AGENT_ID = "codex-main"
 ```
 
@@ -71,7 +71,7 @@ Reads from environment variables (recommended) with fallback to `$OPENCLAW_HOME/
 Pointing the proxy at brain-host from a Codex registration, for example:
 
 ```toml
-[mcp_servers.openclaw-brain]
+[mcp_servers.digital-me-brain]
 command = "digital-me-brain-mcp-proxy"
 env = { OPENCLAW_AGENT_ID = "codex", DIGITAL_ME_BRAIN_URL = "http://127.0.0.1:18791/tools/invoke", DIGITAL_ME_BRAIN_TOKEN_FILE = "/home/<you>/digital-me/.data/brain-host.token" }
 ```
@@ -124,7 +124,7 @@ watchers. `GET /healthz` returns `{"ok":true}` without auth for service monitors
 Claude Code:
 
 ```bash
-claude mcp add --transport http openclaw-brain "http://<brain-host>:18790/mcp" \
+claude mcp add --transport http digital-me-brain "http://<brain-host>:18790/mcp" \
   -H "Authorization: Bearer <token>" \
   -H "X-Agent-Id: claude-code-laptop"
 ```
@@ -132,7 +132,7 @@ claude mcp add --transport http openclaw-brain "http://<brain-host>:18790/mcp" \
 Codex CLI (`~/.codex/config.toml`, requires a Codex version with HTTP MCP support):
 
 ```toml
-[mcp_servers.openclaw-brain]
+[mcp_servers.digital-me-brain]
 url = "http://<brain-host>:18790/mcp?agent_id=codex-laptop"
 bearer_token_env_var = "BRAIN_MCP_HTTP_TOKEN"
 ```
@@ -176,7 +176,7 @@ Testable modules + two entry points (stdio and HTTP share the same handler stack
 | `handler.ts` | CallTool: agent_id injection + attribution + invoke | 100% |
 | `lifecycle.ts` | Parent-PID death watcher | 100% |
 | `http-config.ts` | HTTP transport config (secure defaults) | 100% |
-| `http-auth.ts` | Bearer auth (timing-safe) + agent-id resolution | 100% |
+| `http-auth.ts` | Agent-id resolution (bearer parsing, timing-safe compare, body reading, loopback check come from `@digital-me/contracts`) | 100% |
 | `http-app.ts` | Stateless Streamable HTTP request handling | 100% |
 | `server.ts` | Wire modules to MCP SDK + Node process (stdio entry) | excluded from coverage — exercised end-to-end |
 | `http-server.ts` | Wire modules to node:http (HTTP service entry) | excluded from coverage — exercised end-to-end |

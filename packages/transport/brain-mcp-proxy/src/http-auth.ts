@@ -1,33 +1,13 @@
 /**
  * Authentication and attribution helpers for the HTTP transport.
  *
- * - Bearer-token check uses a timing-safe comparison (both sides hashed to
- *   equal length first, as timingSafeEqual requires same-size buffers).
+ * - Bearer-token parsing and the timing-safe comparison live in
+ *   @digital-me/contracts (shared with brain-host).
  * - Per-request agent-id resolution: clients identify themselves via the
  *   X-Agent-Id header (or `agent_id` URL query for clients that can't set
  *   custom headers). Attribution feeds the trace table and M1 application
  *   rate, so an invalid id is rejected rather than silently normalized.
  */
-
-import { createHash, timingSafeEqual } from "node:crypto";
-
-export function extractBearerToken(
-  header: string | undefined,
-): string | null {
-  if (header === undefined) return null;
-  const match = /^Bearer\s+(.+)$/i.exec(header.trim());
-  if (match === null) return null;
-  return match[1]!;
-}
-
-export function timingSafeTokenEqual(
-  expected: string,
-  provided: string,
-): boolean {
-  const a = createHash("sha256").update(expected).digest();
-  const b = createHash("sha256").update(provided).digest();
-  return timingSafeEqual(a, b);
-}
 
 const AGENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 

@@ -269,8 +269,10 @@ describe("dispatchAction(run_goal)", () => {
   });
 
   it("skips ready tasks the dispatcher returns false for", async () => {
+    let attempts = 0;
     const dCtx = makeDispatcher({
       async dispatchSpawnTask() {
+        attempts++;
         return false;
       },
     });
@@ -286,6 +288,7 @@ describe("dispatchAction(run_goal)", () => {
       ]),
     });
     expect(r.ok).toBe(true);
+    expect(attempts).toBe(1);
     expect(r.text).toMatch(/0 dispatched/);
   });
 
@@ -413,6 +416,16 @@ describe("dispatchAction(run_workflow)", () => {
     const r = await dispatchAction(deps, "run_workflow", {
       templateId: "wf-1",
       variables: { k: "v" },
+    });
+    expect(r.ok).toBe(true);
+  });
+
+  it("ignores variables that are neither a JSON string nor an object", async () => {
+    const deps = makeDeps();
+    seedWorkflow(deps);
+    const r = await dispatchAction(deps, "run_workflow", {
+      templateId: "wf-1",
+      variables: 42,
     });
     expect(r.ok).toBe(true);
   });
@@ -1146,6 +1159,17 @@ describe("dispatchAction — schedule_* actions", () => {
     });
     expect(r.ok).toBe(false);
     expect(r.text).toMatch(/Invalid JSON in variables/);
+  });
+
+  it("schedule_add ignores variables that are neither a JSON string nor an object", async () => {
+    const deps = makeDeps();
+    seedWorkflow(deps);
+    const r = await dispatchAction(deps, "schedule_add", {
+      templateId: "wf-1",
+      cronExpr: "0 0 * * *",
+      variables: 42,
+    });
+    expect(r.ok).toBe(true);
   });
 
   it("schedule_add accepts variables as plain object", async () => {

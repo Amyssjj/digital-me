@@ -87,7 +87,7 @@ const logPath = join(artifactDir, "worker.log");
 
 const defaultTemplate = [
   "You are {{alias}} launched by the digital-me orchestrator.",
-  "Use the openclaw-brain MCP server.",
+  "Use the digital-me-brain MCP server.",
   "First call memory_search with query: {{taskName}} {{alias}} exec worker",
   "",
   "Managed task:",

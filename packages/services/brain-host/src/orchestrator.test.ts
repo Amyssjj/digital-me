@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -191,6 +191,16 @@ describe("Orchestrator", () => {
     const db = openBrainDb(join(dir, "brain.db"), (p) => new DatabaseSync(p));
     const orch = new Orchestrator({ db, wikiRoot: dir, log: () => {}, stallThresholdMs: 1000 });
     expect(orch.tools.size).toBeGreaterThan(0);
+  });
+
+  it("reads config.yaml from the real filesystem when no readFile seam is given", () => {
+    dir = mkdtempSync(join(tmpdir(), "bh-orch-"));
+    writeFileSync(join(dir, "config.yaml"), "cli_exec_aliases: {}\n");
+    const db = openBrainDb(join(dir, "brain.db"), (p) => new DatabaseSync(p));
+    const logs: string[] = [];
+    const orch = new Orchestrator({ db, wikiRoot: dir, log: (l, m) => logs.push(`${l}: ${m}`), stallThresholdMs: 1000 });
+    expect(orch.tools.size).toBeGreaterThan(0);
+    expect(logs.some((l) => l.includes("failed to read"))).toBe(false);
   });
 
   it("lints enabled schedules with spawn steps: warns at startup, lists them on status, and the tick leaves their tasks ready", async () => {

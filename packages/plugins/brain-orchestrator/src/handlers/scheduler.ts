@@ -87,6 +87,20 @@ export type Dispatcher = {
   probeSessionLiveness(): Promise<readonly OrchestratorTaskRecord[]>;
 };
 
+/**
+ * Hand a spawn/exec task to the dispatcher method for its mode. The one place
+ * that maps dispatch mode → dispatcher call (the scheduler and the tasks
+ * router both dispatch through it).
+ */
+export function dispatchByMode(
+  dispatcher: Dispatcher,
+  task: OrchestratorTaskRecord,
+): Promise<boolean> {
+  return task.dispatch.mode === "exec"
+    ? dispatcher.dispatchExecTask(task)
+    : dispatcher.dispatchSpawnTask(task);
+}
+
 export type SchedulerDeps = {
   readonly goals: GoalsStore;
   readonly schedules: SchedulesStore;
@@ -531,10 +545,7 @@ export async function dispatchOrphanedReadyTasks(
     // guarantees a number on read — type assertion is safe.
     const priorFailedCount = task.failedDispatchCount as number;
     try {
-      const ok =
-        task.dispatch.mode === "exec"
-          ? await deps.dispatcher.dispatchExecTask(task)
-          : await deps.dispatcher.dispatchSpawnTask(task);
+      const ok = await dispatchByMode(deps.dispatcher, task);
       if (ok) {
         dispatched++;
         // Reset the failure counter on a successful dispatch.

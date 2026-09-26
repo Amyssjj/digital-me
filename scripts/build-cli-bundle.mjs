@@ -55,11 +55,14 @@ chmodSync(path.join(outDir, "bin", "digital-me.js"), 0o755);
 // In the single-file bundle every workspace module's import.meta.url resolves
 // to the npm package root, so the per-package asset constants (PACKAGE_ROOT
 // fallbacks in each runtime's installer) expect assets/<runtime-id>/…
-// Stage them here; claude-code and codex both ship a hooks/ dir, hence the
-// per-runtime subdirs instead of a merged tree.
+// Stage them here, one subdir per package so same-named trees never collide.
+// The lifecycle hook scripts live ONCE, in shared/agent-hooks: both the
+// claude-code and the codex installer copy them from assets/agent-hooks/hooks
+// (the runtime is baked into the registered command, not the files).
 const ASSET_TREES = [
-  ["runtimes/claude-code", "claude-code", ["hooks", "skills"]],
-  ["runtimes/codex", "codex", ["hooks", "templates"]],
+  ["shared/agent-hooks", "agent-hooks", ["hooks"]],
+  ["runtimes/claude-code", "claude-code", ["skills", "templates"]],
+  ["runtimes/codex", "codex", ["templates"]],
   ["runtimes/hermes", "hermes", ["templates", "plugins"]],
   ["runtimes/openclaw", "openclaw", ["templates", "scripts"]],
 ];

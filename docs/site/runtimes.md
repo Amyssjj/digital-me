@@ -37,8 +37,9 @@ What lands:
 - `~/digital-me/.data/.env` — where you put `GEMINI_API_KEY`; the service loads
   it and every worker it dispatches inherits it
 
-Verify: `curl -s http://127.0.0.1:18791/health` reports the index size, the
-scheduler state and which `brain.db` it opened.
+Verify: `curl -s -H "Authorization: Bearer $(cat ~/digital-me/.data/brain-host.token)" http://127.0.0.1:18791/health`
+reports the index size, the scheduler state and which `brain.db` it opened.
+Without the token, `/health` answers only `{ ok, version }` (liveness).
 
 ## Claude Code
 
@@ -52,8 +53,8 @@ What lands:
   matching wiki knowledge; Stop captures session learnings)
 - `~/.claude/skills/digital-me/` — the protocol skill
 - merged `settings.json` — hook registrations alongside whatever you already
-  had, plus the `openclaw-brain` MCP server entry (the name is historical —
-  it is `brain-mcp-proxy` forwarding to brain-host)
+  had, plus the `digital-me-brain` MCP server entry (`brain-mcp-proxy`
+  forwarding to brain-host; replaces a pre-rename `openclaw-brain` entry)
 
 Verify: start a session and ask about a topic you know is in your wiki — the
 prompt context will show a `[Digital Me]` injection block.
@@ -67,10 +68,17 @@ digital-me install --runtime codex
 What lands:
 
 - `~/.codex/CODEX.md` — protocol instructions
-- the `openclaw-brain` MCP entry in `~/.codex/config.toml` (historical name;
-  `brain-mcp-proxy` stdio↔HTTP transport to brain-host)
+- the `digital-me-brain` MCP entry in `~/.codex/config.toml`
+  (`brain-mcp-proxy` stdio↔HTTP transport to brain-host)
 - `~/.codex/hooks/*` wired through `~/.codex/hooks.json` — UserPromptSubmit /
   Stop / PreToolUse, with M1 application-rate tracking
+
+Claude Code and Codex install the **same** hook scripts (one source,
+`packages/shared/agent-hooks/hooks/`). Each installer registers them with the
+runtime on the command line — `… --runtime claude-code` or `… --runtime codex`
+— which selects the few genuinely different bits: the home directory
+(`~/.claude` vs `~/.codex`), the transcript format the Stop hook parses, and
+the runtime label on M1 events.
 
 ## Hermes
 

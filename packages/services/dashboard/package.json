@@ -1,7 +1,7 @@
 {
   "name": "@digital-me/dashboard",
   "version": "0.1.0-pre",
-  "description": "Digital Me OA Dashboard \u2014 minimal 4-view surface (Metrics / Mechanism / Kanban / Delivery) over openclaw brain state + the dashboard-intake pipeline.",
+  "description": "Digital Me dashboard \u2014 Metrics / Mechanism / Kanban / Feed views over the digital-me-brain's brain.db and the dashboard-intake pipeline.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/server/lib.js",
@@ -21,7 +21,6 @@
     "workflows",
     "vite.config.ts",
     "index.html",
-    "tailwind.config.ts",
     "postcss.config.js"
   ],
   "scripts": {
@@ -40,31 +39,31 @@
     "@digital-me/contracts": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^12.6.2",
-    "express": "^4.21.0",
+    "express": "^5.2.1",
     "framer-motion": "^13.1.1",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-markdown": "^10.1.0",
     "recharts": "^3.10.1",
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
     "@digital-me/brain-orchestrator": "workspace:*",
+    "@tailwindcss/postcss": "^4.3.3",
     "@types/better-sqlite3": "^7.6.13",
-    "@types/express": "^4.17.21",
+    "@types/express": "^5.0.6",
     "@types/node": "^22.0.0",
-    "@types/react": "^18.3.8",
-    "@types/react-dom": "^18.3.0",
-    "@vitejs/plugin-react": "^4.3.1",
-    "@vitest/coverage-v8": "^3.2.6",
-    "autoprefixer": "^10.5.4",
-    "concurrently": "^9.0.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "@vitest/coverage-v8": "^5.0.1",
+    "concurrently": "^10.0.5",
     "postcss": "^8.5.26",
-    "tailwindcss": "^3.4.12",
+    "tailwindcss": "^4.3.3",
     "tsx": "^4.23.12",
-    "typescript": "^5.6.0",
+    "typescript": "^6.0.3",
     "vite": "^8.2.2",
-    "vitest": "^3.2.6"
+    "vitest": "^5.0.1"
   },
   "engines": {
     "node": ">=22.5"

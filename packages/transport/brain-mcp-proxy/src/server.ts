@@ -13,7 +13,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
-import { loadConfig } from "@digital-me/contracts";
+import { BRAIN_MCP_SERVER_NAME, loadConfig } from "@digital-me/contracts";
 import { loadGatewayConfig, resolveDefaultAgentId } from "./config.js";
 import { invokeGatewayTool } from "./gateway.js";
 import { resolveGatewayAgentId } from "./config.js";
@@ -43,7 +43,7 @@ function emitStderr(line: string): void {
 let appRateShutdownHook: (() => void) | null = null;
 
 function exitProxy(reason: string, code = 0): never {
-  emitStderr(`openclaw-brain MCP proxy: ${reason}, exiting (${code})`);
+  emitStderr(`digital-me-brain MCP proxy: ${reason}, exiting (${code})`);
   try {
     appRateShutdownHook?.();
   } catch {
@@ -69,7 +69,7 @@ export async function main(): Promise<void> {
   });
 
   const server = new Server(
-    { name: "openclaw-brain", version: "1.0.0" },
+    { name: BRAIN_MCP_SERVER_NAME, version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
 
@@ -78,7 +78,7 @@ export async function main(): Promise<void> {
   }));
 
   // Observability: write one trace row per tool call to brain.db.
-  // Universal chokepoint for all MCP-routed openclaw-brain traffic
+  // Universal chokepoint for all MCP-routed digital-me-brain traffic
   // (Codex, Claude Code, Hermes). Override via BRAIN_DB_PATH env.
   const brainDbPath =
     process.env.BRAIN_DB_PATH ?? defaultBrainDbPath(homedir());
@@ -159,7 +159,7 @@ export async function main(): Promise<void> {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   emitStderr(
-    `openclaw-brain MCP proxy started (gateway: ${gateway.host}:${gateway.port}, parent pid: ${initialPpid}, agent_id default: ${defaultAgentId ?? "(unset)"})`,
+    `digital-me-brain MCP proxy started (gateway: ${gateway.host}:${gateway.port}, parent pid: ${initialPpid}, agent_id default: ${defaultAgentId ?? "(unset)"})`,
   );
 
   // Silence the "value computed not used" lint by referencing for clarity.

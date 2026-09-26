@@ -7,14 +7,16 @@
  */
 
 import { randomUUID } from "node:crypto";
+import { LEARNING_KINDS } from "@digital-me/contracts";
 import type {
   LearningKind,
   LearningsStore,
 } from "../store/learnings.js";
 import type { TracesStore } from "../store/traces.js";
 
+/** Set view of the shared `LEARNING_KINDS` vocabulary (@digital-me/contracts). */
 export const VALID_LEARNING_KINDS: ReadonlySet<LearningKind> =
-  new Set<LearningKind>(["feedback", "project", "reference", "rejection"]);
+  new Set<LearningKind>(LEARNING_KINDS);
 
 export type CaptureLearningInput = {
   readonly agentId: string;

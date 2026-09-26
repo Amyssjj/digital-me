@@ -1,5 +1,5 @@
 {
-  "$comment": "Template Claude Code settings — install via `digital-me install --runtime claude-code` (Phase 6 CLI). The installer merges these stanzas into your existing ~/.claude/settings.json without clobbering your other hooks.",
+  "$comment": "Template Claude Code settings — install via `digital-me install --runtime claude-code` (Phase 6 CLI). The installer merges these stanzas into your existing ~/.claude/settings.json without clobbering your other hooks. The hook scripts are shared with the Codex runtime; `--runtime claude-code` tells them which host they serve.",
   "model": "claude-opus-4-7[1m]",
   "hooks": {
     "UserPromptSubmit": [
@@ -7,7 +7,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/dm_memory_search_inject.sh",
+            "command": "$HOME/.claude/hooks/dm_memory_search_inject.sh --runtime claude-code",
             "timeout": 12,
             "statusMessage": "Digital Me: searching brain…"
           }
@@ -19,13 +19,19 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/dm_handoff_reminder.sh",
+            "command": "$HOME/.claude/hooks/dm_handoff_reminder.sh --runtime claude-code",
             "timeout": 5
           },
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/dm_session_extract.sh",
+            "command": "$HOME/.claude/hooks/dm_session_extract.sh --runtime claude-code",
             "timeout": 8,
+            "async": true
+          },
+          {
+            "type": "command",
+            "command": "$HOME/.claude/hooks/dm_application_rate.sh --runtime claude-code",
+            "timeout": 10,
             "async": true
           }
         ]
@@ -36,7 +42,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/hooks/brain_route_inject.sh",
+            "command": "$HOME/.claude/hooks/brain_route_inject.sh --runtime claude-code",
             "timeout": 3
           }
         ]

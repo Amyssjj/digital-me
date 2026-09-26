@@ -15,7 +15,7 @@ Hooks registered:
                     capturing surfaced/acted paths for this session.
 
 Design notes:
-  - MCP calls to openclaw-brain go via direct HTTP to the brain endpoint
+  - MCP calls to digital-me-brain go via direct HTTP to the brain endpoint
     (mirrors dm_memory_search_inject.sh). No PluginLlm needed. The
     endpoint is digital-me brain-host when DIGITAL_ME_BRAIN_URL is set in
     the Hermes process environment or, failing that, in the
@@ -341,7 +341,7 @@ def _bump_activity(session_id: str) -> None:
 
 
 def _invoke_gateway(tool: str, args: Dict[str, Any], timeout: float = 4.0) -> Optional[Dict[str, Any]]:
-    """Call an openclaw-brain MCP tool via the gateway. None on any failure."""
+    """Call an digital-me-brain MCP tool via the gateway. None on any failure."""
     token = _get_token()
     if not token:
         return None
@@ -664,7 +664,7 @@ def _format_injection(hits: List[Dict[str, Any]]) -> str:
     if not hits:
         return ""
     lines = [
-        "Digital Me / openclaw-brain memory_search top hits for this prompt "
+        "Digital Me / digital-me-brain memory_search top hits for this prompt "
         "(auto-injected; may be stale — verify against current state before acting):",
         "",
     ]

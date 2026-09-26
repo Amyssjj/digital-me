@@ -522,12 +522,8 @@ export function matchRouteConditions(
     const field = containsMatch[1];
     const valueStr = (params[field] as string | undefined) ?? "";
     if (typeof valueStr !== "string") return false;
-    const patterns: string[] = [];
-    const quoteRe = /"([^"]+)"/g;
-    let match: RegExpExecArray | null;
-    while ((match = quoteRe.exec(containsMatch[2])) !== null) {
-      if (match[1] !== undefined) patterns.push(match[1]);
-    }
+    // The capture group is non-optional, so m[1] is always a string.
+    const patterns = [...containsMatch[2].matchAll(/"([^"]+)"/g)].map((m) => m[1] as string);
     if (patterns.length === 0) return false;
     return patterns.some((p) => valueStr.includes(p));
   }

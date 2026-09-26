@@ -45,7 +45,7 @@ export function DateRangeSelect() {
       <select
         value={preset}
         onChange={(e) => setPreset(e.target.value as DateRangePreset)}
-        className="text-xs bg-white border border-gray-200 rounded-md px-2 py-1 text-gray-700 hover:border-gray-300 focus:outline-none focus:border-blue-400 cursor-pointer"
+        className="text-xs bg-white border border-gray-200 rounded-md px-2 py-1 text-gray-700 hover:border-gray-300 focus:outline-hidden focus:border-blue-400 cursor-pointer"
       >
         {(Object.keys(PRESETS) as DateRangePreset[]).map((k) => (
           <option key={k} value={k}>{PRESETS[k].label}</option>

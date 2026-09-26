@@ -36,6 +36,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   realpathSync,
   rmSync,
   statSync,
@@ -63,6 +64,7 @@ import {
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
+  renameLegacyMcpServers,
   mergeShellEnvPolicySet,
 } from "@digital-me/runtime-codex";
 import { BIN_PATH as BRAIN_MCP_PROXY_BIN } from "@digital-me/brain-mcp-proxy";
@@ -140,7 +142,11 @@ import {
   runtimesNeedingBrain,
 } from "../brain-endpoint.js";
 import { planBrainDbMigration, postMigrationSteps } from "../brain-db.js";
-import { resolveBrainDbPath } from "@digital-me/contracts";
+import {
+  BRAIN_MCP_SERVER_NAME,
+  LEGACY_BRAIN_MCP_SERVER_NAMES,
+  resolveBrainDbPath,
+} from "@digital-me/contracts";
 import { formatReport as formatMigrateReport, migrateBrainDb } from "../migrate.js";
 import {
   AGENTS_MIGRATIONS,
@@ -635,7 +641,7 @@ function installClaudeCode(home: string): void {
   void buildClaudeHooksManifest;
   console.log(`[OK] installed claude-code: hooks + skill + settings.json merged${brainNote}`);
   if (sidecarNote) console.log(`     claude-code hooks: ${sidecarNote}`);
-  // Register the openclaw-brain MCP server in Claude Code's CLI registry
+  // Register the digital-me-brain MCP server in Claude Code's CLI registry
   installClaudeCodeMcp(brainCaller);
 }
 
@@ -674,7 +680,7 @@ function installCodex(home: string): void {
   const newManaged = readFileSync(CODEX_MD_TEMPLATE, "utf-8");
   const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
   writeFileSync(target, mergeCodexMd(existing, newManaged), "utf-8");
-  // config.toml — build the openclaw-brain MCP entry with absolute paths
+  // config.toml — build the digital-me-brain MCP entry with absolute paths
   // resolved at install time. No PATH dependency, no global npm install.
   // OPENCLAW_HOME is canonically the openclaw state dir (~/.openclaw),
   // NOT the openclaw source checkout (~/openclaw). The proxy reads
@@ -712,7 +718,9 @@ function installCodex(home: string): void {
   const tomlExisting = existsSync(tomlTarget)
     ? readFileSync(tomlTarget, "utf-8")
     : "";
-  let tomlMerged = mergeMcpServer(tomlExisting, tomlFragment);
+  // A pre-rename [mcp_servers.openclaw-brain] becomes digital-me-brain first
+  // (tool approvals kept), so the merge leaves exactly one brain server.
+  let tomlMerged = mergeMcpServer(renameLegacyMcpServers(tomlExisting), tomlFragment);
   // [shell_environment_policy.set] gives the commands Codex runs through its
   // shell tool the same two variables (merged; other keys in that table are
   // kept). It does NOT reach hook processes — the hooks get the pair from the
@@ -755,13 +763,13 @@ function installCodex(home: string): void {
   writeFileSync(hooksJsonPath, JSON.stringify(mergedHooks, null, 2) + "\n", "utf-8");
   console.log(
     `[OK] installed codex: CODEX.md + config.toml merged ` +
-      `(mcp openclaw-brain → ${codexStable.binPath}); ` +
+      `(mcp digital-me-brain → ${codexStable.binPath}); ` +
       `${CODEX_HOOK_NAMES.length} hooks + hooks.json wired`,
   );
 }
 
 /**
- * Register the openclaw-brain MCP server with Claude Code's CLI registry
+ * Register the digital-me-brain MCP server with Claude Code's CLI registry
  * via `claude mcp add`. Idempotent — if a server with the same name
  * exists, remove it first (which also drops any DIGITAL_ME_BRAIN_TOKEN an
  * earlier registration carried). With `brainCaller` the registration's env
@@ -775,14 +783,16 @@ function installClaudeCodeMcp(brainCaller: BrainCallerEnv | undefined): void {
     );
     return;
   }
-  // Remove any existing openclaw-brain registration from BOTH scopes
-  // (local + user). The legacy registration might be in either scope; we
-  // need both gone before we re-add at user scope.
-  for (const scope of ["local", "user", "project"] as const) {
-    spawnSync("claude", ["mcp", "remove", "openclaw-brain", "-s", scope], {
-      encoding: "utf-8",
-      stdio: ["ignore", "ignore", "ignore"],
-    });
+  // Remove any existing brain registration — current name and the legacy
+  // `openclaw-brain` — from every scope before re-adding at user scope, so a
+  // re-install never leaves two servers exposing the same tools.
+  for (const name of [BRAIN_MCP_SERVER_NAME, ...LEGACY_BRAIN_MCP_SERVER_NAMES]) {
+    for (const scope of ["local", "user", "project"] as const) {
+      spawnSync("claude", ["mcp", "remove", name, "-s", scope], {
+        encoding: "utf-8",
+        stdio: ["ignore", "ignore", "ignore"],
+      });
+    }
   }
   const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
   // OPENCLAW_HOME is canonically the openclaw state dir (~/.openclaw),
@@ -802,7 +812,7 @@ function installClaudeCodeMcp(brainCaller: BrainCallerEnv | undefined): void {
   };
   // Install at user scope so the server is available across all
   // projects, not just the current cwd's project-local scope.
-  const args: string[] = ["mcp", "add", "openclaw-brain", "-s", "user"];
+  const args: string[] = ["mcp", "add", BRAIN_MCP_SERVER_NAME, "-s", "user"];
   for (const [k, v] of Object.entries(env)) {
     args.push("-e", `${k}=${v}`);
   }
@@ -825,7 +835,7 @@ function installClaudeCodeMcp(brainCaller: BrainCallerEnv | undefined): void {
     return;
   }
   console.log(
-    `[OK] claude-code MCP: registered openclaw-brain → ${stable.binPath}`,
+    `[OK] claude-code MCP: registered ${BRAIN_MCP_SERVER_NAME} → ${stable.binPath}`,
   );
 }
 
@@ -1369,7 +1379,7 @@ function installHermes(home: string): void {
   const existing = existsSync(target) ? readFileSync(target, "utf-8") : "";
   writeFileSync(target, mergeSoulMd(existing, newManaged), "utf-8");
   console.log("[OK] installed hermes: SOUL.md merged");
-  // Register the openclaw-brain MCP server in Hermes's CLI registry
+  // Register the digital-me-brain MCP server in Hermes's CLI registry
   installHermesMcp(home);
   // Copy the digital-me-recall-hermes plugin into $HERMES_HOME/plugins/
   // and tell the user how to enable it (Hermes plugins are opt-in).
@@ -1458,7 +1468,7 @@ function installHermesRecallPlugin(home: string): void {
 }
 
 /**
- * Register the openclaw-brain MCP server with Hermes's CLI registry
+ * Register the digital-me-brain MCP server with Hermes's CLI registry
  * via `hermes mcp add`. Idempotent — remove any existing entry first.
  */
 function installHermesMcp(home: string): void {
@@ -1468,12 +1478,15 @@ function installHermesMcp(home: string): void {
     );
     return;
   }
-  // Remove any existing openclaw-brain registration so re-installs are
-  // idempotent and any legacy path gets replaced.
-  spawnSync("hermes", ["mcp", "remove", "openclaw-brain"], {
-    encoding: "utf-8",
-    stdio: ["ignore", "ignore", "ignore"],
-  });
+  // Remove any existing brain registration (current and legacy
+  // `openclaw-brain` name) so re-installs are idempotent and a legacy entry
+  // never lingers next to the new one.
+  for (const name of [BRAIN_MCP_SERVER_NAME, ...LEGACY_BRAIN_MCP_SERVER_NAMES]) {
+    spawnSync("hermes", ["mcp", "remove", name], {
+      encoding: "utf-8",
+      stdio: ["ignore", "ignore", "ignore"],
+    });
+  }
   const openclawHome =
     process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
   // ~/.hermes/config.yaml is persistent user config: harden the same way as
@@ -1497,7 +1510,7 @@ function installHermesMcp(home: string): void {
   const args = [
     "mcp",
     "add",
-    "openclaw-brain",
+    BRAIN_MCP_SERVER_NAME,
     "--command",
     hermesStable.nodePath,
     // `hermes mcp add --help`: "--args ... must be the last option". With
@@ -1526,7 +1539,7 @@ function installHermesMcp(home: string): void {
     return;
   }
   console.log(
-    `[OK] hermes MCP: registered openclaw-brain → ${hermesStable.binPath}`,
+    `[OK] hermes MCP: registered ${BRAIN_MCP_SERVER_NAME} → ${hermesStable.binPath}`,
   );
 }
 
@@ -2169,7 +2182,7 @@ async function brainDbCommand(args: readonly string[]): Promise<number> {
     source.close();
   }
   const copied = new SqliteDatabase(plan.to, { readOnly: true });
-  let goals = 0;
+  let goals: number;
   try {
     goals = Number((copied.prepare("SELECT COUNT(*) AS n FROM goals").get() as { n: number }).n);
   } finally {
@@ -2263,8 +2276,8 @@ function printHelp(): void {
       "    inline-Python LLM. Requires an imported workflow + a running brain.",
       "",
       "Runtimes:",
-      "  claude-code   5 hooks + digital-me skill into ~/.claude/",
-      "  codex         CODEX.md + openclaw-brain MCP into ~/.codex/",
+      "  claude-code   shared lifecycle hooks + digital-me skill into ~/.claude/",
+      "  codex         CODEX.md + digital-me-brain MCP + shared lifecycle hooks into ~/.codex/",
       "  hermes        SOUL.md digital-me protocol into ~/.hermes/",
       "  openclaw      (optional) gateway plugin — see @digital-me/runtime-openclaw README",
       "  brain-host    the hub: retriever + orchestrator service on :18791 (installed by setup)",
@@ -2631,7 +2644,12 @@ async function installBrainHost(
   mkdirSync(path.dirname(cfg.workingDir), { recursive: true });
   if (existsSync(cfg.workingDir)) {
     // Repoint if the symlink targets another checkout (worktree → main, …).
-    const current = spawnSync("readlink", [cfg.workingDir], { encoding: "utf-8" }).stdout.trim();
+    let current = "";
+    try {
+      current = readlinkSync(cfg.workingDir);
+    } catch {
+      // Not a symlink — treated as a mismatch, same as `readlink` printing nothing.
+    }
     if (current !== packagePath) {
       rmSync(cfg.workingDir, { recursive: false, force: true });
     }
@@ -2879,17 +2897,13 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
       return null;
     }
   })();
-  const logPath = resolveGatewayLog(process.env, home);
-  if (!logPath) {
-    console.log(
-      "deploy openclaw: no gateway log found — restart succeeded but cannot verify the live marker yet. " +
-        "Marker will confirm on the first agent turn after the gateway emits its log.",
-    );
-    return true;
-  }
   const deadline = Date.now() + 30000;
   while (Date.now() < deadline) {
-    if (existsSync(logPath)) {
+    // Re-resolve every poll: a first-boot host has no gateway log until a few
+    // seconds after the restart, and a restart can start a newer dated log.
+    // Resolving once up front skipped the whole wait window in the first case.
+    const logPath = resolveGatewayLog(process.env, home);
+    if (logPath && existsSync(logPath)) {
       const live = parseRecallAckMode(readFileSync(logPath, "utf-8").slice(-20000));
       if (live) {
         if (!expected || live === expected) {
@@ -2910,7 +2924,8 @@ async function restartAndVerifyOpenclaw(home: string): Promise<boolean> {
   }
   // Registration is lazy (fires on the first agent turn) — restart succeeded.
   console.log(
-    "deploy openclaw: gateway restarted; recall marker will confirm on the next agent turn.",
+    "deploy openclaw: gateway restarted; no gateway log or recall marker within 30s — " +
+      "the marker will confirm on the next agent turn.",
   );
   return true;
 }

@@ -165,7 +165,7 @@ function ClientRow({ client }: { client: RemoteClient }) {
           </span>
           {!client.identified && (
             <span
-              className="text-[9px] uppercase tracking-wide text-amber-600 bg-amber-50 rounded px-1 py-0.5"
+              className="text-[9px] uppercase tracking-wide text-amber-600 bg-amber-50 rounded-sm px-1 py-0.5"
               title="No agent_identify / X-Agent-Id — attributed to a fallback bucket"
             >
               unidentified

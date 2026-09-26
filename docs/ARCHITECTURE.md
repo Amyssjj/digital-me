@@ -11,6 +11,16 @@ Digital Me OS is one brain and a set of spokes. The brain — **brain-host** —
 
 `brain-host` mounts both on `POST /tools/invoke` (bearer token, `{tool, agentId, args}` → `{ok, result}`), opens and migrates `brain.db`, and runs the tick. Everything else in this repo orbits that process.
 
+### Vocabulary
+
+| Name | What it is | Where you see it |
+|---|---|---|
+| **digital-me-brain** | The brain, as agents and people see it | The MCP server every runtime registers (tools surface as `mcp__digital-me-brain__tasks`; Codex spells it `mcp__digital_me_brain__tasks`), the openclaw plugin id |
+| **brain-host** | The always-on process that serves the digital-me-brain | The `@digital-me/brain-host` package, its launchd/systemd service, `DIGITAL_ME_BRAIN_*` env, `digital-me service brain-host` |
+| **brain-mcp-proxy** | The stdio↔HTTP transport a CLI spawns to reach brain-host | The command behind each MCP registration |
+
+`openclaw-brain` is the MCP server's name from when openclaw was the hub. It survives only as a legacy alias (`LEGACY_BRAIN_MCP_SERVER_NAMES` in `@digital-me/contracts`): `install` removes a registration under it, hooks still recognise its tool names in older transcripts, and saved `cli_exec_aliases` that reference it are rewritten at dispatch time.
+
 ## The package roles
 
 ```
@@ -23,8 +33,8 @@ packages/
 │   ├── dream-cycle/      (Python pipeline — distills learnings into wiki entries, nightly)
 │   └── digest/           (Python — the morning activity digest; Discord webhook or openclaw transport)
 ├── runtimes/       ← per-CLI auto-injection + protocol bundles (the spokes, client-side)
-│   ├── claude-code/      (settings.json hooks + dm_*.sh scripts + skill + MCP registration)
-│   ├── codex/            (CODEX.md + config.toml MCP entry + hooks.json lifecycle hooks w/ M1)
+│   ├── claude-code/      (settings.json hook registration + skill + MCP registration)
+│   ├── codex/            (CODEX.md + config.toml MCP entry + hooks.json hook registration w/ M1)
 │   ├── hermes/           (SOUL.md protocol + recall plugin + MCP stanza)
 │   └── openclaw/         (optional: plugin overlay so openclaw agents share the brain; also the
 │                          cli-exec alias resolver + dispatcher brain-host reuses)
@@ -32,7 +42,9 @@ packages/
 │   └── brain-mcp-proxy/  (stdio MCP server forwarding to brain-host's HTTP wire)
 ├── cli/            ← user-invoked installer/orchestrator (`digital-me <command>`)
 └── shared/         ← cross-package primitives
-    └── contracts/        (env-var registry, the brain-path rule, config schemas)
+    ├── contracts/        (env-var registry, the brain-path rule, config schemas)
+    └── agent-hooks/      (the ONE copy of the dm_*.sh lifecycle hooks + M1 emitter that both
+                           claude-code and codex install, each with `--runtime <id>`)
 ```
 
 (Sanitization is enforced by `scripts/sanitize-check.sh` at the repo root — run via `pnpm sanitize:check` — not by a shared package.)

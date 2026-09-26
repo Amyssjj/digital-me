@@ -47,7 +47,10 @@ jobs:
       # deps, unlisted/unresolved imports); unused exports/types report as
       # warnings (see knip.json rules + the documented ignore-list).
       - run: pnpm knip
-      - run: pnpm test
+      # With coverage, so each package's 100% thresholds are enforced rather
+      # than only checked by whoever runs `pnpm ci` locally (they had drifted
+      # red on main while CI stayed green).
+      - run: pnpm test:coverage
 
   dream-cycle-python:
     name: dream-cycle (pytest + sdist + wheel)

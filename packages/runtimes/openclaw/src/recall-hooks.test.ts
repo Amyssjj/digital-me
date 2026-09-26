@@ -72,6 +72,23 @@ describe("loadBootContext", () => {
     expect(out).not.toContain("<active-policies>");
   });
 
+  it("skips ACTIVE POLICIES when _INDEX.md exists but reads empty", () => {
+    const out = loadBootContext(
+      { digitalMeProtocol: "P", activePoliciesPath: "/wiki/_INDEX.md" },
+      makeFs({ "/wiki/_INDEX.md": "" }),
+    );
+    expect(out).not.toContain("<active-policies>");
+  });
+
+  it("drops blank protocol files instead of injecting empty sections", () => {
+    const out = loadBootContext(
+      { digitalMeProtocol: "P", protocolsDir: "/protocols" },
+      makeFs({ "/protocols/a.md": "Real protocol", "/protocols/b.md": "   \n" }),
+    );
+    expect(out).toContain("Real protocol");
+    expect(out.match(/Real protocol/g)).toHaveLength(1);
+  });
+
   it("appends ACTIVE POLICIES when _INDEX.md parses cleanly", () => {
     const idx = "=====\n## ACTIVE POLICIES\n- Be careful\n=====\nend\n=====\n";
     const fs = makeFs({ "/wiki/_INDEX.md": idx });

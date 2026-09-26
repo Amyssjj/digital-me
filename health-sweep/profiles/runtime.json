@@ -3,7 +3,7 @@
   "surface": "runtime",
   "artifacts": "scoped",
   "critiques": "none",
-  "note": "digital-me-os runtime-conformance sweep (motus-runtime-sweep). Checks reuse scripts/verify_m1_application.py \u2014 stdlib-only python3, SELECT-only reads over the live ~/.openclaw/data/brain.db \u222a per-runtime WALs (no writes, no LLM, no network). Pin mappings are read from each runtime's installer source: the openclaw brain/recall entries are NOT pinned: since the cli-exec-worker migration the installer esbuild-BUNDLES templates/{brain,recall}/index.mjs (+imports) into ~/.openclaw/extensions/digital-me-{brain,recall}/index.mjs, so a file-hash pin against the raw template can never match (verified 2026-07-09: installed 2.5MB bundle vs 10KB template); deployed-matches-source for those two is verified by `digital-me deploy`'s live recall assistant_ack fingerprint check instead; packages/runtimes/claude-code/src/installer.ts copies hooks/ into ~/.claude/hooks/; the codex installer copies hooks/ into ~/.codex/hooks/. Pins are not required:true \u2014 a machine without a runtime installed skips, it isn't drifted.",
+  "note": "digital-me-os runtime-conformance sweep (motus-runtime-sweep). Checks reuse scripts/verify_m1_application.py \u2014 stdlib-only python3, SELECT-only reads over the live ~/.openclaw/data/brain.db \u222a per-runtime WALs (no writes, no LLM, no network). Pin mappings are read from each runtime's installer source: the openclaw brain/recall entries are NOT pinned: since the cli-exec-worker migration the installer esbuild-BUNDLES templates/{brain,recall}/index.mjs (+imports) into ~/.openclaw/extensions/digital-me-{brain,recall}/index.mjs, so a file-hash pin against the raw template can never match (verified 2026-07-09: installed 2.5MB bundle vs 10KB template); deployed-matches-source for those two is verified by `digital-me deploy`'s live recall assistant_ack fingerprint check instead; the claude-code and codex installers both copy the ONE hook source, packages/shared/agent-hooks/hooks/, into ~/.claude/hooks/ and ~/.codex/hooks/ byte-for-byte (the runtime is passed as --runtime in the registered command, not baked into the files). Pins are not required:true \u2014 a machine without a runtime installed skips, it isn't drifted.",
   "checks": [
     {
       "id": "m1-application-rate",
@@ -51,25 +51,25 @@
       "id": "claude-code-memory-inject-hook",
       "runtime": "claude-code",
       "installed": "$HOME/.claude/hooks/dm_memory_search_inject.sh",
-      "source": "packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh"
+      "source": "packages/shared/agent-hooks/hooks/dm_memory_search_inject.sh"
     },
     {
       "id": "claude-code-route-inject-hook",
       "runtime": "claude-code",
       "installed": "$HOME/.claude/hooks/brain_route_inject.sh",
-      "source": "packages/runtimes/claude-code/hooks/brain_route_inject.sh"
+      "source": "packages/shared/agent-hooks/hooks/brain_route_inject.sh"
     },
     {
       "id": "codex-memory-inject-hook",
       "runtime": "codex",
       "installed": "$HOME/.codex/hooks/dm_memory_search_inject.sh",
-      "source": "packages/runtimes/codex/hooks/dm_memory_search_inject.sh"
+      "source": "packages/shared/agent-hooks/hooks/dm_memory_search_inject.sh"
     },
     {
       "id": "codex-m1-emit-hook",
       "runtime": "codex",
       "installed": "$HOME/.codex/hooks/dm_m1_emit.py",
-      "source": "packages/runtimes/codex/hooks/dm_m1_emit.py"
+      "source": "packages/shared/agent-hooks/hooks/dm_m1_emit.py"
     }
   ],
   "captureCmd": "node ~/.agents/skills/motus-runtime-sweep/engine/lib/capture-runtimes.mjs --repo . --profile health-sweep/profiles/runtime.json --out health-sweep/capture-runtime.json",

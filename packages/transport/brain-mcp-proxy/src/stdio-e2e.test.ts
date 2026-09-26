@@ -60,7 +60,7 @@ async function connect(invoke: GatewayInvoker): Promise<{
   close: () => Promise<void>;
 }> {
   const server = new Server(
-    { name: "openclaw-brain", version: "1.0.0" },
+    { name: "digital-me-brain-e2e", version: "1.0.0" },
     { capabilities: { tools: {} } },
   );
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: TOOLS }));

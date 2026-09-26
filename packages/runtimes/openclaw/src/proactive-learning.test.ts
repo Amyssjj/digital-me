@@ -137,6 +137,14 @@ describe("extractRecentMessagesText", () => {
     expect(extractRecentMessagesText(msgs)).toBe("[unknown]: hello");
   });
 
+  it("skips messages whose content is neither a string nor a block array", () => {
+    const msgs = [
+      { role: "tool", content: { output: "opaque" } },
+      { role: "user", content: "kept" },
+    ] as unknown as MessageLike[];
+    expect(extractRecentMessagesText(msgs)).toBe("[user]: kept");
+  });
+
   it("flattens text content blocks from an array body", () => {
     const msgs: MessageLike[] = [
       {

@@ -31,7 +31,7 @@ When the user asks anything non-trivial:
    entries by domain and pins Active Policies at the top.
 2. Read entries by path when the index reveals a match — faster than a
    fresh semantic search.
-3. Fall back to **`memory_search`** (via the openclaw-brain MCP proxy)
+3. Fall back to **`memory_search`** (via the digital-me-brain MCP proxy)
    when the index doesn't surface a hit. Treat older hits (`age >7d`)
    as suggestive; verify against current state before acting.
 

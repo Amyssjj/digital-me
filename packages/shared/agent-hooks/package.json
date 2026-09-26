@@ -1,0 +1,38 @@
+{
+  "name": "@digital-me/agent-hooks",
+  "version": "0.1.0-pre",
+  "description": "The single source of the Digital Me lifecycle hook scripts shared by the Claude Code and Codex runtimes (UserPromptSubmit / Stop / PreToolUse), with the runtime baked into each registered hook command line.",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./hooks/*": "./hooks/*"
+  },
+  "files": [
+    "dist",
+    "src",
+    "hooks"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@digital-me/contracts": "workspace:*",
+    "@types/node": "^22.0.0",
+    "@vitest/coverage-v8": "^5.0.1",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.1"
+  },
+  "engines": {
+    "node": ">=22.5"
+  }
+}

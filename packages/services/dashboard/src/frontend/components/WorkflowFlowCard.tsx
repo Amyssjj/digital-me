@@ -19,15 +19,15 @@ const IDENTITY_COLORS: Record<NodeIdentity, { fill: string; text: string }> = {
   default: { fill: "#D9CFC7", text: "#4A4540" },
 };
 
-type ShapeKind = "cylinder" | "rect" | "pill" | "rounded";
+type ShapeKind = "cylinder" | "rect" | "pill" | "rounded-sm";
 const IDENTITY_SHAPE: Record<NodeIdentity, ShapeKind> = {
   db: "cylinder",
   script: "rect",
   cron: "pill",
   agent: "pill",
-  skill: "rounded",
-  jing: "rounded",
-  source: "rounded",
+  skill: "rounded-sm",
+  jing: "rounded-sm",
+  source: "rounded-sm",
   default: "rect",
 };
 
@@ -217,7 +217,7 @@ function renderStepNode(
         <rect x={x} y={y} width={NODE_W} height={NODE_H}
           rx={NODE_H / 2} ry={NODE_H / 2} fill={color.fill}
         />
-      ) : shape === "rounded" ? (
+      ) : shape === "rounded-sm" ? (
         <rect x={x} y={y} width={NODE_W} height={NODE_H}
           rx={14} ry={14} fill={color.fill}
         />
@@ -310,10 +310,10 @@ function IdentityLegend({ identities }: { identities: NodeIdentity[] }) {
               </svg>
             ) : shape === "pill" ? (
               <span className="w-3 h-3 rounded-full" style={{ backgroundColor: IDENTITY_COLORS[id].fill }} />
-            ) : shape === "rounded" ? (
+            ) : shape === "rounded-sm" ? (
               <span className="w-3 h-3 rounded-md" style={{ backgroundColor: IDENTITY_COLORS[id].fill }} />
             ) : (
-              <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: IDENTITY_COLORS[id].fill }} />
+              <span className="w-3 h-3 rounded-xs" style={{ backgroundColor: IDENTITY_COLORS[id].fill }} />
             )}
             <span className="text-[9px] text-gray-400 font-medium">{IDENTITY_LABELS[id]}</span>
           </div>
@@ -334,7 +334,7 @@ function WorkflowDetail({ workflow, onClose }: { workflow: WorkflowTemplate; onC
   return (
     <>
       <motion.div
-        className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40"
+        className="fixed inset-0 bg-black/20 backdrop-blur-xs z-40"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -434,28 +434,28 @@ function WorkflowDetail({ workflow, onClose }: { workflow: WorkflowTemplate; onC
                   <div className="relative shrink-0 flex items-center gap-1.5" style={{ width: 32 }}>
                     {sColor && (
                       <div
-                        className={`w-3 h-3 rounded-full border-2 border-white shadow-sm ${taskStatus === "running" ? RUNNING_PULSE_CLASS : ""}`}
+                        className={`w-3 h-3 rounded-full border-2 border-white shadow-xs ${taskStatus === "running" ? RUNNING_PULSE_CLASS : ""}`}
                         style={{ backgroundColor: sColor }}
                       />
                     )}
                     <div
-                      className="w-2.5 h-2.5 rounded-sm"
+                      className="w-2.5 h-2.5 rounded-xs"
                       style={{ backgroundColor: idColor.fill }}
                     />
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-sm font-semibold text-gray-700">{step.name}</span>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 font-mono shrink-0">
+                      <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-gray-50 text-gray-400 font-mono shrink-0">
                         {IDENTITY_LABELS[identity]}
                       </span>
                       {step.dispatch.mode === "approval" && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-mono shrink-0">
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-sm bg-amber-50 text-amber-600 font-mono shrink-0">
                           🔒 approval
                         </span>
                       )}
                       {taskStatus && (
-                        <span className="text-[9px] px-1.5 py-0.5 rounded font-mono shrink-0"
+                        <span className="text-[9px] px-1.5 py-0.5 rounded-sm font-mono shrink-0"
                           style={{
                             backgroundColor: `${sColor}15`,
                             color: sColor,
@@ -469,7 +469,7 @@ function WorkflowDetail({ workflow, onClose }: { workflow: WorkflowTemplate; onC
                       <div className="flex flex-wrap gap-1 mt-1">
                         <span className="text-[9px] text-gray-400">blocked by:</span>
                         {step.blockedByKeys.map(dep => (
-                          <span key={dep} className="text-[9px] px-1.5 py-0.5 rounded bg-gray-50 text-gray-400 font-mono">
+                          <span key={dep} className="text-[9px] px-1.5 py-0.5 rounded-sm bg-gray-50 text-gray-400 font-mono">
                             {dep}
                           </span>
                         ))}
@@ -518,7 +518,7 @@ function WorkflowDetail({ workflow, onClose }: { workflow: WorkflowTemplate; onC
               <span className="text-[9px] text-gray-400 uppercase tracking-wider font-semibold">Legend:</span>
               {(["agent", "cron", "jing", "default"] as NodeIdentity[]).map(id => (
                 <div key={id} className="flex items-center gap-1.5">
-                  <span className="w-3 h-3 rounded-sm" style={{ backgroundColor: IDENTITY_COLORS[id].fill }} />
+                  <span className="w-3 h-3 rounded-xs" style={{ backgroundColor: IDENTITY_COLORS[id].fill }} />
                   <span className="text-[9px] text-gray-400">{IDENTITY_LABELS[id]}</span>
                 </div>
               ))}

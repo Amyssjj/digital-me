@@ -131,6 +131,37 @@ describe("createOpenClawAliasResolver", () => {
     ]);
   });
 
+  it("rewrites legacy openclaw-brain server refs in saved alias args", () => {
+    const resolver = createOpenClawAliasResolver({
+      aliases: {
+        "codex-cli": {
+          binary: "codex",
+          args: [
+            "-c",
+            'mcp_servers.openclaw-brain.tools.memory_search.approval_mode="approve"',
+            "--allowedTools",
+            "mcp__openclaw-brain__tasks,Bash",
+            "{{prompt}}",
+          ],
+        },
+      },
+      artifactRoot,
+      workerScript: "/abs/worker.mjs",
+      nodeBinary: "/abs/node",
+    });
+    resolver("codex-cli", makeCtx());
+    const spec = JSON.parse(
+      fs.readFileSync(path.join(artifactRoot, "g-1", "t-1", "spec.json"), "utf8"),
+    ) as { args: string[] };
+    expect(spec.args).toEqual([
+      "-c",
+      'mcp_servers.digital-me-brain.tools.memory_search.approval_mode="approve"',
+      "--allowedTools",
+      "mcp__digital-me-brain__tasks,Bash",
+      "{{prompt}}",
+    ]);
+  });
+
   it("writes spec.json mode 0600 and chmods the artifact dir to 0700", () => {
     const resolver = createOpenClawAliasResolver({
       aliases: { "claude-code-cli": claudeAlias },

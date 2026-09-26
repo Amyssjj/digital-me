@@ -3,7 +3,7 @@
  *
  * Pure: resolves the proxy script + node binary from the environment and
  * returns the `StdioServerParameters` the SDK's StdioClientTransport takes.
- * Extracted from brain-client.mc.ts so the spawn contract — in particular
+ * Extracted from the legacy stdio brain client so the spawn contract — in particular
  * the read-buffer cap that decides whether a full board JSON can reach the
  * dashboard at all — is unit-tested without spawning anything.
  *
@@ -24,7 +24,7 @@ import { MAX_RESULT_BYTES_ENV } from "@digital-me/brain-mcp-proxy";
  * the full 7-day board JSON is ~55 MB, so with the default every board call
  * killed the proxy and every brain route then failed with "Not connected".
  * 256 MiB leaves headroom over the largest window brainBoard() will request
- * (see BOARD_WINDOW_MAX_DAYS in brain-client.mc.ts).
+ * (see BOARD_WINDOW_MAX_DAYS in brain-client.ts).
  */
 const PROXY_MAX_BUFFER_BYTES = 256 * 1024 * 1024;
 
