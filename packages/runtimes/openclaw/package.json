@@ -28,11 +28,11 @@
   "dependencies": {
     "@digital-me/brain-orchestrator": "workspace:*",
     "@digital-me/contracts": "workspace:*",
-    "typebox": "^1.3.16",
-    "yaml": "^2.9.0"
+    "typebox": "^1.3.34",
+    "yaml": "^2.9.1"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^5.0.1",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"
