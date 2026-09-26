@@ -38,7 +38,7 @@
     "@digital-me/brain-mcp-proxy": "workspace:*",
     "@digital-me/contracts": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.30.0",
-    "better-sqlite3": "^12.6.2",
+    "better-sqlite3": "^13.0.3",
     "express": "^5.2.1",
     "framer-motion": "^13.4.0",
     "react": "^19.3.0",
