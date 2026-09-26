@@ -31,7 +31,7 @@
     "@digital-me/contracts": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
+    "@types/node": "^22.20.4",
     "@vitest/coverage-v8": "^5.0.1",
     "typescript": "^6.0.3",
     "vitest": "^5.0.1"
