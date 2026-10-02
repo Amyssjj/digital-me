@@ -61,6 +61,9 @@ import {
   HOOKS_DIR as CODEX_HOOKS_DIR,
   brainHookEnv,
   buildCodexMcpConfig,
+  codexManagedHookCommands,
+  collectCodexHookTrust,
+  mergeCodexHookTrust,
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
@@ -736,11 +739,33 @@ function installCodex(home: string): void {
       );
     }
   }
-  writeFileSync(tomlTarget, tomlMerged, "utf-8");
   // Lifecycle hooks: copy the scripts into ~/.codex/hooks/ and merge the
   // wiring stanzas into ~/.codex/hooks.json. Codex hooks are I/O-compatible
   // with Claude Code's, so this mirrors installClaudeCode's hook step.
+  // Codex does not document `$HOME` expansion in hook command paths, so we
+  // wire absolute paths resolved at install time.
   const targetHooksDir = path.join(codexDir, "hooks");
+  const hooksJsonPath = path.join(codexDir, "hooks.json");
+  const hooksExisting = existsSync(hooksJsonPath)
+    ? readUserJson(hooksJsonPath)
+    : {};
+  const mergedHooks = mergeCodexHooksJson(hooksExisting, targetHooksDir);
+  // Codex skips any hook whose trusted_hash in config.toml no longer matches
+  // it, silently — the 2026-09-27 reinstall that added `--runtime codex` took
+  // every Digital Me hook offline that way. Record trust for the handlers we
+  // just wrote (only ours; the user's own hooks stay under Codex's review).
+  try {
+    const ours = codexManagedHookCommands(targetHooksDir);
+    const trust = collectCodexHookTrust(mergedHooks, hooksJsonPath, (cmd) => ours.has(cmd));
+    tomlMerged = mergeCodexHookTrust(tomlMerged, trust);
+    console.log(`     codex hooks: trust recorded for ${trust.length} Digital Me hooks (config.toml [hooks.state])`);
+  } catch (err) {
+    console.error(
+      `[WARN] codex hooks: could not record hook trust (${err instanceof Error ? err.message : String(err)}). ` +
+        `Codex will skip the Digital Me hooks until you approve them in its hook review.`,
+    );
+  }
+  writeFileSync(tomlTarget, tomlMerged, "utf-8");
   for (const name of CODEX_HOOK_NAMES) {
     const src = path.join(CODEX_HOOKS_DIR, name);
     const dst = path.join(targetHooksDir, name);
@@ -753,13 +778,6 @@ function installCodex(home: string): void {
   // brain-host is not configured, so they never point at a removed brain-host.
   const sidecarNote = describeBrainSidecar(syncBrainSidecar(targetHooksDir, brainCaller));
   if (sidecarNote) console.log(`     codex hooks: ${sidecarNote}`);
-  // Codex does not document `$HOME` expansion in hook command paths, so we
-  // wire absolute paths resolved at install time.
-  const hooksJsonPath = path.join(codexDir, "hooks.json");
-  const hooksExisting = existsSync(hooksJsonPath)
-    ? readUserJson(hooksJsonPath)
-    : {};
-  const mergedHooks = mergeCodexHooksJson(hooksExisting, targetHooksDir);
   writeFileSync(hooksJsonPath, JSON.stringify(mergedHooks, null, 2) + "\n", "utf-8");
   console.log(
     `[OK] installed codex: CODEX.md + config.toml merged ` +

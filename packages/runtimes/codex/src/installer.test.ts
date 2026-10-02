@@ -14,6 +14,7 @@ import {
   brainHookEnv,
   buildCodexHooksManifest,
   buildCodexMcpConfig,
+  codexManagedHookCommands,
   inlineKeysOf,
   mergeCodexHooksJson,
   mergeCodexMd,
@@ -470,6 +471,19 @@ describe("buildCodexHooksManifest", () => {
   });
 });
 
+describe("codexManagedHookCommands", () => {
+  it("is exactly the manifest's commands — what the installer records Codex trust for", () => {
+    expect([...codexManagedHookCommands("/home/me/.codex/hooks")]).toEqual([
+      "/home/me/.codex/hooks/dm_memory_search_inject.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_handoff_reminder.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_session_extract.sh --runtime codex",
+      "/home/me/.codex/hooks/dm_application_rate.sh --runtime codex",
+      "/home/me/.codex/hooks/brain_route_inject.sh --runtime codex",
+    ]);
+    expect(codexManagedHookCommands().has("$HOME/.codex/hooks/brain_route_inject.sh --runtime codex")).toBe(true);
+  });
+});
+
 describe("mergeCodexHooksJson", () => {
   const DIR = "/home/me/.codex/hooks";
 
@@ -538,6 +552,25 @@ describe("mergeCodexHooksJson", () => {
 });
 
 describe("mergeCodexMd", () => {
+
+  it("manages only the template's marked span — its preamble never lands inside the block", () => {
+    const template = `# Title\n\n## Preamble\n- user-owned\n\n${SECTION_BEGIN}\n\nmanaged body\n\n${SECTION_END}\n\ntrailer\n`;
+    const existing = `# Title\n\n## Preamble\n- edited by the user\n\n${SECTION_BEGIN}\nold\n${SECTION_END}\n`;
+    const out = mergeCodexMd(existing, template);
+    expect(out).toBe(`# Title\n\n## Preamble\n- edited by the user\n\n${SECTION_BEGIN}\nmanaged body\n${SECTION_END}\n`);
+    expect(mergeCodexMd(out, template)).toBe(out);
+  });
+
+  it("seeds a brand-new file with the template's preamble and trailer around the managed span", () => {
+    const template = `# Title\n\n${SECTION_BEGIN}\nbody\n${SECTION_END}\n\ntrailer\n\n`;
+    expect(mergeCodexMd("", template)).toBe(`# Title\n\n${SECTION_BEGIN}\nbody\n${SECTION_END}\n\ntrailer\n`);
+    // the shipped template round-trips: one preamble, outside the block
+    const real = readFileSync(CODEX_MD_TEMPLATE, "utf-8");
+    const fresh = mergeCodexMd("", real);
+    expect(fresh.split('# Codex Instructions').length - 1).toBe(1);
+    expect(fresh.indexOf('# Codex Instructions')).toBeLessThan(fresh.indexOf(SECTION_BEGIN));
+    expect(mergeCodexMd(fresh, real)).toBe(fresh);
+  });
   it("returns just the managed section + trailing newline for an empty file", () => {
     const out = mergeCodexMd("", "managed content");
     expect(out).toContain(SECTION_BEGIN);

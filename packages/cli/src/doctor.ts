@@ -17,10 +17,17 @@
  *      an API key — the #1 "memory_search finds nothing" fresh-install trap).
  */
 
+import path from "node:path";
 import JSON5 from "json5";
 import { resolveEnvFilePath } from "@digital-me/contracts";
 import { HOOK_NAMES as CLAUDE_HOOK_FILES } from "@digital-me/runtime-claude-code";
-import { HOOK_NAMES as CODEX_HOOK_FILES } from "@digital-me/runtime-codex";
+import {
+  HOOK_NAMES as CODEX_HOOK_FILES,
+  codexHookTrustStatus,
+  codexManagedHookCommands,
+  collectCodexHookTrust,
+  readCodexHookTrust,
+} from "@digital-me/runtime-codex";
 import {
   CONVERSATION_HOOK_PLUGIN_IDS,
   KEY_OPTIONAL_EMBEDDING_PROVIDERS,
@@ -325,6 +332,10 @@ export function runDoctor(
     }
   }
 
+  if (enabledRuntimes.includes("codex")) {
+    checks.push(runCodexHookTrustCheck(deps));
+  }
+
   // openclaw: flag stale SHADOW copies that can override the canonical
   // state-dir install. Load precedence is
   // ~/.openclaw/extensions ▸ ~/openclaw/dist/extensions ▸ ~/openclaw/extensions,
@@ -455,6 +466,71 @@ export function runConversationHookGrantCheck(
       `in ${configPath}. openclaw silently drops their before_prompt_build / agent_end ` +
       `hooks — recall injection and the M1 ack go to zero with no error. Run ` +
       `'digital-me install --runtime openclaw' (idempotent), then restart the gateway.`,
+  };
+}
+
+const CODEX_HOOK_TRUST_LABEL = "codex: hook trust";
+
+/**
+ * Codex runs a hooks.json handler only while config.toml records a
+ * `trusted_hash` that matches it. A hook that changed since it was approved
+ * (or never was) is skipped with no error anywhere — on 2026-09-27 a reinstall
+ * that appended `--runtime codex` silenced every Digital Me hook this way for
+ * days. Reports each of OUR hooks Codex would skip. Exported for unit tests.
+ */
+export function runCodexHookTrustCheck(deps: DoctorDeps): CheckResult {
+  const codexDir = path.join(deps.env.HOME ?? deps.env.USERPROFILE ?? "", ".codex");
+  const hooksJsonPath = path.join(codexDir, "hooks.json");
+  const configPath = path.join(codexDir, "config.toml");
+  let hooksText: string;
+  let configText: string;
+  try {
+    if (!deps.readFile) throw new Error("no readFile");
+    hooksText = deps.readFile(hooksJsonPath);
+    configText = deps.readFile(configPath);
+  } catch {
+    return {
+      ok: true,
+      label: CODEX_HOOK_TRUST_LABEL,
+      note: "(skipped — hooks.json / config.toml not readable; see the file checks above)",
+    };
+  }
+  let hooksJson: unknown;
+  try {
+    hooksJson = JSON.parse(hooksText);
+  } catch (err) {
+    return {
+      ok: false,
+      label: CODEX_HOOK_TRUST_LABEL,
+      reason: `${hooksJsonPath} is not valid JSON (${err instanceof Error ? err.message : String(err)}) — Codex loads none of its hooks.`,
+    };
+  }
+  const ours = codexManagedHookCommands(path.join(codexDir, "hooks"));
+  const entries = collectCodexHookTrust(asObject(hooksJson), hooksJsonPath, (cmd) => ours.has(cmd));
+  if (entries.length === 0) {
+    return {
+      ok: false,
+      label: CODEX_HOOK_TRUST_LABEL,
+      reason: `No Digital Me hooks are registered in ${hooksJsonPath}, so recall injection and M1 never run for Codex. Run 'digital-me install --runtime codex'.`,
+    };
+  }
+  const trusted = readCodexHookTrust(configText);
+  const skipped = entries
+    .map((e) => ({ e, status: codexHookTrustStatus(e, trusted) }))
+    .filter(({ status }) => status !== "trusted");
+  if (skipped.length === 0) {
+    return { ok: true, label: CODEX_HOOK_TRUST_LABEL, note: `${entries.length} Digital Me hooks trusted` };
+  }
+  const which = skipped
+    .map(({ e, status }) => `${e.key.slice(hooksJsonPath.length + 1)} ${status}`)
+    .join(", ");
+  return {
+    ok: false,
+    label: CODEX_HOOK_TRUST_LABEL,
+    reason:
+      `Codex skips ${skipped.length} of ${entries.length} Digital Me hooks (${which}): their trusted_hash in ` +
+      `${configPath} is missing or stale, so recall injection and M1 stop with no error. Run ` +
+      `'digital-me install --runtime codex' (it records trust for its own hooks), or approve them in Codex's hook review.`,
   };
 }
 

@@ -111,6 +111,29 @@ describe("mergeHookManifest", () => {
     ]);
   });
 
+  it("raises a timeout on one of ours that is below the manifest's, on upgrade and on re-install", () => {
+    // The live Codex hooks.json kept an older installer's 8 s inject timeout
+    // through every upgrade — below the hook's own 12 s brain request.
+    const legacy = mergeHookManifest<Handler, Stanza>(
+      { UserPromptSubmit: [{ hooks: [{ type: "command", command: "/d/inject.sh", timeout: 8 }] }] },
+      ours("codex"),
+    );
+    expect(legacy.UserPromptSubmit).toEqual(ours("codex").UserPromptSubmit);
+    const current = mergeHookManifest<Handler, Stanza>(
+      { UserPromptSubmit: [{ hooks: [{ type: "command", command: "/d/inject.sh --runtime codex", timeout: 8 }] }] },
+      ours("codex"),
+    );
+    expect(current.UserPromptSubmit).toEqual(ours("codex").UserPromptSubmit);
+    // Only ours: someone else's short timeout, and ours without a timeout, are left alone.
+    const untouched: Record<string, Stanza[]> = {
+      UserPromptSubmit: [{ hooks: [{ type: "command", command: "mine.sh", timeout: 1 }] }],
+      PreToolUse: [{ matcher: "*", hooks: [{ type: "command", command: "/d/route.sh --runtime codex", timeout: 1 }] }],
+    };
+    const merged = mergeHookManifest<Handler, Stanza>(untouched, ours("codex"));
+    expect(merged.UserPromptSubmit![0]).toEqual(untouched.UserPromptSubmit![0]);
+    expect(merged.PreToolUse).toEqual(untouched.PreToolUse);
+  });
+
   it("ignores manifest handlers that carry no --runtime (nothing to upgrade from)", () => {
     const manifest: Record<string, Stanza[]> = { Stop: [{ hooks: [{ type: "command", command: "/d/plain.sh" }] }] };
     const merged = mergeHookManifest<Handler, Stanza>({ Stop: [{ hooks: [{ type: "command", command: "/d/plain.sh" }] }] }, manifest);

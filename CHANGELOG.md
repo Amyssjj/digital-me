@@ -9,6 +9,24 @@ Until `1.0.0`, minor versions may include breaking changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- Codex: `digital-me install --runtime codex` now records Codex's hook trust
+  (`[hooks.state."…"].trusted_hash` in `~/.codex/config.toml`) for the hooks
+  it writes. Codex silently skips any hook whose definition changed since it
+  was approved, so the upgrade that appended `--runtime codex` to every
+  command took all Digital Me hooks offline for Codex — no recall injection,
+  no M1 events, no error. `digital-me doctor` gains a `codex: hook trust`
+  check that names each hook Codex would skip.
+- Hook upgrades now raise a timeout on one of our hooks that is below the
+  manifest's (Codex installs kept an 8 s inject timeout, under the hook's own
+  12 s brain request).
+- `CODEX.md` / `SOUL.md`: only the template's marked span is managed; its
+  preamble (Codex header, Hermes default persona) no longer lands inside the
+  managed block on every install. The nightly dream-cycle refresh of
+  `CODEX.md` keeps the installer's protocol text — which carries the
+  `[Digital Me]` acknowledgement rule — and updates only the Active Policies.
+
 ### Security
 
 - brain-host: a client aborting mid-upload can no longer crash the process

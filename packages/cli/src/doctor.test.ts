@@ -6,6 +6,7 @@ import {
   formatReport,
   parsePythonVersion,
   runDoctor,
+  runCodexHookTrustCheck,
   runEmbeddingsCheck,
   runLlmAuthCheck,
   runMemoryIndexChecks,
@@ -13,6 +14,12 @@ import {
   runWorkflowDriftChecks,
   type DoctorDeps,
 } from "./doctor.js";
+import {
+  buildCodexHooksManifest,
+  codexManagedHookCommands,
+  collectCodexHookTrust,
+  mergeCodexHookTrust,
+} from "@digital-me/runtime-codex";
 
 function makeDeps(overrides: Partial<DoctorDeps> = {}): DoctorDeps {
   return {
@@ -1406,5 +1413,88 @@ describe("runWorkflowDriftChecks", () => {
     });
     expect(r[0].ok).toBe(true);
     expect((r[0] as { note: string }).note).toMatch(/no workflow templates/);
+  });
+});
+
+describe("runCodexHookTrustCheck", () => {
+  const HOOKS_JSON = "/home/u/.codex/hooks.json";
+  const CONFIG = "/home/u/.codex/config.toml";
+  const hooksJson = { hooks: buildCodexHooksManifest("/home/u/.codex/hooks") };
+  const ours = codexManagedHookCommands("/home/u/.codex/hooks");
+  const trustedToml = mergeCodexHookTrust(
+    'model = "x"\n',
+    collectCodexHookTrust(hooksJson, HOOKS_JSON, (c) => ours.has(c)),
+  );
+  const files = (hooks: string, config: string) => (p: string) => {
+    if (p === HOOKS_JSON) return hooks;
+    if (p === CONFIG) return config;
+    throw new Error(`ENOENT ${p}`);
+  };
+  const check = (readFile?: (p: string) => string, env: Record<string, string> = { HOME: "/home/u" }) =>
+    runCodexHookTrustCheck(makeDeps({ env, readFile }));
+
+  it("passes when every Digital Me hook has a matching trusted_hash", () => {
+    const r = check(files(JSON.stringify(hooksJson), trustedToml));
+    expect(r).toEqual({ ok: true, label: "codex: hook trust", note: "5 Digital Me hooks trusted" });
+  });
+
+  it("fails naming each hook Codex would skip — the 2026-09-27 `--runtime codex` reinstall shape", () => {
+    // Trust recorded for the pre-upgrade commands (no --runtime) no longer matches.
+    const legacyJson = JSON.parse(JSON.stringify(hooksJson).replaceAll(" --runtime codex", ""));
+    const legacyCmds = new Set([...ours].map((c) => c.replace(" --runtime codex", "")));
+    const staleToml = mergeCodexHookTrust("", collectCodexHookTrust(legacyJson, HOOKS_JSON, (c) => legacyCmds.has(c)));
+    const r = check(files(JSON.stringify(hooksJson), staleToml.replace(/\[hooks\.state\."[^"]*:pre_tool_use:0:0"\]\ntrusted_hash = "[^"]*"\n?/, "")));
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.reason).toMatch(/^Codex skips 5 of 5 Digital Me hooks \(user_prompt_submit:0:0 modified, /);
+      expect(r.reason).toMatch(/pre_tool_use:0:0 untrusted\)/);
+      expect(r.reason).toMatch(/digital-me install --runtime codex/);
+    }
+  });
+
+  it("fails when hooks.json carries none of our hooks, or is not JSON", () => {
+    const none = check(files(JSON.stringify({ hooks: { Stop: [{ hooks: [{ type: "command", command: "/mine.sh" }] }] } }), ""));
+    expect(none.ok).toBe(false);
+    if (!none.ok) expect(none.reason).toMatch(/No Digital Me hooks are registered/);
+    const broken = check(files("{ nope", trustedToml));
+    expect(broken.ok).toBe(false);
+    if (!broken.ok) expect(broken.reason).toMatch(/is not valid JSON .*Codex loads none of its hooks/);
+    const notError = check((p) => {
+      if (p === HOOKS_JSON) return "[]";
+      return trustedToml;
+    });
+    expect(notError.ok).toBe(false);
+  });
+
+  it("stringifies a non-Error JSON failure", () => {
+    const parse = JSON.parse;
+    JSON.parse = () => {
+      throw "boom";
+    };
+    try {
+      const r = check(files("{}", trustedToml));
+      expect(r.ok).toBe(false);
+      if (!r.ok) expect(r.reason).toMatch(/\(boom\)/);
+    } finally {
+      JSON.parse = parse;
+    }
+  });
+
+  it("skips (not fails) when the files cannot be read — the file checks report that", () => {
+    for (const r of [check(undefined), check(files(JSON.stringify(hooksJson), "").bind(null, "/elsewhere"))]) {
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.note).toMatch(/skipped/);
+    }
+    // no HOME: resolves relative to "" and still degrades to a skip
+    const r = check(files(JSON.stringify(hooksJson), trustedToml), {});
+    expect(r.ok).toBe(true);
+    // USERPROFILE stands in for HOME
+    expect(check(files(JSON.stringify(hooksJson), trustedToml), { USERPROFILE: "/home/u" }).ok).toBe(true);
+  });
+
+  it("runs from runDoctor only when codex is enabled", () => {
+    const deps = makeDeps({ readFile: files(JSON.stringify(hooksJson), trustedToml) });
+    expect(runDoctor(deps, ["codex"]).checks.some((c) => c.label === "codex: hook trust")).toBe(true);
+    expect(runDoctor(deps, ["claude-code"]).checks.some((c) => c.label === "codex: hook trust")).toBe(false);
   });
 });

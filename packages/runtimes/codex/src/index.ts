@@ -30,6 +30,7 @@ export {
   brainHookEnv,
   buildCodexHooksManifest,
   buildCodexMcpConfig,
+  codexManagedHookCommands,
   mergeCodexHooksJson,
   mergeCodexMd,
   mergeMcpServer,
@@ -43,4 +44,18 @@ export type {
   CodexHookStanza,
   CodexMcpConfigInputs,
 } from "./installer.js";
+export {
+  CODEX_HOOK_EVENT_LABELS,
+  codexHookStateKey,
+  codexHookTrustHash,
+  codexHookTrustStatus,
+  collectCodexHookTrust,
+  mergeCodexHookTrust,
+  readCodexHookTrust,
+} from "./hook-trust.js";
+export type {
+  CodexHookTrustEntry,
+  CodexHookTrustStatus,
+  CodexTrustableHandler,
+} from "./hook-trust.js";
 export { TRANSCRIPT_SOURCE } from "./manifest.js";
