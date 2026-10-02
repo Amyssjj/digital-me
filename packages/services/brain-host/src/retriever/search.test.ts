@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { HashEmbedder } from "./embedder.js";
+import { EmbedUnavailableError, HashEmbedder, type Embedder } from "./embedder.js";
 import { buildIndex, ProvenanceMismatchError } from "./index-builder.js";
 import { clampLimit, DEFAULT_LIMIT, MAX_LIMIT, search, toFtsQuery, VectorCache } from "./search.js";
 import { IndexStore } from "./store.js";
@@ -160,6 +160,46 @@ describe("search", () => {
     const res = await search(store, cache, embedder, "pnpm overrides workspace");
     expect(res.results.map((r) => r.path)).not.toContain("/w/pnpm.md");
     expect(res.count).toBe(2);
+  });
+
+  it("answers lexical-only when the query embedding is unavailable, with no invented vector score", async () => {
+    const { store, embedder, cache } = await indexed();
+    const unavailable: Embedder = {
+      provider: embedder.provider,
+      model: embedder.model,
+      dims: embedder.dims,
+      embed: async () => {
+        throw new EmbedUnavailableError("query embedding missed its 3500ms deadline");
+      },
+    };
+    const res = await search(store, cache, unavailable, "pnpm overrides workspace yaml", { limit: 3 });
+    expect(res.mode).toBe("lexical");
+    expect(res.embedError).toBe("query embedding missed its 3500ms deadline");
+    // FTS alone ranks: only entries that share a token with the query come back
+    expect(res.results.map((r) => r.path)).toEqual(["/w/pnpm.md"]);
+    expect(res.results[0]).toMatchObject({ score: 0, vectorScore: 0, textScore: 1, startLine: 3, endLine: 4, citation: "wiki/dev/pnpm.md#L3-L4" });
+    expect(res.results[0]!.fusedScore).toBeGreaterThan(0);
+    expect(res.results[0]!.snippet).toMatch(/^Rule: pnpm overrides/);
+  });
+
+  it("reports hybrid mode when the query was embedded", async () => {
+    const { store, embedder, cache } = await indexed();
+    const res = await search(store, cache, embedder, "pnpm");
+    expect(res.mode).toBe("hybrid");
+    expect(res).not.toHaveProperty("embedError");
+  });
+
+  it("still fails loudly on a permanent embedding error", async () => {
+    const { store, embedder, cache } = await indexed();
+    const broken: Embedder = {
+      provider: embedder.provider,
+      model: embedder.model,
+      dims: embedder.dims,
+      embed: async () => {
+        throw new Error("gemini embed failed: HTTP 400 API key not valid");
+      },
+    };
+    await expect(search(store, cache, broken, "pnpm")).rejects.toThrow(/HTTP 400 API key not valid/);
   });
 
   it("refuses an empty or mismatched index loudly", async () => {

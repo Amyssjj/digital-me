@@ -61,6 +61,32 @@ is refused **as an error**, never as an empty result list.
 Size on 2026-09-19: 1,380 entries, 5,916 vectors, ~18 MB, indexed in 61 s;
 search p50 0.20 s including the query embedding call.
 
+**Query-embedding latency.** Ranking itself is ~10 ms (1,681 entries, 5,501
+sections, 2026-10-02); a search's time is its Gemini query-embedding call. Before
+this was bounded, 429 backoff (500 ms × 2^n) and stalled connections pushed 11 of
+300 searches past the hooks' 12 s timeout (worst 42 s). memory_search now embeds
+queries through `QueryEmbeddingCache`:
+
+- each HTTP attempt is capped at 1.5 s (30 s for index batches), so a stalled
+  connection costs one retry;
+- a search waits at most `DIGITAL_ME_QUERY_EMBED_DEADLINE_MS` (3500, under the
+  Hermes recall plugin's 4 s timeout) for its vector, then answers
+  **lexical-only**: FTS alone ranks, the response says `mode: "lexical"` plus
+  `embedError`, and every hit reports `score`/`vectorScore` 0. There is no cosine
+  evidence, so recall hooks (cosine gates: 0.6 Claude Code / Codex, 0.4 Hermes) inject nothing rather than
+  a bm25 match dressed up as a similarity;
+- the request runs on (15 s budget) after the deadline, and query vectors are
+  LRU-cached (512) with concurrent identical queries sharing one request, so a
+  late vector serves the next identical query (Hermes re-sends the same user
+  message before every LLM call of a turn);
+- every retry is logged with its cause (`gemini embed: HTTP 429 … retrying in
+  500ms`, `timed out after 1500ms`, `network error: …`), as are deadline misses,
+  late fills and failures. `/health` reports the counters as `queryEmbeddings`.
+
+Only transient failures (deadline, 429/5xx, timeouts, network) degrade to
+lexical. A rejected key or a malformed response still fails the search as
+`search_unavailable`.
+
 ## Usage
 
 ```bash
@@ -88,7 +114,7 @@ moves it), `DIGITAL_ME_ENV_FILE` (provider keys; default `<wiki-root>/.data/.env
 `DIGITAL_ME_BRAIN_TOKEN_FILE` (default `<wiki-root>/.data/brain-host.token`) or
 `DIGITAL_ME_BRAIN_TOKEN`, `DIGITAL_ME_BRAIN_PORT` (18791),
 `DIGITAL_ME_BRAIN_HOST` (127.0.0.1), `GEMINI_API_KEY`, `DIGITAL_ME_EMBED_MODEL`,
-`DIGITAL_ME_EMBED_DIMS`. `--offline` swaps in a deterministic hash embedder for
+`DIGITAL_ME_EMBED_DIMS`, `DIGITAL_ME_QUERY_EMBED_DEADLINE_MS` (3500). `--offline` swaps in a deterministic hash embedder for
 tests and smoke runs.
 
 ## Wire
@@ -96,11 +122,11 @@ tests and smoke runs.
 ```
 POST /tools/invoke   Authorization: Bearer <token>
 { "tool": "memory_search", "agentId": "claude-code", "args": { "query": "…", "limit": 6 } }
-→ { "ok": true, "result": { "content": [{ "type": "text", "text": "<json>" }], "details": { "results": [...], "provider", "model", "count" } } }
+→ { "ok": true, "result": { "content": [{ "type": "text", "text": "<json>" }], "details": { "results": [...], "provider", "model", "count", "mode": "hybrid" | "lexical", "embedError"? } } }
 → { "ok": false, "error": { "type": "search_unavailable" | "invalid_request" | "unknown_tool" | …, "message" } }
 
 GET /health                                  → { ok, version }   (liveness; no token needed)
-GET /health  Authorization: Bearer <token>   → { ok, version, provenance, lastIndexAt, entries, sections, byCorpus, dbPath, wikiRoot, orchestrator }
+GET /health  Authorization: Bearer <token>   → { ok, version, provenance, lastIndexAt, entries, sections, byCorpus, dbPath, wikiRoot, indexRefresh, queryEmbeddings, orchestrator }
 ```
 
 `serve` refuses a token shorter than 16 characters (the same `MIN_TOKEN_LENGTH`
