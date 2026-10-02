@@ -36,9 +36,10 @@ not any entry applies:
   knowledge surfaced by your own searches; ignoring search results is
   the same signal as not searching at all.
 
-Codex/Hermes don't have push-injected wiki context like Claude Code or
-OpenClaw native agents do — you must pull via `memory_search`. The
-`[Digital Me]` prefix makes that pull meaningful.
+The same rule covers the hits the Digital Me `UserPromptSubmit` hook injects
+into your context ("Digital Me / digital-me-brain memory_search top hits for
+this prompt"). When nothing is injected, pull with `memory_search` yourself —
+the `[Digital Me]` prefix makes that pull meaningful.
 
 When you discover a generalizable pattern, call the `learning_capture` MCP tool
 (via the `digital-me-brain` server) with `kind`, `text`, `why`, `apply_when`,

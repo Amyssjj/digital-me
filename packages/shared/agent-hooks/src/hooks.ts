@@ -84,7 +84,7 @@ export function legacyHookCommand(command: string): string {
   return command.replace(/ --runtime \S+$/, "");
 }
 
-type HookHandler = { readonly command: string };
+type HookHandler = { readonly command: string; readonly timeout?: number };
 type HookStanza<H extends HookHandler> = { readonly hooks: ReadonlyArray<H> };
 
 /**
@@ -97,6 +97,12 @@ type HookStanza<H extends HookHandler> = { readonly hooks: ReadonlyArray<H> };
  *     upgraded in place to the new command, keeping its position and any
  *     keys the user tuned — so an upgrade never leaves the hook registered
  *     twice.
+ *   - One exception to "keys the user tuned": a `timeout` on one of OUR
+ *     handlers that is below the manifest's is raised to it. Each hook bounds
+ *     its own work (the inject hook's brain request runs up to 12 s), so a
+ *     shorter host timeout only kills it mid-request — Codex installs kept an
+ *     older 8 s inject timeout through every upgrade and dropped each slow
+ *     search as an empty inject. A longer timeout is left alone.
  *   - De-dupes by command string, so re-running the installer is idempotent.
  */
 export function mergeHookManifest<H extends HookHandler, S extends HookStanza<H>>(
@@ -109,17 +115,23 @@ export function mergeHookManifest<H extends HookHandler, S extends HookStanza<H>
   }
   for (const [event, ours] of Object.entries(manifest)) {
     const upgrades = new Map<string, string>();
+    const minTimeout = new Map<string, number>();
     for (const stanza of ours) {
       for (const h of stanza.hooks) {
         const legacy = legacyHookCommand(h.command);
         if (legacy !== h.command) upgrades.set(legacy, h.command);
+        if (h.timeout !== undefined) minTimeout.set(h.command, h.timeout);
       }
     }
     const theirs = (merged[event] ?? []).map((stanza) => ({
       ...stanza,
       hooks: stanza.hooks.map((h) => {
         const upgraded = upgrades.get(h.command);
-        return upgraded === undefined ? h : { ...h, command: upgraded };
+        const next = upgraded === undefined ? h : { ...h, command: upgraded };
+        const floor = minTimeout.get(next.command);
+        return floor !== undefined && next.timeout !== undefined && next.timeout < floor
+          ? { ...next, timeout: floor }
+          : next;
       }),
     }));
     const seen = new Set<string>();

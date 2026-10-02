@@ -68,6 +68,25 @@ describe("paths", () => {
 });
 
 describe("mergeSoulMd", () => {
+
+  it("manages only the template's marked span — its preamble never lands inside the block", () => {
+    const template = `# Title\n\n## Preamble\n- user-owned\n\n${SECTION_BEGIN}\n\nmanaged body\n\n${SECTION_END}\n\ntrailer\n`;
+    const existing = `# Title\n\n## Preamble\n- edited by the user\n\n${SECTION_BEGIN}\nold\n${SECTION_END}\n`;
+    const out = mergeSoulMd(existing, template);
+    expect(out).toBe(`# Title\n\n## Preamble\n- edited by the user\n\n${SECTION_BEGIN}\nmanaged body\n${SECTION_END}\n`);
+    expect(mergeSoulMd(out, template)).toBe(out);
+  });
+
+  it("seeds a brand-new file with the template's preamble and trailer around the managed span", () => {
+    const template = `# Title\n\n${SECTION_BEGIN}\nbody\n${SECTION_END}\n\ntrailer\n\n`;
+    expect(mergeSoulMd("", template)).toBe(`# Title\n\n${SECTION_BEGIN}\nbody\n${SECTION_END}\n\ntrailer\n`);
+    // the shipped template round-trips: one preamble, outside the block
+    const real = readFileSync(SOUL_MD_TEMPLATE, "utf-8");
+    const fresh = mergeSoulMd("", real);
+    expect(fresh.split('# Hermes Persona').length - 1).toBe(1);
+    expect(fresh.indexOf('# Hermes Persona')).toBeLessThan(fresh.indexOf(SECTION_BEGIN));
+    expect(mergeSoulMd(fresh, real)).toBe(fresh);
+  });
   it("returns just the managed section + trailing newline for an empty file", () => {
     const out = mergeSoulMd("", "protocol content");
     expect(out).toContain(SECTION_BEGIN);

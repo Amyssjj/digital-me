@@ -128,11 +128,22 @@ export function mergeSoulMd(
   existing: string,
   newManagedSection: string,
 ): string {
-  // Strip any markers the incoming section already carries before wrapping.
-  // The shipped template contains its own BEGIN/END pair, so wrapping it
-  // verbatim nested one section inside another on EVERY install — which is
-  // how a live SOUL.md accumulated 2 begin and 9 end markers.
-  const bare = newManagedSection
+  // The shipped SOUL.md template is a whole file: a user-owned persona
+  // preamble, then its own BEGIN..END span. Only that span is managed. The
+  // preamble seeds a brand-new file and is never copied INTO the managed
+  // section — it used to be, duplicating the persona header inside the block
+  // on every install. Input without markers is all managed content.
+  const tplBegin = newManagedSection.indexOf(SECTION_BEGIN);
+  const tplEnd = newManagedSection.lastIndexOf(SECTION_END);
+  const framed = tplBegin >= 0 && tplEnd > tplBegin;
+  const managed = framed
+    ? newManagedSection.slice(tplBegin + SECTION_BEGIN.length, tplEnd)
+    : newManagedSection;
+  // Strip any stray markers left inside before wrapping. Wrapping a
+  // marker-carrying section verbatim nested one section inside another on
+  // EVERY install — which is how a live SOUL.md accumulated 2 begin and 9 end
+  // markers.
+  const bare = managed
     .split("\n")
     .filter((l) => l.trim() !== SECTION_BEGIN && l.trim() !== SECTION_END)
     .join("\n")
@@ -165,7 +176,12 @@ export function mergeSoulMd(
     const after = existing.slice(endIdx + SECTION_END.length);
     return `${before}${wrapped}${after}`;
   }
-  if (existing.length === 0) return `${wrapped}\n`;
+  if (existing.length === 0) {
+    if (!framed) return `${wrapped}\n`;
+    const head = newManagedSection.slice(0, tplBegin);
+    const tail = newManagedSection.slice(tplEnd + SECTION_END.length).replace(/\s+$/, "");
+    return `${head}${wrapped}${tail}\n`;
+  }
   const sep = existing.endsWith("\n") ? "\n" : "\n\n";
   return `${existing}${sep}${wrapped}\n`;
 }

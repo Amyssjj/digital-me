@@ -11,6 +11,14 @@ preserving any manual content the user has added outside the markers.
 Mirrors the SessionStart hook's content for Claude Code: protocol reminder
 + Active Policies block (extracted verbatim from ~/digital-me/_INDEX.md).
 
+Ownership inside the managed section is split: `digital-me install --runtime
+codex` writes the protocol text (from its CODEX.md template, which carries the
+`[Digital Me]` M1 acknowledgement rule), this module refreshes only the Active
+Policies block after it. The protocol text already in the section is kept;
+PROTOCOL_REMINDER is the fallback for a file the installer has not written.
+(Before 2026-10-02 every nightly run replaced the installer's text with
+PROTOCOL_REMINDER, which silently dropped the M1 rule from Codex.)
+
 Idempotent — re-running with no changes to _INDEX.md is a no-op (mtime stays).
 """
 
@@ -39,6 +47,14 @@ Before any non-trivial task:
 2. **Read entries directly** when the index reveals a match (faster than blind search).
 3. **Fall back to `memory_search`** MCP tool only when the index doesn't help.
 4. **Active Policies are mandatory** — the section below is injected verbatim from `_INDEX.md`.
+
+### [Digital Me] — M1 application_rate protocol
+
+When `memory_search` returns results — or the Digital Me hook injects its top
+hits into your context — **begin your reply with a line that starts
+`[Digital Me]`**: `[Digital Me] applying <entry slug or title>` when an entry
+applies, `[Digital Me] no applicable wiki entries` when none does. Skipping the
+prefix is a protocol violation tracked as M1 (application_rate).
 
 When you discover a generalizable pattern, call the `learning_capture` MCP tool
 (via the `digital-me-brain` server) with `kind`, `text`, `why`, `apply_when`,
@@ -76,8 +92,36 @@ def _extract_active_policies(index_text: str) -> str:
     return "\n".join(out).strip()
 
 
-def build_managed_section() -> str:
-    """Compose the full managed-section content."""
+def _is_fence(line: str) -> bool:
+    stripped = line.strip()
+    return bool(stripped) and set(stripped) == {"="}
+
+
+def _existing_protocol(existing: str) -> str:
+    """The protocol text the installer wrote at the top of the managed section.
+
+    Everything between BEGIN_MARKER and the first `===` fence (where the
+    Active Policies block starts). Returns "" when there is no managed section
+    or no fence — then the preamble cannot be told apart from the policies and
+    PROTOCOL_REMINDER is used instead.
+    """
+    if BEGIN_MARKER not in existing or END_MARKER not in existing:
+        return ""
+    managed = existing.split(BEGIN_MARKER, 1)[1].split(END_MARKER, 1)[0]
+    preamble: list[str] = []
+    for line in managed.split("\n"):
+        if _is_fence(line):
+            return "\n".join(preamble).strip()
+        preamble.append(line)
+    return ""
+
+
+def build_managed_section(protocol: str = "") -> str:
+    """Compose the full managed-section content.
+
+    `protocol` is the protocol text to keep at the top (see
+    `_existing_protocol`); empty means PROTOCOL_REMINDER.
+    """
     if not DM_INDEX_PATH.exists():
         return ""
     try:
@@ -86,7 +130,7 @@ def build_managed_section() -> str:
         return ""
 
     policies = _extract_active_policies(index_text)
-    parts = [BEGIN_MARKER, "", PROTOCOL_REMINDER.strip()]
+    parts = [BEGIN_MARKER, "", (protocol or PROTOCOL_REMINDER).strip()]
     if policies:
         parts.append("")
         parts.append(policies)
@@ -110,7 +154,13 @@ def update_codex_instructions(
         print(f"  SKIP codex integration — _INDEX.md not found at {DM_INDEX_PATH}")
         return {"status": "skipped_no_index"}
 
-    new_section = build_managed_section()
+    existing_text = ""
+    if CODEX_INSTRUCTIONS_PATH.exists():
+        try:
+            existing_text = CODEX_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+        except OSError:
+            existing_text = ""
+    new_section = build_managed_section(_existing_protocol(existing_text))
     if not new_section.strip():
         print("  SKIP codex integration — could not extract managed-section content")
         return {"status": "skipped_no_content"}
