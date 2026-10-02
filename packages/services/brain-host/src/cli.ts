@@ -53,6 +53,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         process.stdout.write(`${JSON.stringify(env.result.details, null, 2)}\n`);
       } else {
         const results = env.result.details.results as { relPath: string; score: number; startLine: number; endLine: number; title: string }[];
+        if (env.result.details.mode === "lexical") process.stderr.write(`brain-host: lexical-only (${String(env.result.details.embedError)})\n`);
         for (const h of results) process.stdout.write(`${h.score.toFixed(4)}  ${h.relPath}#L${h.startLine}-L${h.endLine}  ${h.title}\n`);
       }
       return 0;

@@ -13,6 +13,7 @@ import type { ExecRunArgs, ExecRunResult } from "./exec-run.js";
 import { openBrainDb, Orchestrator, type Logger } from "./orchestrator.js";
 import { GeminiEmbedder, HashEmbedder, type Embedder } from "./retriever/embedder.js";
 import { buildIndex, type BuildResult } from "./retriever/index-builder.js";
+import { QueryEmbeddingCache } from "./retriever/query-embedder.js";
 import { VectorCache } from "./retriever/search.js";
 import { IndexStore } from "./retriever/store.js";
 import { invokeTool, type ToolDeps, type ToolEnvelope } from "./tools.js";
@@ -36,7 +37,10 @@ export type RuntimeOptions = {
 export class BrainHostRuntime {
   readonly store: IndexStore;
   readonly cache: VectorCache;
+  /** Embeds documents for the index. */
   readonly embedder: Embedder;
+  /** Embeds memory_search queries: cached, coalesced, deadline-bounded (wraps `embedder`). */
+  readonly queryEmbedder: QueryEmbeddingCache;
   readonly deps: ToolDeps;
   readonly orchestrator: Orchestrator | null;
   private readonly config: HostConfig;
@@ -51,7 +55,8 @@ export class BrainHostRuntime {
     mkdirSync(dirname(opts.config.dbPath), { recursive: true });
     this.store = new IndexStore(opts.openDb(opts.config.dbPath));
     this.cache = new VectorCache(this.store);
-    this.embedder = opts.embedder ?? selectEmbedder(opts.config, opts.offline);
+    this.embedder = opts.embedder ?? selectEmbedder(opts.config, opts.offline, this.log);
+    this.queryEmbedder = new QueryEmbeddingCache(this.embedder, { deadlineMs: opts.config.queryEmbedDeadlineMs, log: this.log });
     const orchLog: Logger = (level, msg) => this.log(`[${level}] orchestrator: ${msg}`);
     if (opts.orchestrator && opts.config.brainDbSource === "legacy-openclaw") {
       this.log(
@@ -71,7 +76,7 @@ export class BrainHostRuntime {
     this.deps = {
       store: this.store,
       cache: this.cache,
-      embedder: this.embedder,
+      embedder: this.queryEmbedder,
       readableRoots: opts.config.roots.map((r) => r.dir),
       wikiRoot: opts.config.wikiRoot,
       version: VERSION,
@@ -143,6 +148,7 @@ export class BrainHostRuntime {
       wikiRoot: join(this.config.wikiRoot),
       indexGeneration: this.store.getMeta("index_generation"),
       indexRefresh: { everyMs: this.config.indexRefreshMs, active: this.refreshTimer !== null, last: this.lastRefresh },
+      queryEmbeddings: this.queryEmbedder.stats(),
       orchestrator: this.orchestrator
         ? { brainDb: this.config.brainDbPath, brainDbSource: this.config.brainDbSource, ...this.orchestrator.status() }
         : null,
@@ -150,10 +156,10 @@ export class BrainHostRuntime {
   }
 }
 
-export function selectEmbedder(config: HostConfig, offline: boolean): Embedder {
+export function selectEmbedder(config: HostConfig, offline: boolean, log?: (line: string) => void): Embedder {
   if (offline) return new HashEmbedder();
   if (config.geminiApiKey === undefined) {
     throw new Error("GEMINI_API_KEY is not set (pass --offline for the hash embedder, tests only)");
   }
-  return new GeminiEmbedder({ apiKey: config.geminiApiKey, model: config.embedModel, dims: config.embedDims });
+  return new GeminiEmbedder({ apiKey: config.geminiApiKey, model: config.embedModel, dims: config.embedDims, ...(log ? { log } : {}) });
 }

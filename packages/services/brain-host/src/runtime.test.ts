@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { loadConfig } from "./config.js";
 import { GeminiEmbedder, HashEmbedder } from "./retriever/embedder.js";
 import { BrainHostRuntime, selectEmbedder, VERSION } from "./runtime.js";
@@ -33,6 +33,11 @@ describe("BrainHostRuntime", () => {
     expect(env.ok && env.result.details.count).toBe(1);
     expect(rt.health()).toMatchObject({ version: VERSION, entries: 1, sections: 2, dbPath: join(dir, ".data", "retrieval.db"), wikiRoot: dir });
     expect(rt.health().provenance).toEqual({ provider: "hash", model: "bag-of-words-v1", dims: 256 });
+    // memory_search embeds through the deadline-bounded query cache; indexing does not
+    expect(rt.deps.embedder).toBe(rt.queryEmbedder);
+    expect(rt.health().queryEmbeddings).toMatchObject({ size: 1, misses: 1, hits: 0, deadlineMs: 3_500 });
+    await rt.invoke("memory_search", { query: "alpha beta" });
+    expect(rt.health().queryEmbeddings).toMatchObject({ size: 1, misses: 1, hits: 1 });
     // incremental: nothing to embed the second time, cache still valid
     expect((await rt.index(false)).embedded).toBe(0);
     expect((await rt.invoke("wiki", {})).ok).toBe(true);
@@ -162,5 +167,23 @@ describe("selectEmbedder", () => {
     const g = selectEmbedder(loadConfig({ GEMINI_API_KEY: "k", DIGITAL_ME_EMBED_DIMS: "1536" }, "/h"), false);
     expect(g).toBeInstanceOf(GeminiEmbedder);
     expect(g.dims).toBe(1536);
+  });
+
+  it("hands the runtime log to the gemini embedder so retries are visible", async () => {
+    // The embedder binds globalThis.fetch at construction: stub it first so no request leaves the process.
+    const logs: string[] = [];
+    let n = 0;
+    vi.stubGlobal("fetch", async () => {
+      n++;
+      return new Response(n === 1 ? "quota" : JSON.stringify({ embeddings: [{ values: [1, 0] }] }), { status: n === 1 ? 429 : 200 });
+    });
+    try {
+      const g = selectEmbedder(loadConfig({ GEMINI_API_KEY: "k", DIGITAL_ME_EMBED_DIMS: "2" }, "/h"), false, (l) => logs.push(l));
+      await g.embed(["a"], "query", { attemptTimeoutMs: 1_000 });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+    expect(n).toBe(2);
+    expect(logs).toEqual(["gemini embed: HTTP 429 quota (attempt 1/5, query x1); retrying in 500ms"]);
   });
 });
