@@ -12,6 +12,8 @@
  *   GEMINI_API_KEY           embedding provider key (required unless --offline)
  *   DIGITAL_ME_EMBED_MODEL   default gemini-embedding-001
  *   DIGITAL_ME_EMBED_DIMS    default 768
+ *   DIGITAL_ME_QUERY_EMBED_DEADLINE_MS  how long memory_search waits for its query
+ *                            embedding before answering lexical-only (default 3500)
  *   DIGITAL_ME_BRAIN_DB      default <wiki-root>/.data/brain.db; the legacy
  *                            <OPENCLAW_HOME or ~/.openclaw>/data/brain.db is used
  *                            while only that file exists (see @digital-me/contracts resolveBrainDbPath)
@@ -26,6 +28,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 import { isLoopbackHost, MIN_TOKEN_LENGTH, resolveBrainDbPath, type BrainPathSource } from "@digital-me/contracts";
+import { DEFAULT_QUERY_DEADLINE_MS } from "./retriever/query-embedder.js";
 
 export type HostConfig = {
   readonly wikiRoot: string;
@@ -48,6 +51,8 @@ export type HostConfig = {
   readonly geminiApiKey: string | undefined;
   readonly embedModel: string;
   readonly embedDims: number;
+  /** memory_search's wait for a query embedding; past it, the search answers lexical-only. */
+  readonly queryEmbedDeadlineMs: number;
 };
 
 export const DEFAULT_PORT = 18791;
@@ -92,6 +97,7 @@ export function loadConfig(
     geminiApiKey: env.GEMINI_API_KEY || undefined,
     embedModel: env.DIGITAL_ME_EMBED_MODEL || "gemini-embedding-001",
     embedDims: Number.isFinite(dims) && dims > 0 ? dims : 768,
+    queryEmbedDeadlineMs: positiveInt(env.DIGITAL_ME_QUERY_EMBED_DEADLINE_MS, DEFAULT_QUERY_DEADLINE_MS),
   };
 }
 

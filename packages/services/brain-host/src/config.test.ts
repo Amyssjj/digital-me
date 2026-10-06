@@ -54,6 +54,7 @@ describe("loadConfig", () => {
     expect(c.geminiApiKey).toBeUndefined();
     expect(c.embedModel).toBe("gemini-embedding-001");
     expect(c.embedDims).toBe(768);
+    expect(c.queryEmbedDeadlineMs).toBe(3_500);
     expect(c.brainDbPath).toBe("/home/j/digital-me/.data/brain.db");
     expect(c.brainDbSource).toBe("canonical");
     expect(c.schedulerEnabled).toBe(false);
@@ -98,10 +99,11 @@ describe("loadConfig", () => {
         GEMINI_API_KEY: "g",
         DIGITAL_ME_EMBED_MODEL: "m",
         DIGITAL_ME_EMBED_DIMS: "1536",
+        DIGITAL_ME_QUERY_EMBED_DEADLINE_MS: "2500",
       },
       "/h",
     );
-    expect(c).toMatchObject({ wikiRoot: "/h/dm", dbPath: "/h/x.db", token: "t", port: 1234, host: "0.0.0.0", geminiApiKey: "g", embedModel: "m", embedDims: 1536 });
+    expect(c).toMatchObject({ wikiRoot: "/h/dm", dbPath: "/h/x.db", token: "t", port: 1234, host: "0.0.0.0", geminiApiKey: "g", embedModel: "m", embedDims: 1536, queryEmbedDeadlineMs: 2500 });
   });
 
   it("ignores empty strings and bad numbers", () => {

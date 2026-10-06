@@ -12,10 +12,17 @@
  * (MIN_SCORE 0.4). Results are ORDERED by `fusedScore`, the reciprocal-rank
  * fusion sum (~0.05 max), which is exposed for diagnostics only; gating on it
  * would drop every hit.
+ *
+ * Lexical fallback: when the query embedding is unavailable (a missed
+ * deadline, exhausted 429/5xx retries, a network failure — never a rejected
+ * key or a malformed response, which still fail loudly) the vector rankings
+ * are skipped, FTS alone orders the hits, and the response says
+ * `mode: "lexical"`. Those hits report `score`/`vectorScore` 0: there is no
+ * cosine evidence, and inventing one would let a bm25 match pass recall
+ * gates calibrated on cosine (hooks gate at vectorScore >= 0.6).
  */
 
-import type { Embedder } from "./embedder.js";
-import { tokenize } from "./embedder.js";
+import { EmbedUnavailableError, tokenize, type Embedder } from "./embedder.js";
 import { INDEX_GENERATION_KEY, ProvenanceMismatchError, provenanceLabel } from "./index-builder.js";
 import type { IndexStore } from "./store.js";
 import { dot, topK } from "./vec.js";
@@ -44,6 +51,10 @@ export type SearchResponse = {
   readonly model: string;
   readonly count: number;
   readonly query: string;
+  /** "lexical" when the query embedding was unavailable and FTS alone ranked the hits. */
+  readonly mode: "hybrid" | "lexical";
+  /** Why the vector rankings were skipped (lexical mode only). */
+  readonly embedError?: string;
 };
 
 export type SearchOptions = { readonly limit?: number; readonly corpus?: string };
@@ -121,15 +132,16 @@ export async function search(
     throw new ProvenanceMismatchError(provenanceLabel(prov), provenanceLabel(mine));
   }
   const limit = clampLimit(opts.limit);
-  const [qvec] = await embedder.embed([query], "query");
+  const embedded = await embedQuery(embedder, query);
+  const qvec = embedded.vec;
 
-  // 1. entry-vector ranking
-  const entries = cache.entryVecs();
+  // 1. entry-vector ranking (empty without a query vector, as is 2.)
+  const entries = qvec ? cache.entryVecs() : [];
   const entryScores = entries.map((e) => dot(e.vec, qvec!));
   const entryRank = topK(entryScores, CANDIDATES).map((i) => entries[i]!.path);
 
   // 2. section-vector ranking, rolled up to the entry (best section wins)
-  const sections = cache.sectionVecs();
+  const sections = qvec ? cache.sectionVecs() : [];
   const sectionScores = sections.map((s) => dot(s.vec, qvec!));
   const bestSection = new Map<string, { sectionId: number; score: number }>();
   const sectionRank: string[] = [];
@@ -169,7 +181,7 @@ export async function search(
     const startLine = section?.startLine ?? 1;
     const endLine = section?.endLine ?? 1;
     const snippet = (section ? `${section.heading}: ${section.text}` : entry.title).slice(0, SNIPPET_CHARS);
-    const vectorScore = round(Math.max(vecByPath.get(path)!, best?.score ?? 0));
+    const vectorScore = round(Math.max(vecByPath.get(path) ?? 0, best?.score ?? 0));
     results.push({
       path,
       relPath: entry.relPath,
@@ -187,7 +199,19 @@ export async function search(
     });
     if (results.length >= limit) break;
   }
-  return { results, provider: embedder.provider, model: embedder.model, count: results.length, query };
+  const response = { results, provider: embedder.provider, model: embedder.model, count: results.length, query };
+  return qvec ? { ...response, mode: "hybrid" } : { ...response, mode: "lexical", embedError: embedded.error };
+}
+
+/** The query vector, or why there is none: only a transient failure degrades search; anything else throws. */
+async function embedQuery(embedder: Embedder, query: string): Promise<{ vec: Float32Array; error?: undefined } | { vec: null; error: string }> {
+  try {
+    const [vec] = await embedder.embed([query], "query");
+    return { vec: vec! };
+  } catch (err) {
+    if (err instanceof EmbedUnavailableError) return { vec: null, error: err.message };
+    throw err;
+  }
 }
 
 function round(n: number): number {
