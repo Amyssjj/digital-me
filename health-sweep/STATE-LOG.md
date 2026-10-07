@@ -1649,3 +1649,2397 @@
 - **critiques:** — (no critique lane for this profile)
 - **EXIT:** ✅ SHIP
 - **note:** post-update gate (digital-me update)
+
+## 2026-08-23T10:30:04.062Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-23T10:30:04.175Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-23T10:30:04.355Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-23T10:30:04.603Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-23T10:30:04.753Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-23T10:30:07.418Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-24T10:30:27.944Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-24T10:30:28.058Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-24T10:30:28.260Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-24T10:30:28.526Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-24T10:30:28.676Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-24T10:30:31.892Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-25T10:30:48.734Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-25T10:30:48.848Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-25T10:30:49.246Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-25T10:30:49.522Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-25T10:30:49.698Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-25T10:30:56.441Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-26T10:30:57.793Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-26T10:30:57.904Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-26T10:30:58.070Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-26T10:30:58.312Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-26T10:30:58.459Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-26T10:31:04.476Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-27T10:30:03.602Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-27T10:30:03.715Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-27T10:30:03.883Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-27T10:30:04.124Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-27T10:30:04.274Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-27T10:30:06.188Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-28T10:30:28.317Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-28T10:30:28.429Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-28T10:30:28.607Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-28T10:30:28.847Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-28T10:30:28.994Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-28T10:30:31.896Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-29T10:30:54.322Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-29T10:30:54.433Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-29T10:30:54.807Z · ops · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-29T10:30:55.047Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-29T10:30:55.197Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-29T10:30:57.231Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-30T10:30:08.634Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-30T10:30:08.747Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-30T10:30:08.925Z · ops · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-30T10:30:09.169Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-30T10:30:09.320Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-30T10:30:11.577Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-08-31T10:30:03.777Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-31T10:30:03.890Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-08-31T10:30:04.068Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-31T10:30:04.311Z · runtime · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-31T10:30:04.462Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-08-31T10:30:06.224Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-01T15:44:01.720Z · data · a14c5a0
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-01T15:44:01.798Z · docs · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-01T15:44:01.934Z · ops · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-01T15:44:02.152Z · runtime · a14c5a0
+- **gates:** 🔴 3 (R1 0 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 7243e20630f3…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 1529ca1b7bad…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source dfe5ce6028f6…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-01T15:44:02.273Z · update · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-01T15:44:05.828Z · web · a14c5a0
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-02T10:30:29.669Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-02T10:30:29.745Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-02T10:30:29.896Z · ops · 683fda1
+- **gates:** 🔴 4 (O1 3 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (19h ago, streak 1), want completed]
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 2), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (19h ago, streak 1), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-02.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-02T10:30:30.613Z · runtime · 683fda1
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-02T10:30:31.125Z · update · 683fda1
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-02T10:30:37.323Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-03T10:30:45.952Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-03T10:30:46.027Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-03T10:30:46.171Z · ops · 683fda1
+- **gates:** 🔴 4 (O1 3 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 2), want completed]
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 3), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (21h ago, streak 2), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-03.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-03T10:30:46.850Z · runtime · 683fda1
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-03T10:30:47.350Z · update · 683fda1
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-03T10:30:53.523Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-04T10:30:54.625Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-04T10:30:54.703Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-04T10:30:54.848Z · ops · 683fda1
+- **gates:** 🔴 4 (O1 3 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 3), want completed]
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 4), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (21h ago, streak 3), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-04.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-04T10:30:55.552Z · runtime · 683fda1
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-04T10:30:56.051Z · update · 683fda1
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-04T10:30:58.875Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-05T10:30:10.557Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-05T10:30:10.632Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-05T10:30:10.989Z · ops · 683fda1
+- **gates:** 🔴 4 (O1 3 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 4), want completed]
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 5), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (20h ago, streak 4), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-05.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-05T10:30:11.602Z · runtime · 683fda1
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-05T10:30:12.030Z · update · 683fda1
+- **gates:** 🔴 1 (U1 1 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-05T10:30:14.783Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-06T10:30:39.063Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-06T10:30:39.142Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-06T10:30:39.512Z · ops · 683fda1
+- **gates:** 🔴 4 (O1 3 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 5), want completed]
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 6), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (21h ago, streak 5), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-06.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-06T10:30:40.197Z · runtime · 683fda1
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-06T10:30:40.699Z · update · 683fda1
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-06T10:30:43.169Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-07T10:30:40.295Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-07T10:30:40.373Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-07T10:30:40.727Z · ops · 683fda1
+- **gates:** 🔴 4 (O1 3 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 6), want completed]
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 7), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (21h ago, streak 6), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-07.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-07T10:30:41.325Z · runtime · 683fda1
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-07T10:30:41.755Z · update · 683fda1
+- **gates:** 🔴 1 (U1 1 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-07T10:30:44.208Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-08T10:30:24.993Z · data · 683fda1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-08T10:30:25.067Z · docs · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-08T10:30:25.209Z · ops · 683fda1
+- **gates:** 🔴 3 (O1 2 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (20h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-08.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-08T10:30:25.854Z · runtime · 683fda1
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-08T10:30:26.310Z · update · 683fda1
+- **gates:** 🔴 1 (U1 1 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-08T10:30:28.618Z · web · 683fda1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-09T10:30:09.117Z · data · 357ab38
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-09T10:30:09.201Z · docs · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-09T10:30:09.346Z · ops · 357ab38
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-09.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-09T10:30:09.980Z · runtime · 357ab38
+- **gates:** 🔴 4 (R1 1 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-09T10:30:10.498Z · update · 357ab38
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-09T10:30:16.875Z · web · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-10T10:30:52.831Z · data · 357ab38
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-10T10:30:52.907Z · docs · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-10T10:30:53.046Z · ops · 357ab38
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-10.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-10T10:30:53.684Z · runtime · 357ab38
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-10T10:30:54.186Z · update · 357ab38
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-10T10:31:01.321Z · web · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-11T10:30:53.242Z · data · 357ab38
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-11T10:30:53.318Z · docs · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-11T10:30:53.449Z · ops · 357ab38
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-11.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-11T10:30:54.078Z · runtime · 357ab38
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-11T10:30:54.535Z · update · 357ab38
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-11T10:30:57.202Z · web · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-12T10:30:26.655Z · data · 357ab38
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-12T10:30:26.735Z · docs · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-12T10:30:26.866Z · ops · 357ab38
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-12.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-12T10:30:27.571Z · runtime · 357ab38
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-12T10:30:28.083Z · update · 357ab38
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-12T10:30:30.581Z · web · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-13T10:30:27.284Z · data · 357ab38
+- **gates:** 🔴 4 (D1 0 · D2 4 · D3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D2/unresolved` dashboard-taste-total (http-json metric) — "dashboard-taste-total" could not be measured — surface: fetch http://localhost:3458/api/metrics/distribution: fetch failed [got surface: fetch http://localhost:3458/api/metrics/distribution: fetch failed, want both sides resolve to a number]
+  - `D2/unresolved` dashboard-wiki-total (http-json metric) — "dashboard-wiki-total" could not be measured — surface: fetch http://localhost:3458/api/metrics/distribution: fetch failed [got surface: fetch http://localhost:3458/api/metrics/distribution: fetch failed, want both sides resolve to a number]
+  - `D2/unresolved` dashboard-taste-created-2d (http-json metric) — "dashboard-taste-created-2d" could not be measured — surface: fetch http://localhost:3458/api/metrics/knowledge-taste-changes?days=2: fetch failed [got surface: fetch http://localhost:3458/api/metrics/knowledge-taste-changes?days=2: fetch failed, want both sides resolve to a number]
+  - `D2/unresolved` dashboard-taste-created-7d (http-json metric) — "dashboard-taste-created-7d" could not be measured — surface: fetch http://localhost:3458/api/metrics/knowledge-taste-changes?days=7: fetch failed [got surface: fetch http://localhost:3458/api/metrics/knowledge-taste-changes?days=7: fetch failed, want both sides resolve to a number]
+
+## 2026-09-13T10:30:27.380Z · docs · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-13T10:30:27.793Z · ops · 357ab38
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-13.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-13T10:30:28.523Z · runtime · 357ab38
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-13T10:30:29.035Z · update · 357ab38
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-13T10:30:31.269Z · web · 357ab38
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-14T10:30:21.670Z · data · 8d4bc00
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-14T10:30:21.759Z · docs · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-14T10:30:21.969Z · ops · 8d4bc00
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-14.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-14T10:30:22.645Z · runtime · 8d4bc00
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-14T10:30:23.121Z · update · 8d4bc00
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-14T10:30:25.661Z · web · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-15T10:30:52.959Z · data · 8d4bc00
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-15T10:30:53.035Z · docs · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-15T10:30:53.156Z · ops · 8d4bc00
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-15.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-15T10:30:53.843Z · runtime · 8d4bc00
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-15T10:30:54.395Z · update · 8d4bc00
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-15T10:30:57.635Z · web · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-16T10:30:27.491Z · data · 8d4bc00
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-16T10:30:27.566Z · docs · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-16T10:30:27.722Z · ops · 8d4bc00
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-16.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-16T10:30:28.392Z · runtime · 8d4bc00
+- **gates:** 🔴 4 (R1 1 · R2 3) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-16T10:30:28.870Z · update · 8d4bc00
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-16T10:30:31.400Z · web · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-17T10:30:05.520Z · data · 8d4bc00
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-17T10:30:05.594Z · docs · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-17T10:30:05.760Z · ops · 8d4bc00
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-17.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-17T10:30:06.370Z · runtime · 8d4bc00
+- **gates:** 🔴 4 (R1 1 · R2 3) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-17T10:30:06.858Z · update · 8d4bc00
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-17T10:30:08.843Z · web · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-18T10:30:45.123Z · data · 8d4bc00
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-18T10:30:45.209Z · docs · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-18T10:30:45.392Z · ops · 8d4bc00
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-18.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-18T10:30:46.038Z · runtime · 8d4bc00
+- **gates:** 🔴 4 (R1 1 · R2 3) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-18T10:30:46.513Z · update · 8d4bc00
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-18T10:30:49.060Z · web · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-19T10:30:08.546Z · data · 8d4bc00
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-19T10:30:08.624Z · docs · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-19T10:30:08.765Z · ops · 8d4bc00
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-19.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-19T10:30:09.415Z · runtime · 8d4bc00
+- **gates:** 🔴 4 (R1 1 · R2 3) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-19T10:30:09.909Z · update · 8d4bc00
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-19T10:30:15.573Z · web · 8d4bc00
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-20T10:30:29.650Z · data · cf534c1
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-20T10:30:29.727Z · docs · cf534c1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-20T10:30:29.878Z · ops · cf534c1
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-20.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-20T10:30:30.566Z · runtime · cf534c1
+- **gates:** 🔴 5 (R1 2 · R2 3)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R2/pin` claude-code-memory-inject-hook (runtime claude-code) — installed artifact "claude-code-memory-inject-hook" has drifted from its repo source — $HOME/.claude/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh [got sha256 50094217da85… ≠ source 022d494bef27…, want installed $HOME/.claude/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/claude-code/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-memory-inject-hook (runtime codex) — installed artifact "codex-memory-inject-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_memory_search_inject.sh no longer matches packages/runtimes/codex/hooks/dm_memory_search_inject.sh [got sha256 3d3f8af3dd58… ≠ source 34a0dd3c5db8…, want installed $HOME/.codex/hooks/dm_memory_search_inject.sh byte-identical to packages/runtimes/codex/hooks/dm_memory_search_inject.sh]
+  - `R2/pin` codex-m1-emit-hook (runtime codex) — installed artifact "codex-m1-emit-hook" has drifted from its repo source — $HOME/.codex/hooks/dm_m1_emit.py no longer matches packages/runtimes/codex/hooks/dm_m1_emit.py [got sha256 7276dca7cc93… ≠ source 1cb1d7c15350…, want installed $HOME/.codex/hooks/dm_m1_emit.py byte-identical to packages/runtimes/codex/hooks/dm_m1_emit.py]
+
+## 2026-09-20T10:30:31.181Z · update · cf534c1
+- **gates:** 🔴 3 (U1 3 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-hooks-not-blocked (update pipeline) — pipeline "openclaw-hooks-not-blocked" cannot produce its artifact — `bash scripts/verify_openclaw_hooks.sh` exited 1 · tail:       (or ensure 'node' + json5 package are on PATH) [got exit 1, want exit 0]
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-20T10:30:33.931Z · web · cf534c1
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-21T10:30:17.396Z · data · 34dd0cd
+- **gates:** 🔴 1 (D1 0 · D2 1 · D3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D2/parity` dashboard-wiki-total (http-json metric) — "dashboard-wiki-total" drifts from its primary source by +498 (beyond tolerance 68.95) [got surface 1877, want 1379 ±68.95 (truth: fs-count /Users/jingshi/digital-me/wiki/**/*.md)]
+
+## 2026-09-21T10:30:17.468Z · docs · 34dd0cd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-21T10:30:17.585Z · ops · 34dd0cd
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-21.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-21T10:30:18.409Z · runtime · 34dd0cd
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-21T10:30:19.007Z · update · 34dd0cd
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-21T10:30:20.689Z · web · 34dd0cd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-21T15:58:25.715Z · data · fadd6df
+- **gates:** 🔴 1 (D1 0 · D2 1 · D3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D2/parity` dashboard-wiki-total (http-json metric) — "dashboard-wiki-total" drifts from its primary source by +498 (beyond tolerance 68.95) [got surface 1877, want 1379 ±68.95 (truth: fs-count /Users/jingshi/digital-me/wiki/**/*.md)]
+
+## 2026-09-21T15:58:25.790Z · docs · fadd6df
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-21T15:58:25.901Z · ops · fadd6df
+- **gates:** 🔴 2 (O1 1 · O2 1 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (4h ago, streak 7), want completed]
+  - `O2/step-error` dream-cycle#compile (dream-cycle step-log) — pipeline "dream-cycle" step "compile" recorded an error in /Users/jingshi/digital-me/dream_cycle/logs/2026-09-21.md [got No Gemini API key found in /Users/jingshi/.openclaw/openclaw.json at agents.defaults.memorySearch.remote.apiKey, want no error key in the newest step log]
+
+## 2026-09-21T15:58:26.501Z · runtime · fadd6df
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-21T15:58:26.829Z · update · fadd6df
+- **gates:** 🔴 1 (U1 1 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-21T15:58:28.755Z · web · fadd6df
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-22T10:30:19.721Z · data · 468a593
+- **gates:** 🔴 4 (D1 2 · D2 2 · D3 0) · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `D1/zero` dashboard-taste-created-2d (http-json metric) — "dashboard-taste-created-2d" shows 0 while the primary source has 3 — a dead/lagging pipeline rendering as calm [got surface 0, want ≈ 3 (truth: cmd python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/tastes --since-days-utc 2)]
+  - `D1/zero` dashboard-taste-created-7d (http-json metric) — "dashboard-taste-created-7d" shows 0 while the primary source has 3 — a dead/lagging pipeline rendering as calm [got surface 0, want ≈ 3 (truth: cmd python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/tastes --since-days-utc 7)]
+  - `D2/parity` dashboard-taste-total (http-json metric) — "dashboard-taste-total" drifts from its primary source by -3 (beyond tolerance 0) [got surface 82, want 85 ±0 (truth: fs-count /Users/jingshi/digital-me/tastes/**/*.md)]
+  - `D2/parity` dashboard-wiki-total (http-json metric) — "dashboard-wiki-total" drifts from its primary source by +499 (beyond tolerance 70.15) [got surface 1902, want 1403 ±70.15 (truth: fs-count /Users/jingshi/digital-me/wiki/**/*.md)]
+
+## 2026-09-22T10:30:19.807Z · docs · 468a593
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-22T10:30:20.018Z · ops · 468a593
+- **gates:** 🔴 1 (O1 1 · O2 0 · O3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` a6d51d07-0269-4e20-a6f8-e60ce134d7f1 (scheduler company-knowledge-drift-check-wiki) — schedule "Wiki Drift Check (daily 04:37 PT)" last run failed [got failed (23h ago, streak 7), want completed]
+
+## 2026-09-22T10:30:20.779Z · runtime · 468a593
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-22T10:30:21.117Z · update · 468a593
+- **gates:** 🔴 1 (U1 1 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-22T10:30:27.408Z · web · 468a593
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:15:49.854Z · data · fc3bfd2
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:15:55.607Z · runtime · fc3bfd2
+- **gates:** 🔴 2 (R1 2 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` openclaw-memory-index (runtime openclaw) — runtime check "openclaw-memory-index" [openclaw] — `bash scripts/verify_openclaw_memory_index.sh` exit 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `R1/participation` gateway-callers (runtime openclaw) — runtime check "gateway-callers" [openclaw] — `bash scripts/verify_gateway_callers.sh` exit 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-23T01:17:10.549Z · ops · fc3bfd2
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:17:19.052Z · update · fc3bfd2
+- **gates:** 🔴 2 (U1 2 · U2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `U1/smoke` openclaw-memory-index (update pipeline) — pipeline "openclaw-memory-index" cannot produce its artifact — `bash scripts/verify_openclaw_memory_index.sh` exited 1 · tail: FAIL openclaw-memory-index: reindex is leaking or not converging. [got exit 1, want exit 0]
+  - `U1/smoke` gateway-callers (update pipeline) — pipeline "gateway-callers" cannot produce its artifact — `bash scripts/verify_gateway_callers.sh` exited 1 · tail:   Send agentId, defaulting to $OPENCLAW_GATEWAY_AGENT_ID or "main". [got exit 1, want exit 0]
+
+## 2026-09-23T01:40:01.513Z · runtime · c188902
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:40:02.676Z · update · c188902
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:40:23.311Z · data · c188902
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:40:23.454Z · docs · c188902
+- **gates:** 🔴 1 (F1 1 · F2 0 · F3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `F1/package-name` README.md:8 (README.md package-name) — package-name claim doesn't resolve — `58× "digital-me"` (truth: scripts/build-cli-bundle.mjs) [got @digital-me/brain-host, want digital-me]
+
+## 2026-09-23T01:40:24.441Z · ops · c188902
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:40:26.894Z · runtime · c188902
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:40:27.776Z · update · c188902
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T01:40:34.731Z · web · c188902
+- **gates:** 🔴 3 (G1 3 · G2 0 · G3 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `G1/scale-member` body (/ light) — orphan size 15px not in the type scale [got 15px, want ∈ {60, 48, 36, 30, 24, 20, 18, 16, 14, 12}]
+  - `G1/scale-member` h1 (/ light) — orphan size 22.5px not in the type scale [got 22.5px, want ∈ {60, 48, 36, 30, 24, 20, 18, 16, 14, 12}]
+  - `G1/scale-member` body (/ light) — orphan size 15px not in the type scale [got 15px, want ∈ {60, 48, 36, 30, 24, 20, 18, 16, 14, 12}]
+
+## 2026-09-23T02:09:01.574Z · data · 7a948dd
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T02:09:01.654Z · docs · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T02:09:01.919Z · ops · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T02:09:02.847Z · runtime · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T02:09:03.400Z · update · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T02:09:06.536Z · web · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T10:30:36.238Z · data · 7a948dd
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T10:30:36.318Z · docs · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T10:30:36.502Z · ops · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T10:30:37.192Z · runtime · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T10:30:37.647Z · update · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-23T10:30:40.285Z · web · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-24T10:30:51.381Z · data · 7a948dd
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-24T10:30:51.460Z · docs · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-24T10:30:51.640Z · ops · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-24T10:30:52.334Z · runtime · 7a948dd
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-24T10:30:52.803Z · update · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-24T10:30:55.047Z · web · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-25T10:30:26.578Z · data · 7a948dd
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-25T10:30:26.656Z · docs · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-25T10:30:26.831Z · ops · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-25T10:30:27.503Z · runtime · 7a948dd
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-25T10:30:27.930Z · update · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-25T10:30:34.499Z · web · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-26T10:30:31.913Z · data · 7a948dd
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-26T10:30:31.991Z · docs · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-26T10:30:32.172Z · ops · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-26T10:30:32.915Z · runtime · 7a948dd
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-26T10:30:33.319Z · update · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-26T10:30:40.053Z · web · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-27T10:30:58.928Z · data · 7a948dd
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-27T10:30:59.051Z · docs · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-27T10:30:59.280Z · ops · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-27T10:31:00.217Z · runtime · 7a948dd
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-27T10:31:00.803Z · update · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-27T10:31:05.763Z · web · 7a948dd
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-28T10:30:13.479Z · data · 5bf5537
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-28T10:30:13.568Z · docs · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-28T10:30:13.771Z · ops · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-28T10:30:14.524Z · runtime · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-28T10:30:14.990Z · update · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-28T10:30:18.339Z · web · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-29T10:30:21.484Z · data · 5bf5537
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-29T10:30:21.571Z · docs · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-29T10:30:21.774Z · ops · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-29T10:30:22.528Z · runtime · 5bf5537
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-29T10:30:22.978Z · update · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-29T10:30:30.005Z · web · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-09-30T10:30:38.098Z · data · 5bf5537
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-30T10:30:38.237Z · docs · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-09-30T10:30:38.493Z · ops · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-30T10:30:39.289Z · runtime · 5bf5537
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-09-30T10:30:39.770Z · update · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-09-30T10:30:42.391Z · web · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-01T10:30:30.237Z · data · 5bf5537
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-01T10:30:30.328Z · docs · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-01T10:30:30.524Z · ops · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-01T10:30:31.270Z · runtime · 5bf5537
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-01T10:30:31.709Z · update · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-01T10:30:34.404Z · web · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-02T10:30:24.661Z · data · 5bf5537
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-02T10:30:24.750Z · docs · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-02T10:30:24.949Z · ops · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-02T10:30:25.758Z · runtime · 5bf5537
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-02T10:30:26.186Z · update · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-02T10:30:32.849Z · web · 5bf5537
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-03T10:30:48.707Z · data · 1a58f15
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-03T10:30:48.796Z · docs · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-03T10:30:49.265Z · ops · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-03T10:30:49.985Z · runtime · 1a58f15
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-03T10:30:50.414Z · update · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-03T10:30:52.421Z · web · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-04T10:30:50.987Z · data · 1a58f15
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-04T10:30:51.075Z · docs · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-04T10:30:51.550Z · ops · 1a58f15
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-04T10:30:52.293Z · runtime · 1a58f15
+- **gates:** 🔴 1 (R1 1 · R2 0)
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-04T10:30:52.700Z · update · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-04T10:30:54.814Z · web · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-05T10:30:53.273Z · data · 1a58f15
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-05T10:30:53.362Z · docs · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-05T10:30:53.557Z · ops · 1a58f15
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-05T10:30:54.314Z · runtime · 1a58f15
+- **gates:** 🔴 1 (R1 1 · R2 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-05T10:30:54.781Z · update · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-05T10:30:57.122Z · web · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-06T16:33:41.557Z · data · 1a58f15
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-06T16:33:41.659Z · docs · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-06T16:33:42.022Z · ops · 1a58f15
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-06T16:33:42.784Z · runtime · 1a58f15
+- **gates:** 🔴 1 (R1 1 · R2 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-06T16:33:43.134Z · update · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-06T16:33:50.938Z · web · 1a58f15
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
