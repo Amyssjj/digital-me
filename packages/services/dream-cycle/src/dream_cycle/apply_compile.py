@@ -69,6 +69,7 @@ def apply_entries(staging_path: Path, config) -> dict:
         "updated": 0,
         "noop": 0,
         "skipped_workflow_template": 0,
+        "refused_lossy_update": 0,
         "errors": 0,
         "fallback_candidates": 0,
     }
@@ -112,8 +113,10 @@ def apply_entries(staging_path: Path, config) -> dict:
         stats["updated"] += wstats["updated"]
         stats["noop"] += wstats["noop"]
         stats["skipped_workflow_template"] += wstats["skipped_workflow_template"]
-        # Candidate processed (wrote entries, or a clean manifest-noop / empty
-        # extraction) — safe to commit its hash so it doesn't re-stage.
+        stats["refused_lossy_update"] += wstats["refused_lossy_update"]
+        # Candidate processed (wrote entries, a clean manifest-noop / empty
+        # extraction, or a refused lossy update whose proposal is in the
+        # refused-updates log) — safe to commit its hash so it doesn't re-stage.
         if ck:
             keys_to_commit.append(ck)
 
