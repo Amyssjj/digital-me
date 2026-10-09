@@ -4043,3 +4043,141 @@
 - **regression vs baseline:** 🟢 none
 - **critiques:** 🟢 cleared · **stories:** 🟢
 - **EXIT:** ✅ SHIP
+
+## 2026-10-07T16:19:25.941Z · data · d0ab056
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-07T16:19:26.138Z · docs · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-07T16:19:26.353Z · ops · d0ab056
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-07T16:19:28.088Z · runtime · d0ab056
+- **gates:** 🔴 1 (R1 1 · R2 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-07T16:19:28.813Z · update · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-07T16:19:33.791Z · web · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-08T10:30:26.150Z · data · d0ab056
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-08T10:30:26.238Z · docs · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-08T10:30:26.413Z · ops · d0ab056
+- **gates:** 🔴 1 (O1 1 · O2 0 · O3 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 1), want completed]
+
+## 2026-10-08T10:30:27.099Z · runtime · d0ab056
+- **gates:** 🔴 1 (R1 1 · R2 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🔴 worse
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `R1/participation` m1-recall-liveness (runtime all) — runtime check "m1-recall-liveness" [all] — `python3 scripts/verify_m1_application.py --days 7 --stale-hours 24` exit 1 · tail:   Either the runtime is genuinely unused, or its recall path is broken. Check the injection path end to end; a component reporting healthy does not mean the path works. [got exit 1, want exit 0]
+
+## 2026-10-08T10:30:27.475Z · update · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-08T10:30:30.284Z · web · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
+
+## 2026-10-09T10:30:32.016Z · data · d0ab056
+- **gates:** 🟢 all green · 🟡 2 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-09T10:30:32.103Z · docs · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **candidates:** facts/claimkey-substring-overlap [candidate] 🟢 quiet
+- **EXIT:** ✅ SHIP
+
+## 2026-10-09T10:30:32.244Z · ops · d0ab056
+- **gates:** 🔴 2 (O1 2 · O2 0 · O3 0) · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** — (no baseline)
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** 🔁 loop — fix reds, re-run
+- **reds:**
+  - `O1/schedule-failed` 8cdf3c6a-8ffd-4003-9f13-7bc125a879ba (scheduler dream-cycle-nightly) — schedule "dream-cycle-nightly" last run failed [got failed (1h ago, streak 2), want completed]
+  - `O1/schedule-failed` 1186b0bf-0d5b-4cd1-9805-5a0e5a7e8b40 (scheduler daily-activity-digest) — schedule "daily-activity-digest" last run failed [got failed (21h ago, streak 1), want completed]
+
+## 2026-10-09T10:30:32.929Z · runtime · d0ab056
+- **gates:** 🟢 all green · 🟡 1 advisory
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-09T10:30:33.331Z · update · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** — (no critique lane for this profile)
+- **EXIT:** ✅ SHIP
+
+## 2026-10-09T10:30:35.821Z · web · d0ab056
+- **gates:** 🟢 all green
+- **delivery:** 🟢 deploy check off
+- **regression vs baseline:** 🟢 none
+- **critiques:** 🟢 cleared · **stories:** 🟢
+- **EXIT:** ✅ SHIP
