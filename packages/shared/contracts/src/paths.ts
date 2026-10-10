@@ -19,8 +19,11 @@
  *   3. the legacy openclaw path, when it exists
  *   4. the canonical path (a fresh install creates it there)
  *
- * The Python twin lives in `dream_cycle/brain_paths.py` and
- * `digest/config.py`; keep the three in step.
+ * Python twins (keep them in step): `dream_cycle/brain_learnings.py`
+ * (`resolve_brain_db_path`), `digest/config.py` (`resolve_brain_db`),
+ * `dashboard_intake/__init__.py` (`brain_db_path`), and the standalone
+ * scripts `scripts/verify_m1_application.py`, `scripts/retrieval_bench.py`
+ * and `runtimes/hermes/scripts/m1_cutover_verify.py`.
  */
 
 import path from "node:path";
