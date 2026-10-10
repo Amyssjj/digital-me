@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+from collections import Counter
 from datetime import date
 from pathlib import Path
 from textwrap import dedent
@@ -193,6 +194,11 @@ and your extraction matches an existing entry by topic, include
 `update_path: <relative-path-from-manifest>` as a frontmatter field
 and provide the FULL revised entry body. The route hint will be stripped
 before the file is written.
+
+An update may only ADD to an entry. The write is refused if the revised
+body drops any existing section or most of the existing text, and
+existing frontmatter (title, created, source, citations) is always kept.
+Never use `update_path` to summarize or replace an entry you have not read.
 
 If nothing new should be added to an existing entry, return an empty
 response (no frontmatter, no body) — the apply step treats that as a
@@ -1338,7 +1344,8 @@ matches an existing entry by topic, you MUST either:
   (a) update that entry IN PLACE — include `update_path: <relative_path>`
       as a frontmatter field, and provide the FULL updated entry body
       (not a diff). The update_path line will be stripped before the file
-      is written.
+      is written. The update must keep every existing section and fact
+      and only add to them — a rewrite that drops content is refused.
 
   (b) skip the extraction — if nothing new is to add to the existing
       entry, return an empty response (just whitespace or ---SPLIT---).
@@ -1359,8 +1366,10 @@ The full existing-wiki manifest is provided ONCE in the staging file's
 top-level `wiki_manifest` field (shared across all candidates). Before
 writing, check it: if your extraction would duplicate an existing entry by
 topic, either include `update_path: <relative_path>` in frontmatter with the
-FULL updated body, or skip it. Only create a NEW entry when materially
-distinct from every manifest entry.
+FULL updated body, or skip it. An update must keep every existing section
+and fact of that entry and only add to them — read the entry first; a
+rewrite that drops content is refused. Only create a NEW entry when
+materially distinct from every manifest entry.
 """
 
     return f"""Compile this raw knowledge into wiki entry format.
@@ -1430,14 +1439,181 @@ def _extract_title_from_entry(entry_text: str) -> str:
     return "untitled"
 
 
+# Lossy-update guard. An `update_path` write used to replace the target file
+# with whatever the LLM returned, but no compile path ever shows the LLM the
+# existing body (the manifest carries path + title only), so its "FULL
+# revised entry" was a from-scratch rewrite of the new source. Real case
+# (2026-10-08): the compiler agent failed auth, apply_compile's inline
+# fallback ran every candidate, and four entries were overwritten — a
+# 105-line deploy runbook became 24 lines (ritual, caveats and recipes gone,
+# harmful advice added) with citations/source/created reset. Updates may now
+# only add: frontmatter merges without downgrades, and a rewrite that drops a
+# section or too much of the existing body is refused and logged for review.
+UPDATE_MIN_BODY_RETENTION = 0.8
+
+_FENCED_BLOCK_RE = re.compile(r"^[ \t]*```.*?^[ \t]*```", re.MULTILINE | re.DOTALL)
+_SECTION_HEADING_RE = re.compile(r"^#{2,6}\s+(.+?)\s*#*\s*$", re.MULTILINE)
+
+
+class LossyUpdateRefused(Exception):
+    """An `update_path` rewrite would drop content from an existing entry."""
+
+    def __init__(self, target: Path, reason: str):
+        super().__init__(f"{target}: {reason}")
+        self.target = target
+        self.reason = reason
+
+
+def _split_entry_text(text: str) -> Optional[tuple[dict, str]]:
+    """Return (frontmatter, body) for an entry's text, or None when it has
+    no parseable YAML frontmatter block."""
+    if not text.startswith("---"):
+        return None
+    parts = text.split("---", 2)
+    if len(parts) < 3:
+        return None
+    try:
+        fm = yaml.safe_load(parts[1])
+    except yaml.YAMLError:
+        return None
+    if not isinstance(fm, dict):
+        return None
+    return fm, parts[2]
+
+
+def _section_headings(body: str) -> list[str]:
+    """`##`-and-deeper headings outside fenced code, in order."""
+    return _SECTION_HEADING_RE.findall(_FENCED_BLOCK_RE.sub("", body))
+
+
+def _body_retention(old_body: str, new_body: str) -> float:
+    """Fraction of the existing body's words that survive in the new body.
+
+    Word-multiset overlap rather than line diff: an LLM revision reflows and
+    reorders lines freely, but a revision that keeps the content keeps the
+    words. 1.0 for an empty existing body (nothing to lose)."""
+    def words(s: str) -> Counter:
+        return Counter(re.findall(r"[a-z0-9]+", s.lower()))
+
+    old = words(old_body)
+    total = sum(old.values())
+    if not total:
+        return 1.0
+    return sum((old & words(new_body)).values()) / total
+
+
+def _update_loss_reason(old_body: str, new_body: str) -> Optional[str]:
+    """Why replacing `old_body` with `new_body` loses content, or None."""
+    reasons = []
+    new_headings = {h.lower() for h in _section_headings(new_body)}
+    dropped = [h for h in _section_headings(old_body) if h.lower() not in new_headings]
+    if dropped:
+        reasons.append("drops section(s): " + ", ".join(dropped))
+    retention = _body_retention(old_body, new_body)
+    if retention < UPDATE_MIN_BODY_RETENTION:
+        reasons.append(
+            f"keeps {retention:.0%} of the existing body "
+            f"(minimum {UPDATE_MIN_BODY_RETENTION:.0%})"
+        )
+    return "; ".join(reasons) or None
+
+
+def _as_int(value) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _merge_update_frontmatter(existing: dict, proposed: dict) -> dict:
+    """Fold an update's frontmatter into the existing entry's: lists union,
+    `citations` takes the max, `updated` moves to today, and every other
+    existing non-empty value wins. An update can add metadata, never
+    downgrade it (title, created, source, priority, learning_id, …)."""
+    merged = dict(existing)
+    for key, value in proposed.items():
+        current = merged.get(key)
+        if key == "citations":
+            merged[key] = max(_as_int(current), _as_int(value))
+        elif isinstance(current, list) and isinstance(value, list):
+            merged[key] = current + [v for v in value if v not in current]
+        elif current in (None, "", []):
+            merged[key] = value
+    merged["updated"] = date.today().isoformat()
+    return merged
+
+
+def _merge_update(target: Path, entry_text: str) -> str:
+    """Return the text to write when `entry_text` updates `target` in place.
+
+    Raises LossyUpdateRefused when the proposed body drops an existing
+    section or keeps less than UPDATE_MIN_BODY_RETENTION of the existing
+    body, or when either side's frontmatter can't be parsed (the merge
+    can't be verified)."""
+    existing = _split_entry_text(target.read_text(encoding="utf-8"))
+    if existing is None:
+        raise LossyUpdateRefused(target, "existing entry has no parseable frontmatter")
+    proposed = _split_entry_text(entry_text)
+    if proposed is None:
+        raise LossyUpdateRefused(target, "proposed update has no parseable frontmatter")
+    old_fm, old_body = existing
+    new_fm, new_body = proposed
+    reason = _update_loss_reason(old_body, new_body)
+    if reason:
+        raise LossyUpdateRefused(target, reason)
+    fm_text = yaml.safe_dump(
+        _merge_update_frontmatter(old_fm, new_fm),
+        sort_keys=False, allow_unicode=True, default_flow_style=False,
+    )
+    return f"---\n{fm_text}---\n\n{new_body.strip()}\n"
+
+
+def _wiki_relpath(config: Config, path: Path) -> Path:
+    """`path` relative to the wiki root for display; absolute if outside it."""
+    try:
+        return path.resolve().relative_to(config.wiki_root.resolve())
+    except ValueError:
+        return path
+
+
+def _log_refused_update(
+    config: Config, err: LossyUpdateRefused, entry_text: str,
+    *, source_name: str, source_title: str,
+) -> Path:
+    """Append a refused update (target, reason, full proposed text) to
+    today's review log so a human or agent can merge any new facts by hand."""
+    config.logs_dir.mkdir(parents=True, exist_ok=True)
+    log_path = config.logs_dir / f"refused-updates-{date.today().isoformat()}.md"
+    if not log_path.exists():
+        log_path.write_text(
+            f"# Refused lossy wiki updates — {date.today().isoformat()}\n\n"
+            "Compile proposed these `update_path` rewrites, but each would have\n"
+            "dropped content from the existing entry, so the entry was left\n"
+            "untouched. Merge any genuinely new facts by hand. See\n"
+            "_merge_update in dream_cycle/compile.py for the rules.\n",
+            encoding="utf-8",
+        )
+    with log_path.open("a", encoding="utf-8") as f:
+        f.write(
+            f"\n## {_wiki_relpath(config, err.target)}\n\n"
+            f"- reason: {err.reason}\n"
+            f"- source: `{source_name}` — {source_title[:120]}\n\n"
+            f"````markdown\n{entry_text.strip()}\n````\n"
+        )
+    return log_path
+
+
 def write_wiki_entry(config: Config, entry_text: str) -> Optional[Path]:
     """Write a compiled entry to the wiki directory.
 
     Honors `update_path:` in the LLM's output — if present and pointing
-    to an existing wiki file, OVERWRITES that file. The update_path line
-    is stripped from frontmatter before write so the wiki file stays clean.
-    Returns the path written, or None if the entry was empty (LLM returned
-    nothing because it judged this a no-op against the manifest).
+    to an existing wiki file, updates that file in place via _merge_update
+    (frontmatter merged without downgrades; raises LossyUpdateRefused and
+    leaves the file untouched when the new body would drop content). The
+    update_path line is stripped from frontmatter before write so the wiki
+    file stays clean. Returns the path written, or None if the entry was
+    empty (LLM returned nothing because it judged this a no-op against the
+    manifest).
     """
     if not entry_text.strip().startswith("---"):
         # LLM declined to extract — empty/whitespace response under the
@@ -1460,7 +1636,7 @@ def write_wiki_entry(config: Config, entry_text: str) -> Optional[Path]:
         except ValueError:
             target = None  # fall through to normal write
         if target is not None and target.exists():
-            target.write_text(entry_text + "\n")
+            target.write_text(_merge_update(target, entry_text), encoding="utf-8")
             return target
         # update_path didn't resolve — fall through to normal write below
 
@@ -1500,6 +1676,7 @@ def write_compiled_entries(
         "updated": 0,
         "noop": 0,
         "skipped_workflow_template": 0,
+        "refused_lossy_update": 0,
         "written_files": [],
         "rejections": [],
     }
@@ -1514,7 +1691,19 @@ def write_compiled_entries(
             })
             print(f"    -> [SKIP-WORKFLOW] {source_title[:60]} — {rejection_reason}")
             continue
-        path = write_wiki_entry(config, entry_text)
+        try:
+            path = write_wiki_entry(config, entry_text)
+        except LossyUpdateRefused as err:
+            stats["refused_lossy_update"] += 1
+            log_path = _log_refused_update(
+                config, err, entry_text,
+                source_name=source_name, source_title=source_title,
+            )
+            print(
+                f"    -> [REFUSED-LOSSY-UPDATE] {_wiki_relpath(config, err.target)}"
+                f" — {err.reason} (proposal logged to {log_path.name})"
+            )
+            continue
         if path is None:
             # Declined to extract — covered by manifest.
             stats["noop"] += 1
@@ -1606,6 +1795,7 @@ def run_compile(
     skipped_limit_transcript = 0
     skipped_limit_other = 0
     skipped_workflow_template = 0
+    refused_lossy_update = 0
     skipped_taste_limit = 0
     workflow_template_rejections: list[dict] = []
     compiled_transcript = 0
@@ -1709,6 +1899,7 @@ def run_compile(
                 update_count += wstats["updated"]
                 skip_noop += wstats["noop"]
                 skipped_workflow_template += wstats["skipped_workflow_template"]
+                refused_lossy_update += wstats["refused_lossy_update"]
                 written_files.extend(wstats["written_files"])
                 workflow_template_rejections.extend(wstats["rejections"])
 
@@ -1868,6 +2059,7 @@ def run_compile(
         "skipped_already_compiled": skip_compiled,
         "skipped_noop": skip_noop,
         "skipped_workflow_template": skipped_workflow_template,
+        "refused_lossy_update": refused_lossy_update,
         "errors": error_count,
         "skipped_limit": skipped_limit_total,
         "skipped_limit_transcript": skipped_limit_transcript,
@@ -1896,6 +2088,7 @@ def run_compile(
         f"{skipped_limit_total} skipped-by-limit "
         f"({skipped_limit_transcript} transcript / {skipped_limit_other} other), "
         f"{skipped_workflow_template} skipped-as-workflow-template, "
+        f"{refused_lossy_update} refused-lossy-update, "
         f"{error_count} errors"
     )
     if (
