@@ -88,7 +88,10 @@ def test_post_discord_webhook_posts_every_batch(capsys):
     assert "abc" not in out  # the URL is a secret: never echoed
 
 
-def test_post_discord_webhook_requires_a_url():
+def test_post_discord_webhook_requires_a_url(monkeypatch):
+    # WEBHOOK_URL resolves at import; on a host with a configured webhook it
+    # would satisfy the fallback and this path would never be reached.
+    monkeypatch.setattr(dd, "WEBHOOK_URL", None)
     with pytest.raises(SystemExit) as e:
         dd.post_discord(_presentation(), "fallback", dry_run=False, delivery="webhook", webhook_url=None,
                         urlopen=_capture_opener()[0])

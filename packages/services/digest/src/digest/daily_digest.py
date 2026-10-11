@@ -53,7 +53,7 @@ from digest.config import load_paths
 # publish reads that handoff envelope back from here. This is the same
 # stage -> spawn -> apply-reads-handoff pattern the dream cycle uses.
 # Goal names reach the digest through that handoff too (the summarizer reads
-# the board itself); this script runs no goals/tasks query of its own. The
+# the board itself); its only goals/tasks query is reading that handoff. The
 # retired pre-brain.db orchestrator file is not read anywhere: it is frozen on
 # old hosts and absent on fresh installs, where opening it read-only raised and
 # took the deterministic publish fallback down with it.
@@ -1990,33 +1990,51 @@ def _extract_handoff_payload(envelope: str) -> dict | None:
     return None
 
 
+# workflows/digest.json "id". The orchestrator stamps it on every goal it
+# instantiates from that template (goals.source_workflow_id), so it — not the
+# free-text goal name — identifies a digest run.
+DIGEST_WORKFLOW_ID = "daily-activity-digest"
+
+
 def load_coo_handoff() -> tuple[dict | None, str | None]:
-    """Read the most-recent digest goal's COO summarize handoff from brain.db.
+    """Read the most-recent digest run's summarize handoff from brain.db.
 
     Scoped to the LATEST digest goal so a stalled run (empty output) falls
     through to the deterministic fallback instead of resurrecting stale
-    content from an older successful day. Read-only; never raises.
+    content from an older successful day. Within that goal the summarize
+    handoff is picked by its OUTPUT (the first task whose latest_output
+    carries a presentation/markdown payload), never by task name: the stage
+    step is "Gather raw data and stage for the summarizer", so a name match on
+    'summar' + LIMIT 1 read the stage task's empty output and silently dropped
+    every LLM-rendered digest. Read-only; never raises.
     """
     if not BRAIN_DB.exists():
         return None, None
     try:
         con = sqlite3.connect(f"file:{BRAIN_DB}?mode=ro", uri=True)
         try:
-            row = con.execute(
+            rows = con.execute(
                 "SELECT t.latest_output FROM tasks t "
-                "JOIN goals g ON g.id = t.goal_id "
-                "WHERE g.name LIKE '%digest%' AND t.name LIKE '%summar%' "
-                "ORDER BY g.created_at DESC LIMIT 1"
-            ).fetchone()
+                "WHERE t.goal_id = ("
+                "  SELECT g.id FROM goals g WHERE g.source_workflow_id = ? "
+                "  ORDER BY g.created_at DESC LIMIT 1"
+                ") AND COALESCE(t.latest_output, '') != '' "
+                "ORDER BY t.rowid",
+                (DIGEST_WORKFLOW_ID,),
+            ).fetchall()
         finally:
             con.close()
     except sqlite3.Error as e:
         print(f"[daily-digest] brain.db read failed: {e}")
         return None, None
-    if not row or not row[0]:
-        return None, None
-    payload = _extract_handoff_payload(row[0])
+    payload = next(
+        (p for (out,) in rows if (p := _extract_handoff_payload(out))), None,
+    )
     if not payload:
+        print(
+            "[daily-digest] latest digest run has no summarize handoff in "
+            f"brain.db ({len(rows)} task output(s) checked)",
+        )
         return None, None
     pres = payload.get("presentation")
     md = payload.get("markdown")
