@@ -75,9 +75,10 @@ def apply_outcomes(staging_path: Path, config) -> dict:
     """Read outcomes from staging file and apply each via apply_skill_outcome.
 
     Also commits deferred hashes (set by step 1's staged compile) for any
-    transcript whose outcome was successfully applied OR was "neither" (still
-    a valid processing result). Parse/apply errors leave the hash uncommitted,
-    so the transcript re-enters next night's stage.
+    transcript whose outcome was successfully applied, was an
+    "evidence-duplicate" (already recorded by an earlier apply), or was
+    "neither" (all valid processing results). Parse/apply errors leave the
+    hash uncommitted, so the transcript re-enters next night's stage.
     """
     if not staging_path.exists():
         raise SystemExit(f"staging file not found: {staging_path}")
@@ -105,6 +106,7 @@ def apply_outcomes(staging_path: Path, config) -> dict:
         "candidate-merged": 0,
         "evidence-appended": 0,
         "promoted-to-leaf": 0,
+        "evidence-duplicate": 0,
         "neither": 0,
         "errors": 0,
     }
@@ -146,7 +148,11 @@ def apply_outcomes(staging_path: Path, config) -> dict:
         if applied:
             path, action = applied
             stats[action] = stats.get(action, 0) + 1
-            skill_files.append(str(path))
+            # A duplicate left the file untouched, so it is not a touched
+            # taste (the digest counts skill_files) — but it is still a valid
+            # processing result, so its hash commits like any other.
+            if action != "evidence-duplicate":
+                skill_files.append(str(path))
             if ck:
                 keys_to_commit.append(ck)
             rel = path.relative_to(Path.home()) if Path.home() in path.parents else path
