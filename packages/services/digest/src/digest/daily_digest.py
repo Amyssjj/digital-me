@@ -2043,6 +2043,70 @@ def load_coo_handoff() -> tuple[dict | None, str | None]:
     return None, (md if isinstance(md, str) else None)
 
 
+# What the `claude` CLI prints when its OAuth login can't be used. The summarize
+# step runs on that login (cli_exec_aliases → cli-exec-worker.mjs), and nothing
+# keeps it fresh: desktop Claude Code sessions use host-managed auth, not the
+# CLI's keychain login. It lapsed four times in 2026 (07-02, 08-14, 09-01,
+# 10-08) and each time the digest quietly fell back for 2-7 days. The CLI never
+# recovers by itself — a person has to log in again — so the digest says so.
+#   "Failed to authenticate: OAuth session expired and could not be refreshed"
+#   "Not logged in · Please run /login"
+_CLI_AUTH_FAILURE_MARKERS = ("OAuth session expired", "Please run /login")
+
+
+def load_summarizer_auth_failure() -> str | None:
+    """Return the CLI's auth-failure line if the latest digest run failed on it.
+
+    Same goal scope as load_coo_handoff. Only `failed` tasks count, so a step
+    that failed once and then completed on retry can't raise a stale alarm.
+    Read-only; never raises.
+    """
+    if not BRAIN_DB.exists():
+        return None
+    try:
+        con = sqlite3.connect(f"file:{BRAIN_DB}?mode=ro", uri=True)
+        try:
+            rows = con.execute(
+                "SELECT t.failure_reason FROM tasks t "
+                "WHERE t.goal_id = ("
+                "  SELECT g.id FROM goals g WHERE g.source_workflow_id = ? "
+                "  ORDER BY g.created_at DESC LIMIT 1"
+                ") AND t.status = 'failed' AND COALESCE(t.failure_reason, '') != '' "
+                "ORDER BY t.rowid",
+                (DIGEST_WORKFLOW_ID,),
+            ).fetchall()
+        finally:
+            con.close()
+    except sqlite3.Error as e:
+        print(f"[daily-digest] brain.db read failed: {e}")
+        return None
+    for (reason,) in rows:
+        for line in reason.splitlines():
+            if any(marker in line for marker in _CLI_AUTH_FAILURE_MARKERS):
+                return line.strip()
+    return None
+
+
+def _with_auth_alert(presentation: dict, auth_failure: str) -> dict:
+    """Put a fix-it notice for an expired CLI login at the top of the digest."""
+    alert = (
+        "⚠️ **The `claude` CLI login has expired.** The agent summarizer "
+        f"failed with `{auth_failure}`, so this digest was built without it. "
+        "The nightly dream-cycle agents use the same login and fail the same "
+        "way. To fix it, run `claude` in a terminal (the binary named in "
+        "`cli_exec_aliases`) and type `/login`."
+    )
+    return {
+        **presentation,
+        "tone": "warning",
+        "blocks": [
+            {"type": "text", "text": alert},
+            {"type": "divider"},
+            *(presentation.get("blocks") or []),
+        ],
+    }
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description="Daily activity digest")
     parser.add_argument("--date", type=str, default=None,
@@ -2107,6 +2171,7 @@ def main(argv: list[str]) -> int:
                 presentation = _accept(hp, "agent summarize handoff (brain.db)")
                 if presentation is not None and hmd and not markdown:
                     markdown = hmd
+        agent_authored = presentation is not None
 
         if presentation is None:
             # Deterministic floor — the agent summarize is best-effort polish,
@@ -2129,6 +2194,15 @@ def main(argv: list[str]) -> int:
                 "'nothing to report' card (fail-open floor)",
             )
             presentation = _minimal_presentation(date_iso)
+
+        if not agent_authored:
+            # A fallback digest looks normal, so a lapsed CLI login used to go
+            # unnoticed for days. Say why the agent is missing when it's a
+            # failure only a person can fix.
+            auth_failure = load_summarizer_auth_failure()
+            if auth_failure:
+                print(f"[daily-digest] summarizer failed on CLI auth: {auth_failure}")
+                presentation = _with_auth_alert(presentation, auth_failure)
 
         fallback = (presentation.get("title") or "Daily Digest")[:1900]
         if args.dry_run:

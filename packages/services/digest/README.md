@@ -39,6 +39,10 @@ This package pins that seam:
    renders deterministically from the staged data (no LLM); if even that is
    empty it posts a minimal "nothing to report" card. The digest is **never**
    silently dropped — only a real infra failure (Discord post) fails the step.
+   When the summarizer failed because the `claude` CLI login expired, the
+   fallback digest opens with a warning saying to run `claude` and `/login`.
+   That failure doesn't recover on its own, and the fallback otherwise looks
+   normal.
 
 ## Configuration (nothing personal is baked into source)
 
