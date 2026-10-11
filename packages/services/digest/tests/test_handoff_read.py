@@ -54,7 +54,8 @@ def _envelope(payload):
 
 def _brain(tmp_path, goals):
     """goals: [(goal_id, name, created_at, source_workflow_id, tasks)], where each
-    task is (task_name, output) or (task_name, output, status, failure_reason)."""
+    task is (task_name, output[, status, failure_reason[, attempt_summaries]]).
+    attempt_summaries are the output_summary of attempts 1..n, oldest first."""
     db = tmp_path / "brain.db"
     con = sqlite3.connect(db)
     con.executescript(
@@ -63,15 +64,22 @@ def _brain(tmp_path, goals):
         "CREATE TABLE tasks (id TEXT PRIMARY KEY, goal_id TEXT NOT NULL, "
         "name TEXT NOT NULL, latest_output TEXT, "
         "status TEXT NOT NULL DEFAULT 'completed', failure_reason TEXT);"
+        "CREATE TABLE attempts (attempt_id TEXT PRIMARY KEY, task_id TEXT NOT NULL, "
+        "attempt_number INTEGER NOT NULL, output_summary TEXT);"
     )
     for gid, name, created, wf, tasks in goals:
         con.execute("INSERT INTO goals VALUES (?, ?, ?, ?)", (gid, name, created, wf))
         for i, (tname, out, *state) in enumerate(tasks):
-            status, reason = state or ("completed", None)
+            status, reason, summaries = (*state, ())[:3] if state else ("completed", None, ())
             con.execute(
                 "INSERT INTO tasks VALUES (?, ?, ?, ?, ?, ?)",
                 (f"{gid}-{i}", gid, tname, out, status, reason),
             )
+            for n, summary in enumerate(summaries, start=1):
+                con.execute(
+                    "INSERT INTO attempts VALUES (?, ?, ?, ?)",
+                    (f"{gid}-{i}-a{n}", f"{gid}-{i}", n, summary),
+                )
     con.commit()
     con.close()
     return db
@@ -199,7 +207,7 @@ def test_reads_the_auth_failure_line(tmp_path, monkeypatch):
     monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [_failed_run("g1", 1, OAUTH_EXPIRED)]))
 
     assert dd.load_summarizer_auth_failure() == (
-        "Failed to authenticate: OAuth session expired and could not be refreshed"
+        "Failed to authenticate: OAuth session expired and could not be refreshed", None,
     )
 
 
@@ -208,7 +216,7 @@ def test_reads_the_not_logged_in_variant(tmp_path, monkeypatch):
     reason = "claude-code-cli exited 1\nNot logged in · Please run /login\n"
     monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [_failed_run("g1", 1, reason)]))
 
-    assert dd.load_summarizer_auth_failure() == "Not logged in · Please run /login"
+    assert dd.load_summarizer_auth_failure() == ("Not logged in · Please run /login", None)
 
 
 def test_other_failures_are_not_auth_failures(tmp_path, monkeypatch):
@@ -310,3 +318,78 @@ def test_agent_digest_never_carries_the_notice(tmp_path, monkeypatch, capsys):
     assert "using agent summarize handoff (brain.db)" in out
     assert "login has expired" not in out
     assert shipped["tone"] == "success"
+
+
+# ── …including when a fallback CLI covered for it ───────────────────────────
+# Verbatim worker stdout (→ attempts.output_summary) from the 2026-10-11 e2e:
+# claude failed on auth, codex-cli did the work, the task completed.
+COVERED_SUMMARY = (
+    "fallback: running codex-cli because claude-code-cli failed: "
+    "Failed to authenticate: OAuth session expired and could not be refreshed\n"
+    "DIGITAL_ME_EXEC_OK claude-code-cli e2e-task\n"
+    "handoff=/x/artifacts/handoff.json\n"
+    "log=/x/artifacts/worker.log\n"
+    "finalMessage=/x/artifacts/final-message.txt\n"
+)
+CLEAN_SUMMARY = "DIGITAL_ME_EXEC_OK claude-code-cli t\nhandoff=/x/handoff.json\n"
+
+
+def _covered_run(summaries, output=None):
+    return (
+        "g1", "digest", 1, dd.DIGEST_WORKFLOW_ID,
+        [(STAGE, None), (SUMMARIZE, output, "completed", None, summaries), (PUBLISH, None)],
+    )
+
+
+def test_reads_an_auth_failure_a_fallback_covered(tmp_path, monkeypatch):
+    monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [_covered_run([COVERED_SUMMARY])]))
+
+    assert dd.load_summarizer_auth_failure() == (
+        "Failed to authenticate: OAuth session expired and could not be refreshed", "codex-cli",
+    )
+
+
+def test_only_the_latest_attempt_speaks_for_a_completed_task(tmp_path, monkeypatch):
+    """Attempt 1 fell back; attempt 2 ran on claude again — the login is fine."""
+    monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [
+        _covered_run([COVERED_SUMMARY, CLEAN_SUMMARY]),
+    ]))
+
+    assert dd.load_summarizer_auth_failure() is None
+
+
+def test_a_fallback_for_other_reasons_is_not_an_auth_failure(tmp_path, monkeypatch):
+    summary = "fallback: running codex-cli because claude-code-cli failed: exit 4\nDIGITAL_ME_EXEC_OK x\n"
+    monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [_covered_run([summary])]))
+
+    assert dd.load_summarizer_auth_failure() is None
+
+
+def test_covered_digest_credits_the_fallback_and_still_asks_for_login(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [
+        _covered_run([COVERED_SUMMARY], output=_envelope(_payload())),
+    ]))
+
+    out, shipped = _publish_dry_run(tmp_path, monkeypatch, capsys)
+
+    assert "using agent summarize handoff (brain.db)" in out
+    assert shipped["tone"] == "warning"
+    notice = shipped["blocks"][0]["text"]
+    assert "`codex-cli` built this digest instead" in notice
+    assert "/login" in notice
+    assert "fail the same way" not in notice
+    assert any("**Foo**" in b.get("text", "") for b in shipped["blocks"])  # the agent's own content
+    assert dd.validate_presentation(shipped) == []
+
+
+def test_unusable_fallback_output_is_not_credited(tmp_path, monkeypatch, capsys):
+    """codex completed but left no usable presentation → regex render; the
+    notice must not claim codex built it."""
+    monkeypatch.setattr(dd, "BRAIN_DB", _brain(tmp_path, [_covered_run([COVERED_SUMMARY])]))
+
+    out, shipped = _publish_dry_run(tmp_path, monkeypatch, capsys)
+
+    assert "no valid agent handoff" in out
+    notice = shipped["blocks"][0]["text"]
+    assert "so this digest was built without it" in notice
+    assert "codex-cli" not in notice

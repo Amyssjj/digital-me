@@ -42,7 +42,8 @@ This package pins that seam:
    When the summarizer failed because the `claude` CLI login expired, the
    fallback digest opens with a warning saying to run `claude` and `/login`.
    That failure doesn't recover on its own, and the fallback otherwise looks
-   normal.
+   normal. If a fallback alias (e.g. `codex-cli`) did the summarizing instead,
+   the digest is the agent's, and the warning says which CLI wrote it.
 
 ## Configuration (nothing personal is baked into source)
 

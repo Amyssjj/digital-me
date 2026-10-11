@@ -2053,13 +2053,31 @@ def load_coo_handoff() -> tuple[dict | None, str | None]:
 #   "Not logged in · Please run /login"
 _CLI_AUTH_FAILURE_MARKERS = ("OAuth session expired", "Please run /login")
 
+# The line cli-exec-worker.mjs prints (→ attempts.output_summary) when an alias
+# `fallback` ran because the primary CLI failed. Then the summarize task
+# completes on the fallback, and this line is the only record that claude's
+# login is gone. Keep in step with the worker's console.log.
+_FALLBACK_LINE = re.compile(
+    r"^fallback: running (?P<alias>\S+) because \S+ failed: (?P<reason>.*)$"
+)
 
-def load_summarizer_auth_failure() -> str | None:
-    """Return the CLI's auth-failure line if the latest digest run failed on it.
 
-    Same goal scope as load_coo_handoff. Only `failed` tasks count, so a step
-    that failed once and then completed on retry can't raise a stale alarm.
-    Read-only; never raises.
+def _auth_line(text: str) -> str | None:
+    for line in text.splitlines():
+        if any(marker in line for marker in _CLI_AUTH_FAILURE_MARKERS):
+            return line.strip()
+    return None
+
+
+def load_summarizer_auth_failure() -> tuple[str, str | None] | None:
+    """Return (auth-failure line, fallback alias) if the latest digest run hit
+    an expired CLI login, else None. The alias is None when nothing covered
+    for it (the task failed), or the fallback that did the work instead.
+
+    Same goal scope as load_coo_handoff. A `failed` task counts through its
+    failure_reason; a `completed` one only through the worker's fallback line
+    in its latest attempt, so a retry that completed on the primary CLI can't
+    raise a stale alarm. Read-only; never raises.
     """
     if not BRAIN_DB.exists():
         return None
@@ -2067,11 +2085,14 @@ def load_summarizer_auth_failure() -> str | None:
         con = sqlite3.connect(f"file:{BRAIN_DB}?mode=ro", uri=True)
         try:
             rows = con.execute(
-                "SELECT t.failure_reason FROM tasks t "
+                "SELECT t.status, t.failure_reason, ("
+                "  SELECT a.output_summary FROM attempts a WHERE a.task_id = t.id "
+                "  ORDER BY a.attempt_number DESC LIMIT 1"
+                ") FROM tasks t "
                 "WHERE t.goal_id = ("
                 "  SELECT g.id FROM goals g WHERE g.source_workflow_id = ? "
                 "  ORDER BY g.created_at DESC LIMIT 1"
-                ") AND t.status = 'failed' AND COALESCE(t.failure_reason, '') != '' "
+                ") AND t.status IN ('failed', 'completed') "
                 "ORDER BY t.rowid",
                 (DIGEST_WORKFLOW_ID,),
             ).fetchall()
@@ -2080,21 +2101,32 @@ def load_summarizer_auth_failure() -> str | None:
     except sqlite3.Error as e:
         print(f"[daily-digest] brain.db read failed: {e}")
         return None
-    for (reason,) in rows:
-        for line in reason.splitlines():
-            if any(marker in line for marker in _CLI_AUTH_FAILURE_MARKERS):
-                return line.strip()
+    for status, reason, summary in rows:
+        if status == "failed":
+            line = _auth_line(reason or "")
+            if line:
+                return line, None
+            continue
+        for summary_line in (summary or "").splitlines():
+            fallback = _FALLBACK_LINE.match(summary_line.strip())
+            if fallback and (line := _auth_line(fallback["reason"])):
+                return line, fallback["alias"]
     return None
 
 
-def _with_auth_alert(presentation: dict, auth_failure: str) -> dict:
+def _with_auth_alert(presentation: dict, auth_failure: str, covered_by: str | None = None) -> dict:
     """Put a fix-it notice for an expired CLI login at the top of the digest."""
+    if covered_by:
+        outcome = f"so `{covered_by}` built this digest instead"
+        dream_cycle = "The nightly dream-cycle agents use the same login."
+    else:
+        outcome = "so this digest was built without it"
+        dream_cycle = "The nightly dream-cycle agents use the same login and fail the same way."
     alert = (
         "⚠️ **The `claude` CLI login has expired.** The agent summarizer "
-        f"failed with `{auth_failure}`, so this digest was built without it. "
-        "The nightly dream-cycle agents use the same login and fail the same "
-        "way. To fix it, run `claude` in a terminal (the binary named in "
-        "`cli_exec_aliases`) and type `/login`."
+        f"failed with `{auth_failure}`, {outcome}. {dream_cycle} To fix it, "
+        "run `claude` in a terminal (the binary named in `cli_exec_aliases`) "
+        "and type `/login`."
     )
     return {
         **presentation,
@@ -2195,14 +2227,20 @@ def main(argv: list[str]) -> int:
             )
             presentation = _minimal_presentation(date_iso)
 
-        if not agent_authored:
-            # A fallback digest looks normal, so a lapsed CLI login used to go
-            # unnoticed for days. Say why the agent is missing when it's a
-            # failure only a person can fix.
-            auth_failure = load_summarizer_auth_failure()
-            if auth_failure:
+        # A fallback digest looks normal, so a lapsed CLI login used to go
+        # unnoticed for days — and once a fallback CLI covers for it, nothing
+        # fails at all. Say so whenever the login is the reason, since only a
+        # person can fix it.
+        auth = load_summarizer_auth_failure()
+        if auth:
+            auth_failure, covered_by = auth
+            # An agent-authored digest only warns when a fallback CLI wrote
+            # it; a regex render never credits the fallback.
+            if not agent_authored or covered_by:
                 print(f"[daily-digest] summarizer failed on CLI auth: {auth_failure}")
-                presentation = _with_auth_alert(presentation, auth_failure)
+                presentation = _with_auth_alert(
+                    presentation, auth_failure, covered_by if agent_authored else None,
+                )
 
         fallback = (presentation.get("title") or "Daily Digest")[:1900]
         if args.dry_run:
