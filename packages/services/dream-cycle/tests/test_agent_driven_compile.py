@@ -163,15 +163,23 @@ def test_inject_handoffs_folds_into_staging(tmp_path: Path, monkeypatch) -> None
             {"content_key": "s:B", "source_name": "s", "title": "B", "prompt": "p", "entries": None},
         ],
         "deferred_hashes": {"s:A": "h", "s:B": "h2"},
+        "staged_at": 1000,
     }))
-    taste_path.write_text(json.dumps({"transcripts": [{}], "outcomes": None}))
+    taste_path.write_text(json.dumps({"transcripts": [{}], "outcomes": None, "staged_at": 1003}))
 
-    monkeypatch.setattr(A, "_read_spawn_handoffs", lambda: {
-        "_goal_id": "g1",
-        "compile": {"entries": {"s:A": [VALID_ENTRY], "s:B": []}},
-        "taste": {"outcomes": [{"transcript_index": 0, "outcome": "neither"}]},
-    })
+    floors: list[int] = []
+
+    def fake_read(since_ms: int) -> dict:
+        floors.append(since_ms)
+        return {
+            "_goal_id": "g1",
+            "compile": {"entries": {"s:A": [VALID_ENTRY], "s:B": []}},
+            "taste": {"outcomes": [{"transcript_index": 0, "outcome": "neither"}]},
+        }
+
+    monkeypatch.setattr(A, "_read_spawn_handoffs", fake_read)
     info = A._inject_handoffs(str(compile_path), str(taste_path))
+    assert floors == [1003]  # discovery floor = the later of the two staging stamps
     assert info["compile_injected"] == 2  # both candidates got their entries set
     assert info["taste_injected"] == 1
 
@@ -190,11 +198,70 @@ def test_inject_handoffs_missing_leaves_staging_for_fallback(tmp_path: Path, mon
             {"content_key": "s:A", "source_name": "s", "title": "A", "prompt": "p", "entries": None}],
         "deferred_hashes": {"s:A": "h"},
     }))
-    monkeypatch.setattr(A, "_read_spawn_handoffs", lambda: {})  # no handoff
+    monkeypatch.setattr(A, "_read_spawn_handoffs", lambda since_ms: {})  # no handoff
     info = A._inject_handoffs(str(compile_path), None)
     assert info["compile_injected"] == 0
     # staging untouched → entries still None → apply_compile inline fallback covers it
     assert json.loads(compile_path.read_text())["candidates"][0]["entries"] is None
+
+
+def test_inject_handoffs_without_staging_never_reads_the_brain(tmp_path: Path, monkeypatch) -> None:
+    """No readable staging file = no batch to anchor on, so discovery must not
+    run at all (an unanchored scan is exactly what re-folded stale handoffs)."""
+    from dream_cycle import apply as A
+
+    def boom(since_ms: int) -> dict:
+        raise AssertionError("discovery ran without a staging anchor")
+
+    monkeypatch.setattr(A, "_read_spawn_handoffs", boom)
+    info = A._inject_handoffs(str(tmp_path / "missing.json"), None)
+    assert info == {"compile_injected": 0, "taste_injected": 0, "goal_id": None}
+
+
+def test_staged_at_ms_prefers_the_stamp_then_mtime(tmp_path: Path) -> None:
+    import os
+    from dream_cycle import apply as A
+
+    stamped = tmp_path / "stamped.json"
+    stamped.write_text(json.dumps({"staged_at": 1234, "outcomes": None}))
+    assert A._staged_at_ms(str(stamped)) == 1234
+
+    # Staged before the stamp existed → fall back to when the file was written.
+    legacy = tmp_path / "legacy.json"
+    legacy.write_text(json.dumps({"outcomes": None}))
+    os.utime(legacy, (1_700_000_000.5, 1_700_000_000.5))
+    assert A._staged_at_ms(str(legacy)) == 1_700_000_000_500
+
+    garbled = tmp_path / "garbled.json"
+    garbled.write_text("{not json")
+    not_a_dict = tmp_path / "list.json"
+    not_a_dict.write_text("[]")
+    assert A._staged_at_ms(str(garbled)) is None
+    assert A._staged_at_ms(str(not_a_dict)) is None
+    assert A._staged_at_ms(str(tmp_path / "missing.json")) is None
+    assert A._staged_at_ms(None) is None
+
+
+def test_stage_stamps_both_staging_files(fixture_wiki: Path, tmp_path: Path, monkeypatch) -> None:
+    import time
+    from dream_cycle import compile as C
+
+    monkeypatch.setattr(C, "get_engine", lambda config: object())
+    monkeypatch.setattr(C, "build_principles_manifest", lambda: "")
+    monkeypatch.setattr(C, "collect_raw_entries", lambda config, recent_days=None: [])
+    taste_path, compile_path = tmp_path / "taste.json", tmp_path / "compile.json"
+
+    before = int(time.time() * 1000)
+    C.run_compile(
+        config=load_config(wiki_root=fixture_wiki),
+        stage_taste_path=str(taste_path),
+        stage_compile_path=str(compile_path),
+    )
+    after = int(time.time() * 1000)
+
+    taste_stamp = json.loads(taste_path.read_text())["staged_at"]
+    assert before <= taste_stamp <= after
+    assert json.loads(compile_path.read_text())["staged_at"] == taste_stamp
 
 
 def test_extract_json_unwraps_handoff_envelope() -> None:
@@ -211,51 +278,84 @@ def test_extract_json_unwraps_handoff_envelope() -> None:
     assert A._extract_json(env2) == {"outcomes": [{"transcript_index": 0}]}
 
 
+def _handoff(payload: dict) -> str:
+    """A real tasks.handoff latest_output: payload fenced inside `summary`."""
+    return json.dumps(
+        {"deliverableState": "complete",
+         "summary": "```json\n" + json.dumps(payload) + "\n```"}
+    )
+
+
+def _seed_tasks(tmp_path: Path, monkeypatch, rows: list[tuple]) -> None:
+    """Point the brain resolver at a throwaway tasks table. Pinned via
+    DIGITAL_ME_BRAIN_DB so a host with a real <wiki-root>/.data/brain.db
+    can't leak into the test."""
+    import sqlite3
+
+    db = tmp_path / "brain.db"
+    monkeypatch.setenv("DIGITAL_ME_BRAIN_DB", str(db))
+    con = sqlite3.connect(db)
+    con.execute(
+        "CREATE TABLE tasks (goal_id TEXT, name TEXT, latest_output TEXT, started_at INTEGER)"
+    )
+    con.executemany("INSERT INTO tasks VALUES (?,?,?,?)", rows)
+    con.commit()
+    con.close()
+
+
 def test_read_spawn_handoffs_is_content_based_and_rename_proof(tmp_path, monkeypatch):
     """Discovery must follow handoff CONTENT, not task NAME: a newer run whose
     spawn step was relabeled (e.g. routed through a cli_exec alias) must win over
     an older run that happens to match a legacy name prefix. Regression for the
     bug where renaming the step to 'Compiler (claude-code-cli) ...' made apply
     read an older goal's (missing) handoffs and fall back to the inline engine."""
-    import sqlite3
     from dream_cycle import apply as A
 
-    home = tmp_path
-    (home / "data").mkdir()
-    db = home / "data" / "brain.db"
-    monkeypatch.setenv("OPENCLAW_HOME", str(home))
-
-    def envelope(payload: dict) -> str:
-        return json.dumps(
-            {"deliverableState": "complete",
-             "summary": "```json\n" + json.dumps(payload) + "\n```"}
-        )
-
-    con = sqlite3.connect(db)
-    con.execute(
-        "CREATE TABLE tasks (goal_id TEXT, name TEXT, latest_output TEXT, started_at INTEGER)"
-    )
-    # Older goal with the LEGACY task name + a handoff.
-    con.execute(
-        "INSERT INTO tasks VALUES (?,?,?,?)",
+    _seed_tasks(tmp_path, monkeypatch, [
+        # Older goal with the LEGACY task name + a handoff.
         ("g_old", "Compiler agent extracts wiki entries",
-         envelope({"entries": {"old": ["x"]}}), 100),
-    )
-    # Newer goal whose compile step was RENAMED (claude-code-cli) + taste handoff.
-    con.execute(
-        "INSERT INTO tasks VALUES (?,?,?,?)",
+         _handoff({"entries": {"old": ["x"]}}), 100),
+        # Newer goal whose compile step was RENAMED (claude-code-cli) + taste handoff.
         ("g_new", "Compiler (claude-code-cli) extracts wiki entries",
-         envelope({"entries": {"new": ["y"]}}), 200),
-    )
-    con.execute(
-        "INSERT INTO tasks VALUES (?,?,?,?)",
+         _handoff({"entries": {"new": ["y"]}}), 200),
         ("g_new", "Classifier (claude-code-cli) distills taste",
-         envelope({"outcomes": [{"transcript_index": 0, "outcome": "neither"}]}), 201),
-    )
-    con.commit()
-    con.close()
+         _handoff({"outcomes": [{"transcript_index": 0, "outcome": "neither"}]}), 201),
+    ])
 
-    h = A._read_spawn_handoffs()
+    h = A._read_spawn_handoffs(0)
     assert h.get("_goal_id") == "g_new"                       # newest-with-handoff, not g_old
     assert h["compile"]["entries"] == {"new": ["y"]}          # rename-proof
     assert len(h["taste"]["outcomes"]) == 1
+
+
+def test_failed_spawns_never_refold_the_previous_nights_handoffs(tmp_path, monkeypatch):
+    """2026-10-08..10: both spawns failed (claude CLI OAuth expired), so the
+    current goal had no handoff and discovery fell through to the previous
+    night's goal — re-applying its taste outcomes by transcript_index onto a
+    different batch. Handoffs that started before this batch was staged belong
+    to an older run and must be ignored, leaving staging null for the inline
+    fallback."""
+    from dream_cycle import apply as A
+
+    _seed_tasks(tmp_path, monkeypatch, [
+        # Previous night: both agents handed off.
+        ("g_prev", "Compiler agent extracts wiki entries",
+         _handoff({"entries": {"s:A": ["---\ntitle: stale"]}}), 100),
+        ("g_prev", "Classifier distills taste",
+         _handoff({"outcomes": [{"transcript_index": 0, "outcome": "evidence"}]}), 101),
+        # Tonight: stage wrote at 150, both agents started after and failed.
+        ("g_now", "Compiler agent extracts wiki entries", None, 160),
+        ("g_now", "Classifier distills taste", "", 161),
+    ])
+    compile_path, taste_path = tmp_path / "c.json", tmp_path / "t.json"
+    compile_path.write_text(json.dumps({
+        "candidates": [{"content_key": "s:A", "entries": None}], "staged_at": 150,
+    }))
+    taste_path.write_text(json.dumps({"transcripts": [{}], "outcomes": None, "staged_at": 150}))
+
+    assert A._read_spawn_handoffs(0)["_goal_id"] == "g_prev"  # the unanchored scan's pick
+    info = A._inject_handoffs(str(compile_path), str(taste_path))
+
+    assert info == {"compile_injected": 0, "taste_injected": 0, "goal_id": None}
+    assert json.loads(compile_path.read_text())["candidates"][0]["entries"] is None
+    assert json.loads(taste_path.read_text())["outcomes"] is None
