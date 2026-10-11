@@ -331,7 +331,8 @@ fi
 # Emit canonical events to brain via dm_m1_emit.py:
 #   1. session_start (once-only per session_id, gated by /tmp flag file)
 #   2. knowledge_surfaced (every successful injection)
-# Both append to ~/.openclaw/data/m1_events_<runtime>.jsonl as the durable
+# Both append to m1_events_<runtime>.jsonl in the M1 dir (dm_m1_emit.py
+# resolve_m1_dir: <wiki-root>/.data/m1, else the legacy ~/.openclaw/data) as the durable
 # WAL; brain POSTs are best-effort (m1_backfill.py replays on next reachable
 # window). See wiki: infrastructure/m1-universal-event-protocol.md
 #
