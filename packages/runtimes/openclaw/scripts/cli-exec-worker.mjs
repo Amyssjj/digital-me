@@ -26,8 +26,15 @@
  *     "env":              { "OPENCLAW_AGENT_ID": "claude-code" },
  *     "prompt_template":  "You are {{alias}} launched by digital-me. Task: {{task}}",
  *     "final_message_arg":  "--output-last-message" | null,
- *     "completion_marker":  "DIGITAL_ME_EXEC_OK"
+ *     "completion_marker":  "DIGITAL_ME_EXEC_OK",
+ *     "fallbacks": [        // optional, from the alias's `fallback`
+ *       { "alias": "codex-cli", "binary": "codex", "args": […], "env": {…},
+ *         "prompt_template": …, "final_message_arg": …, "timeoutMs": … }
+ *     ]
  *   }
+ *
+ * Each fallback runs, in order, only when the previous CLI exited non-zero
+ * or couldn't start, and only within the task's remaining time.
  *
  * The worker substitutes `{{alias}}`, `{{task}}`, `{{taskName}}`,
  * `{{taskId}}`, `{{goalId}}`, `{{marker}}` in `prompt_template`, then
@@ -37,7 +44,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 // Regex constants used by redactArgsForLog / collectSecretValues below.
@@ -104,71 +111,139 @@ const defaultTemplate = [
   "- Include this marker on its own line: {{marker}}",
 ].join("\n");
 
-const prompt = interpolate(prompt_template ?? defaultTemplate, {
-  alias,
-  task,
-  taskName,
-  taskId,
-  goalId,
-  marker,
-});
+// Run the primary CLI, then each fallback in turn while the previous one
+// exited non-zero or couldn't start (e.g. `claude` with an expired OAuth
+// login). All attempts share the task's deadline: the orchestrator kills the
+// worker at timeoutMs + grace, so a fallback only gets the time that's left,
+// and a timeout never falls back. A fallback that would get less than
+// MIN_FALLBACK_MS is skipped — it can't do the work in that window.
+const MIN_FALLBACK_MS = 120_000;
+const deadline = Date.now() + timeoutMs;
+const invocations = [
+  { alias, binary, args, env, prompt_template, final_message_arg, timeoutMs },
+  ...(Array.isArray(spec.fallbacks) ? spec.fallbacks : []).filter(
+    (f) => f && typeof f.alias === "string" && typeof f.binary === "string" && Array.isArray(f.args),
+  ),
+];
 
-// Substitute {{prompt}} in args with the rendered prompt.
-const resolvedArgs = args.map((a) =>
-  typeof a === "string" ? a.replace(/\{\{prompt\}\}/g, prompt) : a,
-);
-
-// Auto-append the final-message flag + path so the child CLI actually writes
-// its final message where we read it (finalMessagePath). final_message_arg was
-// previously only consulted when READING the result — never passed to the
-// child — so e.g. the codex alias (final_message_arg "--output-last-message")
-// never wrote final-message.txt, and completion-marker detection only saw the
-// handoff stream. Skip if the caller already included the flag.
-if (final_message_arg && !resolvedArgs.includes(final_message_arg)) {
-  resolvedArgs.push(final_message_arg, finalMessagePath);
+const logSections = [];
+let run;
+for (const [index, invocation] of invocations.entries()) {
+  const remainingMs = deadline - Date.now();
+  if (index > 0) {
+    if (remainingMs < MIN_FALLBACK_MS) {
+      console.error(
+        `skipped fallback ${invocation.alias}: ${Math.round(remainingMs / 1000)}s left before the task deadline`,
+      );
+      break;
+    }
+    // One stdout line per fallback. stdout lands in attempts.output_summary,
+    // which is how the digest learns the primary failed even when the
+    // fallback succeeded — keep the shape: "fallback: running <alias>
+    // because <alias> failed: <reason>".
+    console.log(`fallback: running ${invocation.alias} because ${run.alias} failed: ${run.reason}`);
+  }
+  run = runCli(invocation, Math.min(invocation.timeoutMs ?? remainingMs, remainingMs));
+  logSections.push(run.log);
+  if (run.failed) {
+    console.error(run.failure);
+  }
+  if (!run.failed || run.timedOut) break;
 }
 
-// Build the set of strings that must never reach worker.log in plaintext:
-// the rendered prompt body itself, plus every secret-bearing arg value
-// (captured from inline `--token=VALUE` and `--api-key VALUE` patterns).
-// `redactStringForLog` scrubs these from any free-form text (stdout, stderr,
-// finalMessage, handoff) before the log write. Order matters: build this
-// list BEFORE the spawn so we can scrub spawn output.
-const logArgs = redactArgsForLog(args, resolvedArgs, prompt);
-const secretValues = collectSecretValues(resolvedArgs, prompt, task);
+writeFileSync(logPath, logSections.join("\n\n"), "utf8");
 
-const startedAt = new Date().toISOString();
-const result = spawnSync(binary, resolvedArgs, {
-  cwd,
-  encoding: "utf8",
-  env: {
-    ...process.env,
-    PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`,
-    NO_COLOR: "1",
-    TERM: "dumb",
-    ...env,
-  },
-  timeout: timeoutMs,
-  maxBuffer: 20 * 1024 * 1024,
-});
-
-const finalMessage =
-  final_message_arg && existsSync(finalMessagePath)
-    ? safeRead(finalMessagePath)
-    : (result.stdout ?? "");
-
-if (!final_message_arg) {
-  writeFileSync(finalMessagePath, finalMessage, "utf8");
+if (run.failed) {
+  process.exit(run.exitCode);
+}
+if (!run.finalMessage.includes(marker) && !run.handoff.includes(marker)) {
+  console.error(`missing completion marker: ${marker}`);
+  process.exit(2);
 }
 
-let handoff = safeRead(handoffPath);
+let handoff = run.handoff;
+if (!handoff.trim()) {
+  handoff = JSON.stringify(
+    { marker, taskId, goalId, alias: run.alias, summary: run.finalMessage.slice(0, 1000) },
+    null,
+    2,
+  );
+  writeFileSync(handoffPath, handoff, "utf8");
+}
 
-writeFileSync(
-  logPath,
-  [
+console.log(marker);
+console.log(`handoff=${handoffPath}`);
+console.log(`log=${logPath}`);
+console.log(`finalMessage=${finalMessagePath}`);
+
+function runCli(invocation, timeout) {
+  const prompt = interpolate(invocation.prompt_template ?? defaultTemplate, {
+    alias: invocation.alias,
+    task,
+    taskName,
+    taskId,
+    goalId,
+    marker,
+  });
+
+  // Substitute {{prompt}} in args with the rendered prompt.
+  const resolvedArgs = invocation.args.map((a) =>
+    typeof a === "string" ? a.replace(/\{\{prompt\}\}/g, prompt) : a,
+  );
+
+  // Auto-append the final-message flag + path so the child CLI actually writes
+  // its final message where we read it (finalMessagePath). final_message_arg was
+  // previously only consulted when READING the result — never passed to the
+  // child — so e.g. the codex alias (final_message_arg "--output-last-message")
+  // never wrote final-message.txt, and completion-marker detection only saw the
+  // handoff stream. Skip if the caller already included the flag.
+  if (invocation.final_message_arg && !resolvedArgs.includes(invocation.final_message_arg)) {
+    resolvedArgs.push(invocation.final_message_arg, finalMessagePath);
+  }
+
+  // Build the set of strings that must never reach worker.log in plaintext:
+  // the rendered prompt body itself, plus every secret-bearing arg value
+  // (captured from inline `--token=VALUE` and `--api-key VALUE` patterns).
+  // `redactStringForLog` scrubs these from any free-form text (stdout, stderr,
+  // finalMessage, handoff) before the log write. Order matters: build this
+  // list BEFORE the spawn so we can scrub spawn output.
+  const logArgs = redactArgsForLog(invocation.args, resolvedArgs, prompt);
+  const secretValues = collectSecretValues(resolvedArgs, prompt, task);
+
+  // A previous attempt's final message must not satisfy this one's marker check.
+  rmSync(finalMessagePath, { force: true });
+
+  const startedAt = new Date().toISOString();
+  const result = spawnSync(invocation.binary, resolvedArgs, {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      PATH: `/opt/homebrew/bin:${process.env.PATH ?? ""}`,
+      NO_COLOR: "1",
+      TERM: "dumb",
+      ...invocation.env,
+    },
+    timeout,
+    maxBuffer: 20 * 1024 * 1024,
+  });
+
+  const finalMessage =
+    invocation.final_message_arg && existsSync(finalMessagePath)
+      ? safeRead(finalMessagePath)
+      : (result.stdout ?? "");
+
+  if (!invocation.final_message_arg) {
+    writeFileSync(finalMessagePath, finalMessage, "utf8");
+  }
+
+  const handoff = safeRead(handoffPath);
+
+  const log = [
+    `alias=${invocation.alias}`,
     `startedAt=${startedAt}`,
     `endedAt=${new Date().toISOString()}`,
-    `binary=${binary}`,
+    `binary=${invocation.binary}`,
     `argsCount=${resolvedArgs.length}`,
     // Two-layer scrub on args: redactArgsForLog handles structural
     // patterns (--api-key VALUE, {{prompt}} position); then we run each
@@ -191,37 +266,27 @@ writeFileSync(
     redactStringForLog(finalMessage, secretValues),
     "handoff:",
     redactStringForLog(handoff, secretValues),
-  ].join("\n"),
-  "utf8",
-);
+  ].join("\n");
 
-if (result.error) {
-  console.error(`${alias} spawn failed: ${result.error.message}`);
-  process.exit(1);
-}
-if (result.status !== 0) {
-  console.error(`${alias} exited ${result.status}`);
-  console.error((result.stderr || result.stdout || "").slice(0, 6000));
-  process.exit(result.status ?? 1);
-}
-if (!finalMessage.includes(marker) && !handoff.includes(marker)) {
-  console.error(`missing completion marker: ${marker}`);
-  process.exit(2);
-}
+  const output = result.stderr || result.stdout || "";
+  const failure = result.error
+    ? `${invocation.alias} spawn failed: ${result.error.message}`
+    : `${invocation.alias} exited ${result.status}\n${output.slice(0, 6000)}`;
+  const firstLine =
+    output.split("\n").map((l) => l.trim()).find(Boolean) ?? `exit ${result.status ?? result.signal}`;
 
-if (!handoff.trim()) {
-  handoff = JSON.stringify(
-    { marker, taskId, goalId, alias, summary: finalMessage.slice(0, 1000) },
-    null,
-    2,
-  );
-  writeFileSync(handoffPath, handoff, "utf8");
+  return {
+    alias: invocation.alias,
+    failed: Boolean(result.error) || result.status !== 0,
+    timedOut: result.error?.code === "ETIMEDOUT",
+    exitCode: result.error ? 1 : (result.status ?? 1),
+    failure,
+    reason: redactStringForLog(result.error?.message ?? firstLine, secretValues).slice(0, 300),
+    finalMessage,
+    handoff,
+    log,
+  };
 }
-
-console.log(marker);
-console.log(`handoff=${handoffPath}`);
-console.log(`log=${logPath}`);
-console.log(`finalMessage=${finalMessagePath}`);
 
 function safeRead(path) {
   try {
