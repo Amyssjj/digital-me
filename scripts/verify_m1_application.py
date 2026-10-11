@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Live M1 application-rate verifier.
 
-Scans the canonical M1 event sources — brain.db `m1_events` and the per-runtime
+Scans the canonical M1 event sources — brain.db `m1_events` (located by the
+shared path rule; see `default_brain_db`) and the per-runtime
 WALs (`~/.openclaw/data/m1_events_<runtime>.jsonl`) — over a recent window and,
 for each runtime (claude-code, openclaw, hermes), reports:
 
@@ -26,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import defaultdict
@@ -53,7 +55,29 @@ WALS = {
     "openclaw": ".openclaw/data/m1_events_openclaw.jsonl",
     "hermes": ".openclaw/data/m1_events_hermes.jsonl",
 }
-DEFAULT_BRAIN_DB = ".openclaw/data/brain.db"
+
+
+def default_brain_db(home: Path) -> Path:
+    """brain.db under the rule every digital-me reader shares (Python twin of
+    ``@digital-me/contracts`` ``resolveBrainDbPath``): ``$DIGITAL_ME_BRAIN_DB``
+    → ``<wiki-root>/.data/brain.db`` when it exists → the legacy
+    ``<OPENCLAW_HOME or ~/.openclaw>/data/brain.db`` when it exists → canonical.
+
+    ``home`` stands in for ``~`` so ``--home`` keeps working. Pinning the legacy
+    path here made the verifier report "no brain rows" once brain.db moved to
+    its canonical home.
+    """
+    explicit = os.environ.get("DIGITAL_ME_BRAIN_DB", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    wiki_root = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or home / "digital-me").expanduser()
+    canonical = wiki_root / ".data" / "brain.db"
+    if canonical.exists():
+        return canonical
+    legacy = Path(os.environ.get("OPENCLAW_HOME") or home / ".openclaw").expanduser() / "data" / "brain.db"
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 def _accumulate(events, since_ms, surfaced_turns, acked_turns):
@@ -148,7 +172,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     home = args.home
-    brain_db = args.brain_db or (home / DEFAULT_BRAIN_DB)
+    brain_db = args.brain_db or default_brain_db(home)
     since_ms = int(
         (datetime.now(timezone.utc) - timedelta(days=args.days)).timestamp() * 1000
     )

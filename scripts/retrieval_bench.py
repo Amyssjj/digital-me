@@ -447,6 +447,26 @@ def compare(current: dict[str, Any], baseline: dict[str, Any]) -> dict[str, Any]
 # --------------------------------------------------------------------------
 
 
+
+def default_brain_db() -> Path:
+    """brain.db under the rule every digital-me reader shares (Python twin of
+    ``@digital-me/contracts`` ``resolveBrainDbPath``): ``$DIGITAL_ME_BRAIN_DB``
+    → ``<wiki-root>/.data/brain.db`` when it exists → the legacy
+    ``<OPENCLAW_HOME or ~/.openclaw>/data/brain.db`` when it exists → canonical.
+    """
+    explicit = os.environ.get("DIGITAL_ME_BRAIN_DB", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    wiki_root = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or Path.home() / "digital-me").expanduser()
+    canonical = wiki_root / ".data" / "brain.db"
+    if canonical.exists():
+        return canonical
+    legacy = Path(os.environ.get("OPENCLAW_HOME") or Path.home() / ".openclaw").expanduser() / "data" / "brain.db"
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--label", required=True, help="snapshot name, e.g. openclaw-2026-09-19")
@@ -465,7 +485,8 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=DEFAULT_TIMEOUT_S)
     ap.add_argument("--wiki-root", default=os.environ.get("DIGITAL_ME_WIKI_ROOT") or str(Path.home() / "digital-me"))
     ap.add_argument("--brain-db", default=os.environ.get("DIGITAL_ME_BRAIN_DB") or os.environ.get("BRAIN_DB")
-                    or str(Path(os.environ.get("OPENCLAW_HOME") or (Path.home() / ".openclaw")) / "data" / "brain.db"))
+                    or str(default_brain_db()),
+                    help="brain.db for the observed-query set (default: $DIGITAL_ME_BRAIN_DB, $BRAIN_DB, else the shared path rule)")
     ap.add_argument("--out-dir", default=None, help="snapshot dir (default: <wiki-root>/.data/retrieval-bench)")
     ap.add_argument("--compare", help="baseline snapshot JSON to diff against")
     ap.add_argument("--dry-run", action="store_true", help="build query sets, print counts, do not call the backend")

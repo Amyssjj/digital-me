@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sqlite3
 import sys
 from collections import defaultdict
@@ -37,7 +38,28 @@ from typing import Any, Dict, Iterable, Optional, Tuple
 
 
 HOME = Path.home()
-BRAIN_DB = HOME / ".openclaw" / "data" / "brain.db"
+
+
+def _resolve_brain_db() -> Path:
+    """brain.db under the rule every digital-me reader shares (Python twin of
+    ``@digital-me/contracts`` ``resolveBrainDbPath``): ``$DIGITAL_ME_BRAIN_DB``
+    → ``<wiki-root>/.data/brain.db`` when it exists → the legacy
+    ``<OPENCLAW_HOME or ~/.openclaw>/data/brain.db`` when it exists → canonical.
+    """
+    explicit = os.environ.get("DIGITAL_ME_BRAIN_DB", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    wiki_root = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or HOME / "digital-me").expanduser()
+    canonical = wiki_root / ".data" / "brain.db"
+    if canonical.exists():
+        return canonical
+    legacy = Path(os.environ.get("OPENCLAW_HOME") or HOME / ".openclaw").expanduser() / "data" / "brain.db"
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
+BRAIN_DB = _resolve_brain_db()
 
 HOOK_LOGS = {
     "claude-code": HOME / ".claude" / "hooks" / "application_rate.log",
