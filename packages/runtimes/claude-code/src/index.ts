@@ -21,12 +21,14 @@ export {
   SKILL_NAMES,
   SKILLS_DIR,
   TEMPLATES_DIR,
+  buildClaudeCodeMcpEnv,
   buildClaudeHooksManifest,
   mergeBrainEnvIntoSettings,
   mergeHooksIntoSettings,
 } from "./installer.js";
 export type {
   BrainHostEnv,
+  ClaudeCodeMcpEnvInputs,
   ClaudeHookStanza,
   ClaudeHooksManifest,
   HookName,

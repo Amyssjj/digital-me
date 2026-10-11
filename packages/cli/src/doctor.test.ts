@@ -1,10 +1,15 @@
 import { describe, expect, it } from "vitest";
+import type { BrainHostHealth, OpenclawGatewayEvidence } from "./brain-host-live.js";
 import {
+  BRAIN_DB_LOCATION_LABEL,
+  BRAIN_HOST_HEALTH_LABEL,
   OPENCLAW_SHADOW_LOCATIONS,
   RUNTIME_EXPECTATIONS,
+  SINGLE_TICKER_LABEL,
   buildModuleNotImportableReason,
   formatReport,
   parsePythonVersion,
+  runBrainHostLiveChecks,
   runDoctor,
   runCodexHookTrustCheck,
   runEmbeddingsCheck,
@@ -918,7 +923,7 @@ describe("formatReport", () => {
         { ok: true, label: "x", note: "found" },
         { ok: false, label: "y", reason: "missing" },
       ],
-      summary: { total: 2, passed: 1, failed: 1 },
+      summary: { total: 2, passed: 1, failed: 1, warned: 0 },
     });
     expect(out).toContain("[OK]   x (found)");
     expect(out).toContain("[FAIL] y — missing");
@@ -928,10 +933,219 @@ describe("formatReport", () => {
   it("omits the parenthetical when the OK check has no note", () => {
     const out = formatReport({
       checks: [{ ok: true, label: "x" }],
-      summary: { total: 1, passed: 1, failed: 0 },
+      summary: { total: 1, passed: 1, failed: 0, warned: 0 },
     });
     expect(out).toContain("[OK]   x\n");
     expect(out).not.toContain("[OK]   x (");
+  });
+
+  it("renders WARN rows (passing, but flagged) and counts them in the summary", () => {
+    const out = formatReport({
+      checks: [
+        { ok: true, label: "w", note: "legacy path", warn: true },
+        { ok: true, label: "bare", warn: true },
+        { ok: true, label: "x" },
+      ],
+      summary: { total: 3, passed: 3, failed: 0, warned: 2 },
+    });
+    expect(out).toContain("[WARN] w — legacy path");
+    expect(out).toContain("[WARN] bare\n");
+    expect(out).toContain("Summary: 3/3 passed (2 with warnings), 0 failed.");
+  });
+});
+
+describe("runBrainHostLiveChecks (runbook 7.4)", () => {
+  const HOME = "/home/u";
+  const URL_ = "http://127.0.0.1:18791/health";
+  const CANON = "/home/u/digital-me/.data/brain.db";
+  const LEGACY = "/home/u/.openclaw/data/brain.db";
+
+  type Orchestrator = Record<string, unknown> | null;
+  function healthy(orchestrator: Orchestrator = { brainDb: CANON, brainDbSource: "env", scheduler: "on", ticks: 973, lastTickError: null }, extra: Record<string, unknown> = {}): BrainHostHealth {
+    return { status: "ok", url: URL_, body: { ok: true, version: "0.1.0-pre", wikiRoot: "/home/u/digital-me", orchestrator, ...extra } };
+  }
+  const DISABLED: OpenclawGatewayEvidence = {
+    state: "disabled",
+    decision: { ticking: false, at: "2026-10-11T03:00:31.579-07:00", logPath: "/logs/gateway.log" },
+    answering: true,
+    liveness: "gateway answering at http://127.0.0.1:18789/health",
+  };
+  const TICKING: OpenclawGatewayEvidence = {
+    state: "ticking",
+    decision: { ticking: true, logPath: "/logs/gateway.log" },
+    answering: true,
+    liveness: "gateway answering at http://127.0.0.1:18789/health",
+  };
+
+  function rows(health: BrainHostHealth | undefined, gateway?: OpenclawGatewayEvidence, env: Record<string, string> = { HOME }) {
+    const [h, db, tick] = runBrainHostLiveChecks(
+      makeDeps({ env, ...(health ? { brainHostHealth: health } : {}), ...(gateway ? { openclawGateway: gateway } : {}) }),
+    );
+    return { h: h!, db: db!, tick: tick! };
+  }
+
+  it("runDoctor adds the three rows only when brain-host is a checked runtime", () => {
+    const withHost = runDoctor(makeDeps(), ["brain-host"]).checks.map((c) => c.label);
+    expect(withHost).toEqual(expect.arrayContaining([BRAIN_HOST_HEALTH_LABEL, BRAIN_DB_LOCATION_LABEL, SINGLE_TICKER_LABEL]));
+    const without = runDoctor(makeDeps(), ["codex"]).checks.map((c) => c.label);
+    expect(without).not.toContain(BRAIN_HOST_HEALTH_LABEL);
+  });
+
+  it("all three skip (pass, no warning) when the caller did not probe", () => {
+    const { h, db, tick } = rows(undefined);
+    expect(h).toMatchObject({ ok: true, note: expect.stringContaining("skipped — caller did not probe") });
+    expect(h).not.toHaveProperty("warn");
+    expect(db).toMatchObject({ ok: true, note: expect.stringContaining("skipped") });
+    expect(tick).toEqual({ ok: true, label: SINGLE_TICKER_LABEL, note: "(skipped — caller did not probe brain-host /health)" });
+  });
+
+  it("a probed brain-host with an uninspected gateway cannot rule out a second ticker (WARN)", () => {
+    expect(rows(healthy()).tick).toMatchObject({
+      ok: true,
+      warn: true,
+      note: expect.stringContaining("cannot rule out a second ticker — brain-host ticks (scheduler=on, 973 ticks); the openclaw gateway was not inspected"),
+    });
+  });
+
+  describe("brain-host: live /health", () => {
+    it("PASS with the URL and version on an authenticated answer", () => {
+      expect(rows(healthy()).h).toEqual({ ok: true, label: BRAIN_HOST_HEALTH_LABEL, note: `${URL_} (version 0.1.0-pre)` });
+      expect(rows({ status: "ok", url: URL_, body: { entries: 1 } }).h).toEqual({ ok: true, label: BRAIN_HOST_HEALTH_LABEL, note: URL_ });
+    });
+
+    it("SKIP without a token; WARN (never FAIL) when unreachable, erroring or rejecting the token", () => {
+      expect(rows({ status: "skipped", reason: "no brain-host token at /t" }).h).toEqual({
+        ok: true,
+        label: BRAIN_HOST_HEALTH_LABEL,
+        note: "(skipped — no brain-host token at /t)",
+      });
+      const down = rows({ status: "unreachable", url: URL_, reason: "fetch failed (ECONNREFUSED)" }).h;
+      expect(down).toMatchObject({ ok: true, warn: true, note: expect.stringContaining("nothing answered at") });
+      expect(down).toMatchObject({ note: expect.stringContaining("digital-me service brain-host install") });
+      expect(rows({ status: "error", url: URL_, reason: "HTTP 500" }).h).toMatchObject({
+        ok: true,
+        warn: true,
+        note: `${URL_} answered without a health report (HTTP 500).`,
+      });
+      expect(rows({ status: "liveness-only", url: URL_, tokenFile: "/t" }).h).toMatchObject({
+        ok: true,
+        warn: true,
+        note: expect.stringContaining(`${URL_} rejected the token in /t (it answered liveness only)`),
+      });
+    });
+  });
+
+  describe("brain-host: brain.db location", () => {
+    it("PASS on the canonical <wiki-root>/.data/brain.db — from /health's wikiRoot or the doctor's own root", () => {
+      expect(rows(healthy()).db).toEqual({
+        ok: true,
+        label: BRAIN_DB_LOCATION_LABEL,
+        note: `${CANON} (canonical <wiki-root>/.data/brain.db, source=env)`,
+      });
+      const custom = "/data/dm/.data/brain.db";
+      const viaEnv = rows(healthy({ brainDb: custom }, { wikiRoot: undefined }), undefined, { HOME, DIGITAL_ME_WIKI_ROOT: "/data/dm" }).db;
+      expect(viaEnv).toEqual({ ok: true, label: BRAIN_DB_LOCATION_LABEL, note: `${custom} (canonical <wiki-root>/.data/brain.db)` });
+    });
+
+    it("WARN on the legacy openclaw location, naming the migration", () => {
+      const db = rows(healthy({ brainDb: LEGACY, brainDbSource: "legacy-openclaw" })).db;
+      expect(db).toMatchObject({ ok: true, warn: true });
+      if (db.ok) {
+        expect(db.note).toContain(`${LEGACY} is the LEGACY openclaw location (canonical: ${CANON}, source=legacy-openclaw)`);
+        expect(db.note).toContain("digital-me brain-db migrate");
+      }
+      // OPENCLAW_HOME moves the legacy location; USERPROFILE stands in for HOME.
+      const moved = rows(healthy({ brainDb: "/oc/data/brain.db" }, { wikiRoot: undefined }), undefined, { USERPROFILE: HOME, OPENCLAW_HOME: "/oc" }).db;
+      expect(moved).toMatchObject({ warn: true, note: expect.stringContaining("/oc/data/brain.db is the LEGACY") });
+    });
+
+    it("WARN on any other path, on a missing brainDb and on no orchestrator; SKIP without a report", () => {
+      expect(rows(healthy({ brainDb: "/elsewhere/brain.db" }), undefined, {}).db).toMatchObject({
+        warn: true,
+        note: expect.stringContaining("/elsewhere/brain.db is neither the canonical /home/u/digital-me/.data/brain.db nor the legacy .openclaw/data/brain.db"),
+      });
+      expect(rows(healthy({ scheduler: "on" })).db).toMatchObject({ warn: true, note: expect.stringContaining("no orchestrator.brainDb") });
+      expect(rows(healthy({ brainDb: "" })).db).toMatchObject({ warn: true, note: expect.stringContaining("no orchestrator.brainDb") });
+      expect(rows(healthy(null)).db).toMatchObject({ warn: true, note: expect.stringContaining("reports no orchestrator") });
+      expect(rows(healthy(null, { orchestrator: [1] })).db).toMatchObject({ warn: true, note: expect.stringContaining("reports no orchestrator") });
+      expect(rows({ status: "unreachable", url: URL_, reason: "refused" }).db).toEqual({
+        ok: true,
+        label: BRAIN_DB_LOCATION_LABEL,
+        note: `(skipped — no authenticated /health report: nothing answered at ${URL_} (refused))`,
+      });
+    });
+  });
+
+  describe("scheduler: single ticker", () => {
+    it("PASS when brain-host ticks and the gateway cannot (disabled at load, not running, no plugin)", () => {
+      const pass = rows(healthy(), DISABLED).tick;
+      expect(pass).toMatchObject({ ok: true, label: SINGLE_TICKER_LABEL });
+      expect(pass).not.toHaveProperty("warn");
+      if (pass.ok) {
+        expect(pass.note).toContain("brain-host ticks (scheduler=on, 973 ticks)");
+        expect(pass.note).toContain("logged 'scheduler tick DISABLED' at its last load at 2026-10-11T03:00:31.579-07:00 (/logs/gateway.log)");
+      }
+      expect(rows(healthy(), { state: "not-running", url: "http://127.0.0.1:18789/health", reason: "refused" }).tick).toMatchObject({
+        ok: true,
+        note: expect.stringContaining("openclaw gateway not running (http://127.0.0.1:18789/health: refused)"),
+      });
+      expect(rows(healthy(), { state: "absent" }).tick).toMatchObject({ ok: true, note: expect.stringContaining("no digital-me-brain plugin installed") });
+      // A failing tick and a missing tick count are reported as-is.
+      const failing = rows(healthy({ brainDb: CANON, scheduler: "on", lastTickError: "db locked" }), { state: "absent" }).tick;
+      expect(failing).toMatchObject({ ok: true, note: expect.stringContaining("brain-host ticks (scheduler=on, last tick failed: db locked)") });
+    });
+
+    it("FAIL when BOTH tick, naming the gateway setting to flip", () => {
+      const fail = rows(healthy(), TICKING).tick;
+      expect(fail.ok).toBe(false);
+      if (!fail.ok) {
+        expect(fail.reason).toContain("TWO schedulers tick");
+        expect(fail.reason).toContain("enabled its tick at its last load (/logs/gateway.log: no 'scheduler tick DISABLED' followed; gateway answering");
+        expect(fail.reason).toContain("plugins.entries.digital-me-brain.config.scheduler=false");
+      }
+    });
+
+    it("FAIL when NEITHER ticks (brain-host scheduler off or no orchestrator; gateway disabled)", () => {
+      const off = rows(healthy({ brainDb: CANON, scheduler: "off" }), DISABLED).tick;
+      expect(off.ok).toBe(false);
+      if (!off.ok) {
+        expect(off.reason).toContain("NO scheduler ticks");
+        expect(off.reason).toContain("DIGITAL_ME_BRAIN_SCHEDULER=on digital-me install --runtime brain-host");
+      }
+      expect(rows(healthy(null), { state: "absent" }).tick).toMatchObject({ ok: false, reason: expect.stringContaining("brain-host hosts no orchestrator") });
+    });
+
+    it("WARN when only the legacy gateway ticks (one ticker, but the wrong one)", () => {
+      const legacy = rows(healthy({ brainDb: CANON, scheduler: "off" }), TICKING).tick;
+      expect(legacy).toMatchObject({ ok: true, warn: true, note: expect.stringContaining("one ticker, but the legacy one") });
+    });
+
+    it("WARN — never FAIL — when either side cannot be read", () => {
+      const hostDown = rows({ status: "unreachable", url: URL_, reason: "refused" }, TICKING).tick;
+      expect(hostDown).toMatchObject({ ok: true, warn: true, note: expect.stringContaining("cannot confirm a single ticker — brain-host /health unreadable") });
+      const noToken = rows({ status: "skipped", reason: "no token" }, DISABLED).tick;
+      expect(noToken).toMatchObject({ ok: true, warn: true, note: expect.stringContaining("unreadable: no token") });
+      const unknownGateway: OpenclawGatewayEvidence = { state: "unknown", reason: "no openclaw gateway log found" };
+      expect(rows(healthy(), unknownGateway).tick).toMatchObject({
+        ok: true,
+        warn: true,
+        note: expect.stringContaining("cannot rule out a second ticker — brain-host ticks (scheduler=on, 973 ticks); openclaw gateway tick decision unreadable: no openclaw gateway log found"),
+      });
+      expect(rows(healthy({ brainDb: CANON, scheduler: "off" }), unknownGateway).tick).toMatchObject({
+        ok: true,
+        warn: true,
+        note: expect.stringContaining("brain-host does not tick and the gateway's side is unknown"),
+      });
+      // A "ticking" decision from a gateway that did not answer /health just now is unconfirmed: WARN, not FAIL.
+      const unconfirmed: OpenclawGatewayEvidence = { ...TICKING, answering: false, liveness: "gateway liveness unknown: timeout" };
+      expect(rows(healthy(), unconfirmed).tick).toMatchObject({
+        ok: true,
+        warn: true,
+        note: expect.stringContaining("cannot rule out a second ticker — brain-host ticks (scheduler=on, 973 ticks); the gateway's digital-me-brain plugin enabled its tick at its last load (/logs/gateway.log: no 'scheduler tick DISABLED' followed; gateway liveness unknown: timeout)"),
+      });
+      expect(rows({ status: "liveness-only", url: URL_, tokenFile: "/t" }, { state: "absent" }).tick).toMatchObject({ ok: true, warn: true });
+      expect(rows({ status: "error", url: URL_, reason: "HTTP 500" }, { state: "absent" }).tick).toMatchObject({ ok: true, warn: true });
+    });
   });
 });
 

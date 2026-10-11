@@ -10,24 +10,19 @@ import {
 } from "./installer.js";
 
 describe("buildHermesMcpEnv", () => {
-  const openclawHome = "/home/t/.openclaw";
   const brain = {
     brainUrl: "http://127.0.0.1:18791/tools/invoke",
     brainTokenFile: "/home/t/digital-me/.data/brain-host.token",
   };
 
-  it("without brain-host: OPENCLAW_HOME + the hermes attribution id only (proxy stays on the openclaw gateway)", () => {
-    expect(buildHermesMcpEnv({ openclawHome })).toEqual([
-      `OPENCLAW_HOME=${openclawHome}`,
-      "OPENCLAW_AGENT_ID=hermes",
-    ]);
-    expect(buildHermesMcpEnv({ openclawHome, agentId: "hermes-lab" })[1]).toBe("OPENCLAW_AGENT_ID=hermes-lab");
+  it("without brain-host: the hermes attribution id only (proxy stays on the openclaw gateway)", () => {
+    expect(buildHermesMcpEnv()).toEqual(["OPENCLAW_AGENT_ID=hermes"]);
+    expect(buildHermesMcpEnv({ agentId: "hermes-lab" })).toEqual(["OPENCLAW_AGENT_ID=hermes-lab"]);
   });
 
   it("with brain-host: adds DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE (the path), never DIGITAL_ME_BRAIN_TOKEN", () => {
-    const env = buildHermesMcpEnv({ openclawHome, brain });
+    const env = buildHermesMcpEnv({ brain });
     expect(env).toEqual([
-      `OPENCLAW_HOME=${openclawHome}`,
       "OPENCLAW_AGENT_ID=hermes",
       `DIGITAL_ME_BRAIN_URL=${brain.brainUrl}`,
       `DIGITAL_ME_BRAIN_TOKEN_FILE=${brain.brainTokenFile}`,
@@ -35,11 +30,16 @@ describe("buildHermesMcpEnv", () => {
     expect(env.some((kv) => kv.startsWith("DIGITAL_ME_BRAIN_TOKEN="))).toBe(false);
   });
 
+  it("never writes OPENCLAW_HOME (the proxy defaults it to ~/.openclaw; re-install = remove + add, so an old one is dropped)", () => {
+    expect(buildHermesMcpEnv().some((kv) => kv.startsWith("OPENCLAW_HOME="))).toBe(false);
+    expect(buildHermesMcpEnv({ brain }).some((kv) => kv.startsWith("OPENCLAW_HOME="))).toBe(false);
+  });
+
   it("refuses half a contract: a URL without a token file, or a token file without a URL", () => {
-    expect(() => buildHermesMcpEnv({ openclawHome, brain: { ...brain, brainTokenFile: " " } })).toThrow(
+    expect(() => buildHermesMcpEnv({ brain: { ...brain, brainTokenFile: " " } })).toThrow(
       /DIGITAL_ME_BRAIN_TOKEN_FILE/,
     );
-    expect(() => buildHermesMcpEnv({ openclawHome, brain: { ...brain, brainUrl: "" } })).toThrow(/set together/);
+    expect(() => buildHermesMcpEnv({ brain: { ...brain, brainUrl: "" } })).toThrow(/set together/);
   });
 });
 

@@ -30,7 +30,6 @@ describe("buildCodexMcpConfig", () => {
     nodeBin: "/opt/homebrew/bin/node",
     proxyBinPath:
       "/home/test/digital-me-os/packages/transport/brain-mcp-proxy/bin/brain-mcp-proxy.mjs",
-    openclawHome: "/home/test/openclaw",
     agentId: "codex",
   };
 
@@ -41,10 +40,53 @@ describe("buildCodexMcpConfig", () => {
     expect(toml).toContain(`args = ["${inputs.proxyBinPath}"]`);
   });
 
-  it("injects OPENCLAW_HOME and OPENCLAW_AGENT_ID into env", () => {
+  it("injects the OPENCLAW_AGENT_ID attribution label into env, never OPENCLAW_HOME (the proxy defaults it)", () => {
     const toml = buildCodexMcpConfig(inputs);
-    expect(toml).toContain(`OPENCLAW_HOME = "${inputs.openclawHome}"`);
     expect(toml).toContain(`OPENCLAW_AGENT_ID = "codex"`);
+    expect(toml).not.toContain("OPENCLAW_HOME");
+    expect(
+      buildCodexMcpConfig({
+        ...inputs,
+        brainUrl: "http://127.0.0.1:18791/tools/invoke",
+        brainTokenFile: "/home/test/digital-me/.data/brain-host.token",
+      }),
+    ).not.toContain("OPENCLAW_HOME");
+  });
+
+  it("re-install REMOVES an OPENCLAW_HOME an earlier installer wrote — inline or as an env sub-table", () => {
+    const fresh = buildCodexMcpConfig(inputs);
+    const legacyInline = [
+      "[mcp_servers.digital-me-brain]",
+      `command = "${inputs.nodeBin}"`,
+      `args = ["${inputs.proxyBinPath}"]`,
+      `env = { OPENCLAW_HOME = "/home/test/.openclaw", OPENCLAW_AGENT_ID = "codex", PATH = "/usr/bin" }`,
+      "",
+      "[mcp_servers.other]",
+      'command = "other"',
+      'env = { OPENCLAW_HOME = "/kept/for/other" }',
+      "",
+    ].join("\n");
+    const merged = mergeMcpServer(legacyInline, fresh);
+    const ours = merged.slice(0, merged.indexOf("[mcp_servers.other]"));
+    expect(ours).not.toContain("OPENCLAW_HOME");
+    expect(ours).toContain(`OPENCLAW_AGENT_ID = "codex"`);
+    // Only our block is rewritten: another server's env belongs to the user.
+    expect(merged).toContain('env = { OPENCLAW_HOME = "/kept/for/other" }');
+
+    // Codex's own rewrite spelling: env as a sub-table.
+    const legacySubTable = [
+      "[mcp_servers.digital-me-brain]",
+      `command = "${inputs.nodeBin}"`,
+      "",
+      "[mcp_servers.digital-me-brain.env]",
+      'OPENCLAW_HOME = "/home/test/.openclaw"',
+      'OPENCLAW_AGENT_ID = "codex"',
+      "",
+    ].join("\n");
+    const merged2 = mergeMcpServer(legacySubTable, fresh);
+    expect(merged2).not.toContain("OPENCLAW_HOME");
+    expect(merged2).not.toContain("[mcp_servers.digital-me-brain.env]");
+    expect(merged2.match(/OPENCLAW_AGENT_ID/g)).toHaveLength(1);
   });
 
   it("defaults agentId to 'codex' when omitted", () => {
@@ -74,12 +116,10 @@ describe("buildCodexMcpConfig", () => {
     const toml = buildCodexMcpConfig({
       nodeBin: "/opt/node\nbin",
       proxyBinPath: "/tmp/proxy\r.mjs",
-      openclawHome: "/home/test/open\tclaw",
       agentId: "codex\nBROKEN = true\r\t\u0001",
     });
     expect(toml).toContain(`command = "/opt/node\\nbin"`);
     expect(toml).toContain(`args = ["/tmp/proxy\\r.mjs"]`);
-    expect(toml).toContain(`OPENCLAW_HOME = "/home/test/open\\tclaw"`);
     expect(toml).toContain(
       `OPENCLAW_AGENT_ID = "codex\\nBROKEN = true\\r\\t\\u0001"`,
     );
@@ -111,7 +151,7 @@ describe("buildCodexMcpConfig", () => {
     expect(envLine).toContain(`DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}"`);
     expect(envLine).toContain(`DIGITAL_ME_BRAIN_TOKEN_FILE = "${TOKEN_FILE}"`);
     expect(envLine).not.toMatch(SECRET_KEY);
-    expect(envLine).toContain(`OPENCLAW_HOME = "${inputs.openclawHome}"`);
+    expect(envLine).not.toContain("OPENCLAW_HOME");
     expect(envLine).toContain(`OPENCLAW_AGENT_ID = "codex"`);
     expect(envLine).toContain("PATH = ");
     // One inline table, still 4 keys + trailing newline: no env sub-table.
@@ -154,7 +194,7 @@ describe("buildCodexMcpConfig", () => {
       "[mcp_servers.digital-me-brain]",
       `command = "${inputs.nodeBin}"`,
       `args = ["${inputs.proxyBinPath}"]`,
-      `env = { OPENCLAW_HOME = "${inputs.openclawHome}", DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}", DIGITAL_ME_BRAIN_TOKEN = "old-secret" }`,
+      `env = { OPENCLAW_HOME = "/home/test/.openclaw", DIGITAL_ME_BRAIN_URL = "${BRAIN_URL}", DIGITAL_ME_BRAIN_TOKEN = "old-secret" }`,
       "",
       "[other]",
       "q = true",
