@@ -13,6 +13,7 @@ import json
 import os
 import re
 import sys
+import time
 from collections import Counter
 from datetime import date
 from pathlib import Path
@@ -1994,6 +1995,12 @@ def run_compile(
     if not dry_run:
         _save_compiled_hashes(config, hashes)
 
+    # Epoch-ms stamp on both staging files (same unit as the brain's
+    # tasks.started_at). apply only folds agent handoffs from tasks that
+    # started at/after it — i.e. agents that read THIS batch — so a night
+    # whose spawns failed can't re-fold a previous night's handoffs.
+    staged_at = int(time.time() * 1000)
+
     # Staged taste mode: write the staging file with the collected
     # transcripts + principles_manifest for a downstream COO batch.
     if stage_taste and not dry_run:
@@ -2009,6 +2016,7 @@ def run_compile(
             # Parse/apply errors leave the hash uncommitted so the transcript
             # is eligible for re-staging next night.
             "deferred_hashes": deferred_hashes,
+            "staged_at": staged_at,
         }
         staging_path.write_text(json.dumps(staging_payload, indent=2), encoding="utf-8")
         print(f"  Staged {len(staged_transcripts)} taste-eligible transcripts → {staging_path}")
@@ -2027,6 +2035,7 @@ def run_compile(
             # were successfully written (or were a manifest-noop). Errors leave
             # the hash uncommitted so the candidate re-stages next night.
             "deferred_hashes": compile_deferred_hashes,
+            "staged_at": staged_at,
         }
         compile_staging.write_text(json.dumps(compile_payload, indent=2), encoding="utf-8")
         print(f"  Staged {len(stage_compile_candidates)} compile candidates → {compile_staging}")
