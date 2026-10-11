@@ -97,7 +97,23 @@ def _extract_json(text: str, _depth: int = 0) -> Optional[dict]:
     return None
 
 
-def _read_spawn_handoffs() -> dict:
+def _staged_at_ms(path: Optional[str]) -> Optional[int]:
+    """Epoch-ms when step 1 wrote this staging file: the payload's `staged_at`
+    stamp, else (a file staged before the stamp existed) its mtime. None when
+    there is no readable staging file to anchor on."""
+    if not path:
+        return None
+    p = Path(path)
+    try:
+        staged_at = json.loads(p.read_text(encoding="utf-8")).get("staged_at")
+        if isinstance(staged_at, int):
+            return staged_at
+        return int(p.stat().st_mtime * 1000)
+    except (OSError, ValueError, AttributeError):
+        return None
+
+
+def _read_spawn_handoffs(since_ms: int) -> dict:
     """Read the compiler/classifier agents' handoff outputs from the brain.
 
     Discovery is CONTENT-BASED and goal-scoped, NOT task-name-based: we find the
@@ -108,9 +124,18 @@ def _read_spawn_handoffs() -> dict:
     alias like claude-code-cli renames the task), silently picking an OLDER
     goal — including stalled runs that produced no handoff — so the night falls
     back to the inline engine and discards the agent's work. Content-based
-    discovery is rename-proof and naturally skips handoff-less runs. Best-effort:
-    any miss returns {} and the caller falls back to the inline engine path.
-    Read-only; WAL-safe."""
+    discovery is rename-proof and naturally skips handoff-less runs.
+
+    Only tasks that STARTED at/after `since_ms` (when this run's batch was
+    staged) are considered: this run's agents start after stage finishes, every
+    earlier goal's started before it. Without the floor, a night whose spawns
+    all failed fell through to the previous night's goal and re-folded its
+    handoffs — taste outcomes are positional (transcript_index), so they landed
+    on the wrong transcripts, re-appended stale evidence, and committed hashes
+    for transcripts that were never classified (2026-10-08..10).
+
+    Best-effort: any miss returns {} and the caller falls back to the inline
+    engine path. Read-only; WAL-safe."""
     out: dict = {}
     db = _brain_db_path()
     if not db.exists():
@@ -120,13 +145,16 @@ def _read_spawn_handoffs() -> dict:
     except sqlite3.Error:
         return out
     try:
-        # Newest-first scan of tasks whose output looks like a handoff. Narrowed
-        # by a cheap LIKE so we don't parse every task's latest_output.
+        # Newest-first scan of this run's tasks whose output looks like a
+        # handoff. Narrowed by a cheap LIKE so we don't parse every task's
+        # latest_output.
         rows = con.execute(
             "SELECT goal_id, latest_output FROM tasks "
             "WHERE latest_output IS NOT NULL AND latest_output != '' "
             "AND (latest_output LIKE '%entries%' OR latest_output LIKE '%outcomes%') "
-            "ORDER BY COALESCE(started_at, 0) DESC LIMIT 60",
+            "AND started_at >= ? "
+            "ORDER BY started_at DESC LIMIT 60",
+            (since_ms,),
         ).fetchall()
         # The goal of the newest row carrying a real handoff = the current run.
         goal_id = None
@@ -161,7 +189,10 @@ def _inject_handoffs(compile_from: Optional[str], taste_from: Optional[str]) -> 
     agent-produced output. Leaves staging untouched on any miss → the staging
     inline-engine fallback then covers that step."""
     info = {"compile_injected": 0, "taste_injected": 0, "goal_id": None}
-    handoffs = _read_spawn_handoffs()
+    # Anchor on the later stamp: both files come from the same stage run, and
+    # the later one can only tighten the floor.
+    stamps = [s for s in (_staged_at_ms(compile_from), _staged_at_ms(taste_from)) if s is not None]
+    handoffs = _read_spawn_handoffs(max(stamps)) if stamps else {}
     info["goal_id"] = handoffs.get("_goal_id")
 
     # Compile: {"entries": {"<content_key>": ["entry text", ...]}}
