@@ -46,3 +46,29 @@ def test_read_wals_follows_the_m1_dir(tmp_path: Path) -> None:
         "\n" + "not json\n" + json.dumps(event) + "\n", encoding="utf-8"
     )
     assert [r[0] for r in vm._read_wals(tmp_path, 0)] == ["claude-code"]
+
+
+def _wal_event(t_ms: int, event_type: str, runtime: str) -> str:
+    return json.dumps({"runtime": runtime, "event_type": event_type, "session_id": "S",
+                       "turn_id": str(t_ms), "t": t_ms, "ack_signal": "explicit_path"}) + "\n"
+
+
+def test_retired_runtime_is_reported_but_never_fails(tmp_path: Path, capsys: pytest.CaptureFixture) -> None:
+    """openclaw surfaced last week and never acked (FAIL) and has been silent
+    for days (STALLED); once it is --retired, neither fails the run."""
+    from datetime import datetime, timedelta, timezone
+
+    old_ms = int((datetime.now(timezone.utc) - timedelta(days=3)).timestamp() * 1000)
+    m1 = tmp_path / "digital-me" / ".data" / "m1"
+    m1.mkdir(parents=True)
+    (m1 / "m1_events_openclaw.jsonl").write_text(
+        _wal_event(old_ms, "knowledge_surfaced", "openclaw"), encoding="utf-8"
+    )
+    args = ["--home", str(tmp_path), "--brain-db", str(tmp_path / "none.db"), "--stale-hours", "24"]
+    assert vm.main(args) == 1
+    assert "UNHEALTHY: openclaw" in capsys.readouterr().out
+
+    assert vm.main([*args, "--retired", "openclaw"]) == 0
+    out = capsys.readouterr().out
+    assert "retired (not checked)" in out
+    assert "(retired)" in out

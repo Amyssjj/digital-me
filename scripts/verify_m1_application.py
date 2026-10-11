@@ -190,9 +190,21 @@ def main(argv=None) -> int:
         action="store_true",
         help="Fail unless EVERY known runtime is healthy (surfaced>0 and acked>0).",
     )
+    ap.add_argument(
+        "--retired",
+        action="append",
+        default=[],
+        metavar="RUNTIME",
+        help=(
+            "A runtime deliberately taken out of service (repeatable). Still "
+            "reported, never failed: its silence is the expected outcome, not "
+            "a regression."
+        ),
+    )
     args = ap.parse_args(argv)
 
     home = args.home
+    retired = set(args.retired)
     brain_db = args.brain_db or default_brain_db(home)
     since_ms = int(
         (datetime.now(timezone.utc) - timedelta(days=args.days)).timestamp() * 1000
@@ -217,6 +229,8 @@ def main(argv=None) -> int:
         rate_str = f"{rate*100:5.1f}%" if rate is not None else "   n/a"
         if _synthetic(rt):
             status = "synthetic (test traffic, not checked)"
+        elif rt in retired:
+            status = "retired (not checked)"
         elif s > 0 and a == 0:
             status = "FAIL (surfaces but never acks)"
             unhealthy.append(rt)
@@ -265,11 +279,11 @@ def main(argv=None) -> int:
                 .astimezone().strftime("%Y-%m-%d %H:%M")
                 if ts else "never"
             )
-            if base > 0 and rec == 0 and not _synthetic(rt):
+            if base > 0 and rec == 0 and not _synthetic(rt) and rt not in retired:
                 stalled.append(rt)
                 mark = "  ← STALLED"
             else:
-                mark = ""
+                mark = "  (retired)" if rt in retired else ""
             print(f"{rt:<14}{base:>10}{rec:>8}   {when}{mark}")
         print()
 
