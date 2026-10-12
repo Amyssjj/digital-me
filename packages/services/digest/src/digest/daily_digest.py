@@ -1922,7 +1922,9 @@ def write_raw_staging(path: Path, target_iso: str, dream_cycle_iso: str) -> None
         "markdown": None,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    # ensure_ascii=False: the summarizer reads this with its Read tool, which
+    # has a per-call token budget; \uXXXX escapes inflate non-ASCII ~6x.
+    path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _read_fingerprint(skill_path: Path) -> str:

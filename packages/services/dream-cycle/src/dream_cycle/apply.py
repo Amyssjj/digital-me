@@ -14,8 +14,8 @@ first means taste's load picks up compile's commits (no clobber).
 
 Usage:
   python -m dream_cycle.apply \
-    --compile-from /tmp/dream-cycle-compile-staging.json \
-    --taste-from   /tmp/dream-cycle-taste-staging.json \
+    --compile-from ~/digital-me/.data/staging/dream-cycle-compile-staging.json \
+    --taste-from   ~/digital-me/.data/staging/dream-cycle-taste-staging.json \
     --wiki-root    ~/digital-me
 """
 
@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from dream_cycle.config import load_config
+from dream_cycle.staging import dump_staging, load_staging
 
 
 def _arg(argv: list[str], flag: str) -> Optional[str]:
@@ -200,7 +201,7 @@ def _inject_handoffs(compile_from: Optional[str], taste_from: Optional[str]) -> 
     if compile_from and isinstance(comp, dict) and isinstance(comp.get("entries"), dict):
         try:
             p = Path(compile_from)
-            staged = json.loads(p.read_text(encoding="utf-8"))
+            staged = load_staging(p)
             by_key = comp["entries"]
             n = 0
             for cand in staged.get("candidates", []):
@@ -210,7 +211,7 @@ def _inject_handoffs(compile_from: Optional[str], taste_from: Optional[str]) -> 
                     cand["entries"] = val if isinstance(val, list) else [str(val)]
                     n += 1
             if n:
-                p.write_text(json.dumps(staged, indent=2), encoding="utf-8")
+                dump_staging(p, staged)
                 info["compile_injected"] = n
         except (OSError, json.JSONDecodeError):
             pass
@@ -220,10 +221,10 @@ def _inject_handoffs(compile_from: Optional[str], taste_from: Optional[str]) -> 
     if taste_from and isinstance(taste, dict) and isinstance(taste.get("outcomes"), list):
         try:
             p = Path(taste_from)
-            staged = json.loads(p.read_text(encoding="utf-8"))
+            staged = load_staging(p)
             if staged.get("outcomes") is None:
                 staged["outcomes"] = taste["outcomes"]
-                p.write_text(json.dumps(staged, indent=2), encoding="utf-8")
+                dump_staging(p, staged)
                 info["taste_injected"] = len(taste["outcomes"])
         except (OSError, json.JSONDecodeError):
             pass
