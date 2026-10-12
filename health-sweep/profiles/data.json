@@ -4,11 +4,11 @@
   "artifacts": "scoped",
   "critiques": "none",
   "candidates": true,
-  "note": "digital-me-os metric-truth sweep (motus-data-sweep). Surfaces = the LIVE OA dashboard metrics API (port 3458; override via DATA_SWEEP_DASHBOARD_URL for a locally-served fixed build) + the daily digest's staging step (regenerated at capture time by the product's own --stage entrypoint, no LLM). Truths = the flat ~/digital-me/{wiki,tastes} trees (frontmatter `created` chronology via health-sweep/bin/count-fm-created.py) — the trees ARE the primary source post-§A unification. wiki-total carries pct tolerance 5: intake counts only yaml-parseable entries and old distribution rows for retired domains are never scrubbed — a known, named drift class (advisory), not silent fudge. Born from the 2026-07-03 incident pair: dashboard taste flow read 0 while leaves landed on disk; digest said Wiki 0 on a 29-entry day.",
+  "note": "digital-me-os metric-truth sweep (motus-data-sweep). Surfaces = the LIVE OA dashboard metrics API (port 3458; override via DATA_SWEEP_DASHBOARD_URL for a locally-served fixed build) + the daily digest's staging step (regenerated at capture time by the product's own --stage entrypoint, no LLM, into the git-ignored health-sweep/capture-digest-staging.json — never the live pipeline's staging file, which a capture must not overwrite). Truths = the flat ~/digital-me/{wiki,tastes} trees (frontmatter `created` chronology via health-sweep/bin/count-fm-created.py) — the trees ARE the primary source post-§A unification. wiki-total carries pct tolerance 5: intake counts only yaml-parseable entries and old distribution rows for retired domains are never scrubbed — a known, named drift class (advisory), not silent fudge. Born from the 2026-07-03 incident pair: dashboard taste flow read 0 while leaves landed on disk; digest said Wiki 0 on a 29-entry day.",
   "prepare": [
     {
       "id": "digest-staging",
-      "cmd": "PYTHONPATH=packages/services/digest/src python3 -m digest.daily_digest --stage /tmp/daily-digest-staging.json --date $(date -v-1d +%F)",
+      "cmd": "PYTHONPATH=packages/services/digest/src python3 -m digest.daily_digest --stage health-sweep/capture-digest-staging.json --date $(date -v-1d +%F)",
       "timeoutSec": 180
     }
   ],
@@ -44,7 +44,7 @@
     {
       "id": "digest-wiki-new",
       "note": "THE 2026-07-03 digest incident surface: staged tldr.wiki_new for yesterday vs wiki entries with frontmatter created == yesterday (PT — both sides use date -v-1d)",
-      "surface": { "kind": "digest-staging", "path": "/tmp/daily-digest-staging.json", "jsonPath": "tldr.wiki_new" },
+      "surface": { "kind": "digest-staging", "path": "health-sweep/capture-digest-staging.json", "jsonPath": "tldr.wiki_new" },
       "truth": { "kind": "cmd", "cmd": "python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/wiki --date $(date -v-1d +%F)" },
       "tolerance": { "abs": 0 }
     },
@@ -52,7 +52,7 @@
       "id": "digest-taste-present",
       "note": "digest taste lane sanity: staged tldr.taste_total is log-derived (dream-cycle materialization), so no exact tree pairing exists — this metric only refuses the zero-lie: taste_total 0 while leaves were created yesterday is a D1. required:false — the lane depends on the nightly log's presence.",
       "required": false,
-      "surface": { "kind": "digest-staging", "path": "/tmp/daily-digest-staging.json", "jsonPath": "tldr.taste_total" },
+      "surface": { "kind": "digest-staging", "path": "health-sweep/capture-digest-staging.json", "jsonPath": "tldr.taste_total" },
       "truth": { "kind": "cmd", "cmd": "python3 health-sweep/bin/count-fm-created.py --root ~/digital-me/tastes --date $(date -v-1d +%F)" },
       "tolerance": { "abs": 999999 }
     }

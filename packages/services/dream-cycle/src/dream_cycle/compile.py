@@ -24,6 +24,7 @@ import yaml
 
 from dream_cycle.config import load_config, Config, Source
 from dream_cycle.engine import get_engine, Engine
+from dream_cycle.staging import dump_staging
 
 
 # Canonical home for taste skills (per Sprint 4 decision 2026-05-11).
@@ -2035,7 +2036,6 @@ def run_compile(
     # transcripts + principles_manifest for a downstream COO batch.
     if stage_taste and not dry_run:
         staging_path = Path(stage_taste_path)
-        staging_path.parent.mkdir(parents=True, exist_ok=True)
         staging_payload = {
             "principles_manifest": principles_manifest,
             "valid_domains": sorted(VALID_DOMAINS),
@@ -2048,7 +2048,7 @@ def run_compile(
             "deferred_hashes": deferred_hashes,
             "staged_at": staged_at,
         }
-        staging_path.write_text(json.dumps(staging_payload, indent=2), encoding="utf-8")
+        dump_staging(staging_path, staging_payload)
         print(f"  Staged {len(staged_transcripts)} taste-eligible transcripts → {staging_path}")
         print(f"  Deferred {len(deferred_hashes)} hashes until apply_taste confirms")
 
@@ -2057,7 +2057,6 @@ def run_compile(
     # reads this, writes the agent's entries, and commits the deferred hashes.
     if stage_compile and not dry_run:
         compile_staging = Path(stage_compile_path)
-        compile_staging.parent.mkdir(parents=True, exist_ok=True)
         compile_payload = {
             "wiki_manifest": wiki_manifest,
             "candidates": stage_compile_candidates,  # each: {content_key, source_name, title, prompt, entries: null}
@@ -2067,7 +2066,7 @@ def run_compile(
             "deferred_hashes": compile_deferred_hashes,
             "staged_at": staged_at,
         }
-        compile_staging.write_text(json.dumps(compile_payload, indent=2), encoding="utf-8")
+        dump_staging(compile_staging, compile_payload)
         print(f"  Staged {len(stage_compile_candidates)} compile candidates → {compile_staging}")
         print(f"  Deferred {len(compile_deferred_hashes)} hashes until apply_compile confirms")
 

@@ -7,9 +7,9 @@ filled in by step 2 (COO spawn).
 
 Staging file shape (input):
   {
-    "principles_manifest": "...",
+    "principles_manifest": [str, ...],    # text pieces (see dream_cycle.staging)
     "valid_domains": ["infra", "knowledge", "storytelling", "design"],
-    "transcripts": [{title, source_file, body, user_turns, ...}, ...],
+    "transcripts": [{title, source_file, body: [str, ...], user_turns, ...}, ...],
     "outcomes": [
       {
         "transcript_index": int,
@@ -28,18 +28,18 @@ Staging file shape (input):
   }
 
 Usage:
-  python -m dream_cycle.apply_taste --from /tmp/dream-cycle-taste-staging.json
+  python -m dream_cycle.apply_taste --from ~/digital-me/.data/staging/dream-cycle-taste-staging.json
 """
 
 from __future__ import annotations
 
-import json
 import sys
 import time
 from datetime import date
 from pathlib import Path
 
 from dream_cycle.config import load_config
+from dream_cycle.staging import load_staging
 from dream_cycle.compile import apply_skill_outcome, _load_compiled_hashes, _save_compiled_hashes
 
 
@@ -82,7 +82,7 @@ def apply_outcomes(staging_path: Path, config) -> dict:
     """
     if not staging_path.exists():
         raise SystemExit(f"staging file not found: {staging_path}")
-    payload = json.loads(staging_path.read_text(encoding="utf-8"))
+    payload = load_staging(staging_path)
     outcomes = payload.get("outcomes")
     if outcomes is None:
         # Deterministic fallback: the classifier spawn (step 2) is best-effort
