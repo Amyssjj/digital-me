@@ -20,7 +20,9 @@ process may tick a brain.db. `digital-me install --runtime brain-host` writes
 `on` into the unit by default, including when openclaw is installed, and
 writes `off` when the gateway is confirmed ticking or
 `DIGITAL_ME_BRAIN_SCHEDULER=off` is set — so the two timers never start
-together, and stopping the gateway never leaves zero schedulers.
+together, and stopping the gateway never leaves zero schedulers. An explicit
+`on` while that gateway is confirmed ticking is left off, and install logs it
+with a `WARN:` prefix.
 `digital-me doctor` checks it live (row
 `scheduler: single ticker`): brain-host's side from `/health`
 `orchestrator.scheduler`, the gateway's from the tick decision its plugin logs

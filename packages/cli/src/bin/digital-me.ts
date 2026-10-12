@@ -102,9 +102,9 @@ import {
   type OpenclawGatewayEvidence,
 } from "../brain-host-live.js";
 import {
-  resolveBrainHostScheduler,
-  viewOpenclawGateway,
+  resolveBrainHostServiceConfigForEntry,
   type BrainHostSchedulerDecision,
+  type BrainHostSchedulerDeps,
 } from "../brain-host-scheduler.js";
 import { resolveOpenclawExtensionsDir } from "../openclaw-paths.js";
 import JSON5 from "json5";
@@ -564,19 +564,20 @@ async function collectOpenclawGateway(env: NodeJS.ProcessEnv, home: string): Pro
   });
 }
 
-/**
- * brain-host is the default ticker. Probe the gateway only when openclaw is
- * installed; a confirmed ticking gateway keeps the unit off so the two timers
- * never start together. `DIGITAL_ME_BRAIN_SCHEDULER=off` opts out.
- */
-async function decideBrainHostScheduler(home: string, requested?: "on" | "off"): Promise<BrainHostSchedulerDecision> {
-  const installed = isOpenclawInstalled(home);
-  const evidence = installed ? await collectOpenclawGateway(process.env, home) : undefined;
-  return resolveBrainHostScheduler({
+/** Filesystem + gateway probe the scheduler decision reads. Probe runs only when openclaw is installed. */
+function brainHostSchedulerDeps(): BrainHostSchedulerDeps {
+  return {
+    isInstalled: isOpenclawInstalled,
+    probe: (home) => collectOpenclawGateway(process.env, home),
     explicitEnv: process.env.DIGITAL_ME_BRAIN_SCHEDULER,
-    requested,
-    gateway: viewOpenclawGateway(installed, evidence),
-  });
+  };
+}
+
+/** `WARN:` decisions go to stderr so an explicit on left off is not scrolled past. */
+function emitSchedulerDecision(scope: string, decision: BrainHostSchedulerDecision): void {
+  const line = `${scope}: ${decision.message}`;
+  if (decision.warn) console.error(line);
+  else console.log(line);
 }
 
 /**
@@ -1999,7 +2000,7 @@ async function setup(
   // resolveBrainCallerEnv). The scheduler follows resolveBrainHostScheduler:
   // on by default, including when openclaw is installed, and off only when
   // the gateway is confirmed ticking or DIGITAL_ME_BRAIN_SCHEDULER=off.
-  const brainHostRc = await installBrainHost(home, false, { wikiRoot });
+  const brainHostRc = await installBrainHost(home, false, { wikiRoot, entry: "setup" });
   if (brainHostRc !== 0) {
     if (isOpenclawInstalled(home)) {
       console.log(
@@ -2687,7 +2688,12 @@ async function serviceCommand(args: readonly string[]): Promise<number> {
 async function installBrainHost(
   home: string,
   noService: boolean,
-  opts: { readonly scheduler?: "on" | "off"; readonly wikiRoot?: string } = {},
+  opts: {
+    readonly scheduler?: "on" | "off";
+    readonly wikiRoot?: string;
+    /** `setup` must not force the flag. `install` honours `scheduler` as a caller override. */
+    readonly entry?: "install" | "setup";
+  } = {},
 ): Promise<number> {
   const packagePath = resolveBrainHostPackagePath();
   if (!packagePath) {
@@ -2705,10 +2711,23 @@ async function installBrainHost(
     return 2;
   }
   const envForCfg = opts.wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot } : process.env;
-  const decision = await decideBrainHostScheduler(home, opts.scheduler);
-  console.log(`install brain-host: ${decision.message}`);
+  const resolved = await resolveBrainHostServiceConfigForEntry({
+    entry: opts.entry ?? "install",
+    home,
+    env: envForCfg,
+    nodeBin,
+    deps: brainHostSchedulerDeps(),
+    requested: opts.scheduler,
+  });
+  // install and setup always decide. Only service-install with a preset skips it.
+  if (!resolved.decision) {
+    console.error("install brain-host: scheduler decision missing.");
+    return 2;
+  }
+  const decision = resolved.decision;
+  emitSchedulerDecision("install brain-host", decision);
   const scheduler = decision.scheduler;
-  const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, { scheduler });
+  const cfg = resolved.config;
   ensureWikiGitignore(cfg.wikiRoot);
 
   mkdirSync(path.dirname(cfg.workingDir), { recursive: true });
@@ -2763,12 +2782,15 @@ async function installBrainHost(
 
   if (noService) {
     console.log("install brain-host: skipped always-on service (--no-service). Enable later with 'digital-me service brain-host install'.");
+    if (decision.warn) console.error(`install brain-host: ${decision.message}`);
     return 0;
   }
   const sc = await setupBrainHostService(home, { scheduler, wikiRoot: opts.wikiRoot });
   if (sc !== 0) {
     console.error("install brain-host: service did not complete; retry with 'digital-me service brain-host install'.");
   }
+  // Repeat after the build and service output so the reinterpretation is the last line.
+  if (decision.warn) console.error(`install brain-host: ${decision.message}`);
   return sc;
 }
 
@@ -2818,14 +2840,17 @@ async function setupBrainHostService(
     console.error("service brain-host: node not on PATH.");
     return 2;
   }
-  let scheduler = opts.scheduler;
-  if (scheduler === undefined) {
-    const decision = await decideBrainHostScheduler(home);
-    console.log(`service brain-host: ${decision.message}`);
-    scheduler = decision.scheduler;
-  }
   const envForCfg = opts.wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot } : process.env;
-  const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, { scheduler });
+  const resolved = await resolveBrainHostServiceConfigForEntry({
+    entry: "service-install",
+    home,
+    env: envForCfg,
+    nodeBin,
+    deps: brainHostSchedulerDeps(),
+    preset: opts.scheduler,
+  });
+  if (resolved.decision) emitSchedulerDecision("service brain-host", resolved.decision);
+  const cfg = resolved.config;
   if (!existsSync(path.join(cfg.workingDir, "bin", "brain-host.mjs"))) {
     console.error(`service brain-host: install dir missing (${cfg.workingDir}). Run 'digital-me install --runtime brain-host' first.`);
     return 2;
@@ -2886,6 +2911,8 @@ async function setupBrainHostService(
       `      never export the secret itself). Re-run 'digital-me install --runtime claude-code|codex|hermes' to bake\n` +
       `      the URL + token-file path into each client's registration.`,
   );
+  // Direct `service brain-host install` decides here. Install already logged its own WARN.
+  if (resolved.decision?.warn) console.error(`service brain-host: ${resolved.decision.message}`);
   return 0;
 }
 
