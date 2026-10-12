@@ -20,8 +20,11 @@ import { resolveServicePath } from "./service-path.js";
  * resolved absolute paths in, so a later move is a re-install, never a
  * surprise at restart.
  *
- * Single-ticker rule: the scheduler is OFF unless the install explicitly
- * enables it. Exactly one process may tick a brain.db.
+ * Single-ticker rule: the caller passes the scheduler flag
+ * (resolveBrainHostScheduler — on by default, off when the openclaw gateway
+ * is confirmed ticking or DIGITAL_ME_BRAIN_SCHEDULER=off). With no flag, the
+ * unit follows the env var and otherwise stays off, matching the brain-host
+ * process default. Exactly one process may tick a brain.db.
  */
 
 export const BRAIN_HOST_SERVICE_LABEL = "ai.digital-me.brain-host";

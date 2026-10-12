@@ -31,6 +31,7 @@ import path from "node:path";
 import JSON5 from "json5";
 import { brainDataDirOf, openclawHomeOf, resolveEnvFilePath } from "@digital-me/contracts";
 import type { BrainHostHealth, OpenclawGatewayEvidence } from "./brain-host-live.js";
+import { DISABLE_GATEWAY_TICK_COMMAND, INSTALL_BRAIN_HOST_COMMAND } from "./brain-host-scheduler.js";
 import { HOOK_NAMES as CLAUDE_HOOK_FILES } from "@digital-me/runtime-claude-code";
 import {
   HOOK_NAMES as CODEX_HOOK_FILES,
@@ -742,11 +743,6 @@ function gatewayTick(g: OpenclawGatewayEvidence | undefined): TickSide {
   }
 }
 
-const DISABLE_GATEWAY_TICK =
-  "set plugins.entries.digital-me-brain.config.scheduler=false in openclaw.json (or DIGITAL_ME_OPENCLAW_SCHEDULER=off in the gateway's environment) and restart the gateway";
-const ENABLE_BRAIN_HOST_TICK =
-  "DIGITAL_ME_BRAIN_SCHEDULER=on digital-me install --runtime brain-host";
-
 /**
  * Exactly one process may tick a brain.db, or schedules double-fire — and
  * with none, nothing scheduled ever runs. brain-host's side comes from /health
@@ -768,7 +764,7 @@ function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvi
       return {
         ok: false,
         label,
-        reason: `TWO schedulers tick: ${both}. Keep brain-host's: ${DISABLE_GATEWAY_TICK}.`,
+        reason: `TWO schedulers tick: ${both}. Keep brain-host's: ${DISABLE_GATEWAY_TICK_COMMAND}.`,
       };
     }
     return { ok: true, warn: true, label, note: `cannot rule out a second ticker — ${both}.` };
@@ -778,9 +774,9 @@ function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvi
       ok: true,
       warn: true,
       label,
-      note:
-        `one ticker, but the legacy one — ${both}. To move the tick to brain-host: ` +
-        `${ENABLE_BRAIN_HOST_TICK}, then ${DISABLE_GATEWAY_TICK}.`,
+        note:
+        `one ticker, but the legacy one — ${both}. To move the tick to brain-host without starting a second timer: ` +
+        `${DISABLE_GATEWAY_TICK_COMMAND}, then \`${INSTALL_BRAIN_HOST_COMMAND}\`.`,
     };
   }
   if (gateway.state === "off") {
@@ -789,7 +785,8 @@ function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvi
       label,
       reason:
         `NO scheduler ticks, so nothing scheduled (dream-cycle, digest, sweeps) ever runs — ${both}. ` +
-        `Run: ${ENABLE_BRAIN_HOST_TICK}.`,
+        `Run \`${INSTALL_BRAIN_HOST_COMMAND}\` — brain-host is the default ticker, and that install turns it on unless the gateway is confirmed ticking. ` +
+        `If DIGITAL_ME_BRAIN_SCHEDULER=off is set, unset it first (that opt-out wins).`,
     };
   }
   return {

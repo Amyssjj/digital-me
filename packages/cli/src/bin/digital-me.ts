@@ -99,7 +99,13 @@ import {
   probeBrainHostHealth,
   readFileTail,
   resolveBrainHostHealthTarget,
+  type OpenclawGatewayEvidence,
 } from "../brain-host-live.js";
+import {
+  resolveBrainHostScheduler,
+  viewOpenclawGateway,
+  type BrainHostSchedulerDecision,
+} from "../brain-host-scheduler.js";
 import { resolveOpenclawExtensionsDir } from "../openclaw-paths.js";
 import JSON5 from "json5";
 import {
@@ -536,13 +542,19 @@ async function collectBrainHostLiveEvidence(
     resolveBrainHostHealthTarget(env, cfg, readTokenFileIfExists),
     fetch,
   );
+  const openclawGateway = await collectOpenclawGateway(env, home);
+  return { brainHostHealth, openclawGateway };
+}
+
+/** The gateway half of the doctor's live probe. Read-only, never throws. */
+async function collectOpenclawGateway(env: NodeJS.ProcessEnv, home: string): Promise<OpenclawGatewayEvidence> {
   let openclawConfig: unknown;
   try {
     openclawConfig = JSON5.parse(readFileSync(resolveOpenclawConfigPath(home, env), "utf-8"));
   } catch {
     openclawConfig = undefined; // no / unreadable config: the gateway port falls back to its default
   }
-  const openclawGateway = await collectOpenclawGatewayEvidence({
+  return collectOpenclawGatewayEvidence({
     pluginPaths: gatewayBrainPluginPaths(home, env),
     fileExists: existsSync,
     fetch,
@@ -550,7 +562,21 @@ async function collectBrainHostLiveEvidence(
     logPaths: listGatewayLogs(env, home),
     readTail: (p) => readFileTail(p, GATEWAY_LOG_TAIL_BYTES),
   });
-  return { brainHostHealth, openclawGateway };
+}
+
+/**
+ * brain-host is the default ticker. Probe the gateway only when openclaw is
+ * installed; a confirmed ticking gateway keeps the unit off so the two timers
+ * never start together. `DIGITAL_ME_BRAIN_SCHEDULER=off` opts out.
+ */
+async function decideBrainHostScheduler(home: string, requested?: "on" | "off"): Promise<BrainHostSchedulerDecision> {
+  const installed = isOpenclawInstalled(home);
+  const evidence = installed ? await collectOpenclawGateway(process.env, home) : undefined;
+  return resolveBrainHostScheduler({
+    explicitEnv: process.env.DIGITAL_ME_BRAIN_SCHEDULER,
+    requested,
+    gateway: viewOpenclawGateway(installed, evidence),
+  });
 }
 
 /**
@@ -1970,11 +1996,10 @@ async function setup(
   // 2b. The hub. brain-host serves memory_search + the orchestrator on
   // :18791 and owns the scheduler tick; it goes in BEFORE the adapters so
   // their registrations bake its URL + token-file path in (see
-  // resolveBrainCallerEnv). Its scheduler is ON here: setup is the one
-  // place we know no other host ticks this brain.db — unless an openclaw
-  // gateway plugin is present, in which case the plugin defers to
-  // brain-host on its own (it checks for the token file).
-  const brainHostRc = await installBrainHost(home, false, { scheduler: "on", wikiRoot });
+  // resolveBrainCallerEnv). The scheduler follows resolveBrainHostScheduler:
+  // on by default, including when openclaw is installed, and off only when
+  // the gateway is confirmed ticking or DIGITAL_ME_BRAIN_SCHEDULER=off.
+  const brainHostRc = await installBrainHost(home, false, { wikiRoot });
   if (brainHostRc !== 0) {
     if (isOpenclawInstalled(home)) {
       console.log(
@@ -2275,8 +2300,11 @@ function printHelp(): void {
       "    --runtime brain-host links the brain host, writes its token file,",
       "    builds the retrieval index (GEMINI_API_KEY from <wiki-root>/.data/.env,",
       "    or the legacy ~/.openclaw/.env) and installs the always-on service.",
-      "    DIGITAL_ME_BRAIN_SCHEDULER=on|off sets its scheduler tick (default on",
-      "    when no other host ticks brain.db). Adapters need a brain endpoint:",
+      "    DIGITAL_ME_BRAIN_SCHEDULER=off opts out of its scheduler tick. The",
+      "    default is on, including when openclaw is installed, so stopping the",
+      "    gateway never leaves zero schedulers. The tick stays off while that",
+      "    gateway is confirmed ticking (two schedulers must not run). Adapters",
+      "    need a brain endpoint:",
       "    brain-host (installed first when listed) or a legacy openclaw gateway.",
       "    Install a specific runtime adapter. For --runtime dashboard, also",
       "    sets up an always-on service (launchd/systemd) so the dashboard",
@@ -2650,11 +2678,11 @@ async function serviceCommand(args: readonly string[]): Promise<number> {
  * copy the npm artifact ships, make sure the bearer token file exists, build
  * the retrieval index, and (unless --no-service) install the service.
  *
- * Scheduler tick: an explicit DIGITAL_ME_BRAIN_SCHEDULER wins; otherwise ON
- * on a machine with no openclaw gateway (nothing else can tick brain.db) and
- * OFF where openclaw is installed, because a gateway that has not yet been
- * restarted onto the current plugin template may still be ticking — exactly
- * one process may tick a brain.db.
+ * Scheduler tick: brain-host is the default ticker, including when openclaw
+ * is installed, so stopping the gateway never leaves zero schedulers. The
+ * unit stays off when the gateway is confirmed ticking (two timers must not
+ * start) and when DIGITAL_ME_BRAIN_SCHEDULER=off opts out. See
+ * resolveBrainHostScheduler.
  */
 async function installBrainHost(
   home: string,
@@ -2677,19 +2705,10 @@ async function installBrainHost(
     return 2;
   }
   const envForCfg = opts.wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot } : process.env;
-  const explicitScheduler = (process.env.DIGITAL_ME_BRAIN_SCHEDULER ?? "").toLowerCase();
-  const scheduler: "on" | "off" =
-    explicitScheduler === "on" || explicitScheduler === "off"
-      ? explicitScheduler
-      : (opts.scheduler ?? (isOpenclawInstalled(home) ? "off" : "on"));
+  const decision = await decideBrainHostScheduler(home, opts.scheduler);
+  console.log(`install brain-host: ${decision.message}`);
+  const scheduler = decision.scheduler;
   const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, { scheduler });
-  if (scheduler === "off" && explicitScheduler === "" && opts.scheduler === undefined) {
-    console.log(
-      "install brain-host: scheduler tick left OFF because an openclaw gateway is installed and may still tick brain.db. " +
-        "Once the gateway runs the current digital-me-brain plugin (it defers to brain-host by itself), enable the tick with:\n" +
-        "  DIGITAL_ME_BRAIN_SCHEDULER=on digital-me service brain-host install",
-    );
-  }
   ensureWikiGitignore(cfg.wikiRoot);
 
   mkdirSync(path.dirname(cfg.workingDir), { recursive: true });
@@ -2799,8 +2818,14 @@ async function setupBrainHostService(
     console.error("service brain-host: node not on PATH.");
     return 2;
   }
+  let scheduler = opts.scheduler;
+  if (scheduler === undefined) {
+    const decision = await decideBrainHostScheduler(home);
+    console.log(`service brain-host: ${decision.message}`);
+    scheduler = decision.scheduler;
+  }
   const envForCfg = opts.wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: opts.wikiRoot } : process.env;
-  const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, opts.scheduler ? { scheduler: opts.scheduler } : {});
+  const cfg = resolveBrainHostServiceConfig(home, envForCfg, nodeBin, { scheduler });
   if (!existsSync(path.join(cfg.workingDir, "bin", "brain-host.mjs"))) {
     console.error(`service brain-host: install dir missing (${cfg.workingDir}). Run 'digital-me install --runtime brain-host' first.`);
     return 2;
