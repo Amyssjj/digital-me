@@ -9,11 +9,21 @@
  * This fails if anyone advertises an action or enum value without a handler,
  * whether by extending the shared @digital-me/contracts arrays or by
  * hand-writing a literal into a schema.
+ *
+ * It also pins the headless exec worker's tool grants: the brain tools
+ * `setup`'s default `cli_exec_aliases` allow, and the ones the worker's prompt
+ * tells the model to call, must name the registered server and a tool the
+ * proxy serves — a headless CLI denies every tool it wasn't granted.
  */
 
+import { spawnSync } from "node:child_process";
+import fs from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
+import path from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BRAIN_MCP_SERVER_NAME } from "@digital-me/contracts";
 import {
   AGENTS_MIGRATIONS,
   buildBrainOrchestratorTools,
@@ -39,7 +49,8 @@ import {
   type Migration,
 } from "@digital-me/brain-orchestrator";
 import { TOOLS } from "@digital-me/brain-mcp-proxy";
-import { TOOL_SCHEMAS } from "@digital-me/runtime-openclaw";
+import { DEFAULT_WORKER_SCRIPT, TOOL_SCHEMAS } from "@digital-me/runtime-openclaw";
+import { buildDefaultAliases } from "./setup.js";
 
 const require = createRequire(import.meta.url);
 const { DatabaseSync: Db } = require("node:sqlite") as typeof import("node:sqlite");
@@ -160,4 +171,81 @@ describe("proxy-advertised tools are all served by brain-orchestrator", () => {
       expect(await accepted(tool, { ...base, [param]: "not_advertised" })).toBeDefined();
     });
   }
+});
+
+describe("default cli_exec_aliases grant brain tools under the registered server name", () => {
+  const served = new Set<string>(TOOLS.map((t) => t.name));
+  const aliases = buildDefaultAliases(["claude-code", "codex"]);
+  const claudePrefix = `mcp__${BRAIN_MCP_SERVER_NAME}__`;
+
+  /** Brain tools claude-code-cli's `--allowedTools` grants, as bare tool names. */
+  function claudeBrainGrants(): string[] {
+    const args = aliases["claude-code-cli"]!.args;
+    const value = args[args.indexOf("--allowedTools") + 1]!;
+    const mcp = value.split(/[\s,]+/).filter((t) => t.startsWith("mcp__"));
+    for (const t of mcp) expect(t.startsWith(claudePrefix), `${t} names another server`).toBe(true);
+    return mcp.map((t) => t.slice(claudePrefix.length));
+  }
+
+  it("claude-code-cli allows tasks + memory_search, each a tool the proxy serves", () => {
+    const grants = claudeBrainGrants();
+    expect(grants).toEqual(expect.arrayContaining(["tasks", "memory_search"]));
+    for (const tool of grants) expect(served.has(tool), `proxy does not serve ${tool}`).toBe(true);
+  });
+
+  it("claude-code-cli keeps {{prompt}} out of --allowedTools' variadic list", () => {
+    // `claude --allowedTools <tools...>` consumes every bare arg after it, so a
+    // trailing "{{prompt}}" becomes a tool name and `claude -p` gets no prompt.
+    const args = aliases["claude-code-cli"]!.args;
+    const next = args[args.indexOf("--allowedTools") + 2];
+    expect(next === undefined || next.startsWith("-"), `arg after the allow-list: ${next}`).toBe(true);
+  });
+
+  it("codex-cli approves tasks + memory_search on the registered server", () => {
+    const tools = aliases["codex-cli"]!.args
+      .filter((a) => a.startsWith("mcp_servers."))
+      .map((a) => {
+        const m = /^mcp_servers\.([^.]+)\.tools\.([^.]+)\./.exec(a);
+        expect(m?.[1], a).toBe(BRAIN_MCP_SERVER_NAME);
+        return m![2]!;
+      });
+    expect(tools).toEqual(expect.arrayContaining(["tasks", "memory_search"]));
+    for (const tool of tools) expect(served.has(tool), `proxy does not serve ${tool}`).toBe(true);
+  });
+
+  it("every brain tool the worker's default prompt asks for is granted", () => {
+    // Run the real worker with /bin/echo as the CLI: it prints the rendered
+    // default prompt, which includes the completion marker, so the run passes.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-tool-contract-"));
+    try {
+      const artifactDir = path.join(dir, "artifacts");
+      const specPath = path.join(dir, "spec.json");
+      fs.writeFileSync(
+        specPath,
+        JSON.stringify({
+          alias: "claude-code-cli",
+          taskId: "t-1",
+          goalId: "g-1",
+          taskName: "contract",
+          task: "contract",
+          cwd: dir,
+          artifactDir,
+          timeoutMs: 30_000,
+          binary: "/bin/echo",
+          args: ["{{prompt}}"],
+          env: {},
+        }),
+      );
+      const run = spawnSync(process.execPath, [DEFAULT_WORKER_SCRIPT, specPath], { encoding: "utf8" });
+      expect(run.status, run.stderr).toBe(0);
+      const prompt = fs.readFileSync(path.join(artifactDir, "final-message.txt"), "utf8");
+
+      expect(prompt).toContain(`Use the ${BRAIN_MCP_SERVER_NAME} MCP server.`);
+      const asked = [...served].filter((tool) => new RegExp(`\\b${tool}\\b`).test(prompt));
+      expect(asked).toEqual(expect.arrayContaining(["tasks", "memory_search"]));
+      expect(claudeBrainGrants()).toEqual(expect.arrayContaining(asked));
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
