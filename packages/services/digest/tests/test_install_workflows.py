@@ -6,7 +6,11 @@ from pathlib import Path
 
 import pytest
 
-import digest.install_workflows as diw
+# The importer reuses the sibling dream-cycle package (same venv in production);
+# the digest-only CI job does not install it.
+pytest.importorskip("dream_cycle")
+
+import digest.install_workflows as diw  # noqa: E402
 
 
 def test_main_passes_resolved_wiki_root_to_install_workflows(
