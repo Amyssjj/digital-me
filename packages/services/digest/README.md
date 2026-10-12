@@ -117,7 +117,7 @@ workflow + a 7:00am schedule with the brain — no manual `workflow_import`.
 ## Usage
 
 ```bash
-python -m digest.daily_digest --stage   /tmp/daily-digest-staging.json
-python -m digest.daily_digest --publish /tmp/daily-digest-staging.json --dry-run
-python -m digest.daily_digest --publish /tmp/daily-digest-staging.json
+python -m digest.daily_digest --stage   ~/digital-me/.data/staging/daily-digest-staging.json
+python -m digest.daily_digest --publish ~/digital-me/.data/staging/daily-digest-staging.json --dry-run
+python -m digest.daily_digest --publish ~/digital-me/.data/staging/daily-digest-staging.json
 ```

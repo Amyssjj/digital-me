@@ -31,7 +31,7 @@ from typing import Any, Iterable, Optional
 from dream_cycle.brain_client import BrainClient, BrainClientError
 from dream_cycle.config import resolve_wiki_root
 from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
-from dream_cycle.via_agents import materialize_workflow
+from dream_cycle.via_agents import _substitute_vars, materialize_workflow
 
 
 def _bundled_workflows_dir() -> Path:
@@ -81,6 +81,10 @@ def _apply_template_defaults(
     the brain doesn't interpolate dispatch — so defaults must be applied
     here too. Otherwise `{{classifier_agent_id}}` (with defaultValue
     "claude-code") stays as a literal placeholder in the stored dispatch.
+
+    A default may itself reference vars already known here (e.g.
+    `{{wiki_root}}/.data/staging/...`); those resolve now, so the stored
+    dispatch, prompt and schedule variables all carry the concrete path.
     """
     merged = dict(vars)
     for v in template.get("variables", []) or []:
@@ -93,7 +97,7 @@ def _apply_template_defaults(
             and isinstance(default, str)
             and name not in merged
         ):
-            merged[name] = default
+            merged[name] = _substitute_vars(default, merged)
     return merged
 
 
