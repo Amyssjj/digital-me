@@ -7,17 +7,23 @@
  * the wiki they serve, on every platform, with no openclaw install required.
  *
  * Legacy home: `<OPENCLAW_HOME>/` — where the same files lived while the
- * openclaw plugin was the hub (`data/brain.db`, `.env`). An install that
+ * openclaw plugin was the hub (`data/brain.db`, `.env`, the M1 telemetry
+ * files in `data/`). An install that
  * predates the move keeps working untouched: the canonical path is preferred
  * only once it exists, so nothing silently switches to an empty database.
  *
  * One rule, mirrored by every TypeScript and Python reader (brain-host, the
  * proxy trace writer, the openclaw plugin templates, dream-cycle, digest):
  *
- *   1. explicit env var (`DIGITAL_ME_BRAIN_DB` / `DIGITAL_ME_ENV_FILE`)
+ *   1. explicit env var (`DIGITAL_ME_BRAIN_DB` / `DIGITAL_ME_ENV_FILE` /
+ *      `DIGITAL_ME_M1_DIR`)
  *   2. the canonical path, when it exists
  *   3. the legacy openclaw path, when it exists
  *   4. the canonical path (a fresh install creates it there)
+ *
+ * The M1 telemetry dir has its own twins — every writer and reader of
+ * `m1_events_<runtime>.jsonl` / `application_rate_<runtime>.log` inlines
+ * `resolveM1DirPath` (see its doc comment for the list).
  *
  * Python twins (keep them in step): `dream_cycle/brain_learnings.py`
  * (`resolve_brain_db_path`), `digest/config.py` (`resolve_brain_db`),
@@ -59,7 +65,7 @@ export function brainDataDirOf(env: BrainPathDeps["env"], home: string): string 
 
 function resolveWithLegacy(
   deps: BrainPathDeps,
-  envKey: "DIGITAL_ME_BRAIN_DB" | "DIGITAL_ME_ENV_FILE",
+  envKey: "DIGITAL_ME_BRAIN_DB" | "DIGITAL_ME_ENV_FILE" | "DIGITAL_ME_M1_DIR",
   canonical: string,
   legacy: string,
 ): ResolvedBrainPath {
@@ -95,5 +101,30 @@ export function resolveEnvFilePath(deps: BrainPathDeps): ResolvedBrainPath {
     "DIGITAL_ME_ENV_FILE",
     path.join(brainDataDirOf(deps.env, deps.home), ".env"),
     path.join(openclawHomeOf(deps.env, deps.home), ".env"),
+  );
+}
+
+/**
+ * M1 telemetry dir — the per-runtime event WALs (`m1_events_<runtime>.jsonl`)
+ * and session-aggregate logs (`application_rate_<runtime>.log`):
+ * `DIGITAL_ME_M1_DIR` → `<wiki-root>/.data/m1` → `<openclaw-home>/data` →
+ * `<wiki-root>/.data/m1`. The candidates are directories: an install keeps
+ * writing the legacy dir until `<wiki-root>/.data/m1` exists, so creating it
+ * (and moving the files in) is the whole migration.
+ *
+ * Inlined twins — keep them in step: the Claude Code / Codex hook
+ * `agent-hooks/hooks/dm_m1_emit.py`, the Hermes recall plugin, the openclaw
+ * recall template, brain-mcp-proxy (`server.ts` / `http-server.ts`, via this
+ * function), the dashboard intake (`dashboard_intake.m1_dir`), and the
+ * standalone scripts `scripts/verify_m1_application.py`,
+ * `runtimes/hermes/scripts/m1_backfill.py` and
+ * `runtimes/hermes/scripts/m1_cutover_verify.py`.
+ */
+export function resolveM1DirPath(deps: BrainPathDeps): ResolvedBrainPath {
+  return resolveWithLegacy(
+    deps,
+    "DIGITAL_ME_M1_DIR",
+    path.join(brainDataDirOf(deps.env, deps.home), "m1"),
+    path.join(openclawHomeOf(deps.env, deps.home), "data"),
   );
 }

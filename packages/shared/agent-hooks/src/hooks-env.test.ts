@@ -137,6 +137,12 @@ function port(): string {
 }
 
 /** Scrubbed env: PATH + the isolated HOME + exactly what the test sets. */
+/** The isolated HOME's M1 dir: a fresh install (no ~/.openclaw/data) writes the
+ *  canonical <home>/digital-me/.data/m1 — see dm_m1_emit.py resolve_m1_dir. */
+function m1Dir(): string {
+  return path.join(home, "digital-me", ".data", "m1");
+}
+
 function scrubbedEnv(extra: Record<string, string>): NodeJS.ProcessEnv {
   return { PATH: process.env.PATH, HOME: home, LANG: "C.UTF-8", ...extra };
 }
@@ -275,7 +281,7 @@ describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
       expect(seen[0]!.body.args.runtime).toBe(RUNTIME);
       expect(seen[0]!.body.args.agent_id).toBe(RUNTIME);
       expect(JSON.parse(seen[0]!.body.args.extra).platform).toBe(RUNTIME);
-      expect(fs.existsSync(path.join(home, ".openclaw", "data", WAL_NAME))).toBe(true);
+      expect(fs.existsSync(path.join(m1Dir(), WAL_NAME))).toBe(true);
       expect(fs.existsSync(`${FLAG_PREFIX}${sid}`)).toBe(true);
     } finally {
       fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });
@@ -292,7 +298,22 @@ describe(`${RUNTIME} dm_m1_emit.py — endpoint + token precedence`, () => {
     expect(r.status, r.stderr).toBe(0);
     expect(seen).toHaveLength(1);
     expect(seen[0]!.body.args.runtime).toBe(RUNTIME);
-    expect(fs.readdirSync(path.join(home, ".openclaw", "data"))).toEqual([WAL_NAME]);
+    expect(fs.readdirSync(m1Dir())).toEqual([WAL_NAME]);
+  });
+
+  it("an install that predates the M1 move keeps appending to ~/.openclaw/data until <wiki-root>/.data/m1 exists", async () => {
+    const { emit } = installHooks();
+    const legacy = path.join(home, ".openclaw", "data");
+    fs.mkdirSync(legacy, { recursive: true });
+    const env = scrubbedEnv({ OPENCLAW_GATEWAY_URL: `${baseUrl}/tools/invoke`, OPENCLAW_GATEWAY_TOKEN: "g" });
+    const first = await run("python3", [emit, "knowledge_surfaced", "--session-id", "pre-move"], env);
+    expect(first.status, first.stderr).toBe(0);
+    expect(fs.readdirSync(legacy)).toEqual([WAL_NAME]);
+    expect(fs.existsSync(m1Dir())).toBe(false);
+    fs.mkdirSync(m1Dir(), { recursive: true });
+    const second = await run("python3", [emit, "knowledge_surfaced", "--session-id", "post-move"], env);
+    expect(second.status, second.stderr).toBe(0);
+    expect(fs.readdirSync(m1Dir())).toEqual([WAL_NAME]);
   });
 
   it("DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN → POSTs m1_event_record to brain-host with that bearer", async () => {
@@ -654,7 +675,7 @@ describe(`${RUNTIME} dm_memory_search_inject.sh — endpoint, token and score ga
     for (const s of m1) expect(s.auth).toBe("Bearer t");
     expect(m1[1]!.body.args.runtime).toBe(RUNTIME);
     // The durable WAL landed under the isolated HOME, not the developer's.
-    expect(fs.existsSync(path.join(home, ".openclaw", "data", WAL_NAME))).toBe(true);
+    expect(fs.existsSync(path.join(m1Dir(), WAL_NAME))).toBe(true);
   });
 
   it("brain-host env: a hit whose vectorScore is below the gate (off-topic ~0.52) is dropped", async () => {
@@ -1019,7 +1040,7 @@ describe(`${RUNTIME} dm_memory_search_inject.sh — runtime selection and the M1
       expect(fs.existsSync(`${SEEN_PREFIX}${sid}.txt`)).toBe(true);
       const m1 = seen.filter((s) => s.body.tool === "m1_event_record");
       expect(m1.map((s) => s.body.args.runtime)).toEqual([RUNTIME, RUNTIME]);
-      expect(fs.existsSync(path.join(home, ".openclaw", "data", WAL_NAME))).toBe(true);
+      expect(fs.existsSync(path.join(m1Dir(), WAL_NAME))).toBe(true);
     } finally {
       fs.rmSync(`${SEEN_PREFIX}${sid}.txt`, { force: true });
       fs.rmSync(`${FLAG_PREFIX}${sid}`, { force: true });

@@ -36,7 +36,8 @@ export const SOUL_MD_TEMPLATE = path.join(TEMPLATES_DIR, "SOUL.md");
 //   - pre_llm_call recall injection (M1 hygiene)
 //   - pre_tool_call route reminders (stub today)
 //   - post_tool_call tool-call observability for application_rate
-//   - on_session_end M1 live writer to ~/.openclaw/data/application_rate_hermes.log
+//   - on_session_end M1 live writer to application_rate_hermes.log in the M1 dir
+//     (<wiki-root>/.data/m1; the legacy ~/.openclaw/data until that exists)
 // Hermes plugins are explicit-opt-in: after install, the user runs
 //   hermes plugins enable digital-me-recall-hermes
 // to activate it. The installer reports the command in its summary.

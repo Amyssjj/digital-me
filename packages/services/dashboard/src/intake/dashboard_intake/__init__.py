@@ -93,6 +93,31 @@ def brain_db_path(explicit: Optional[Path] = None) -> Path:
     return canonical
 
 
+def m1_dir(home: Optional[Path] = None) -> Path:
+    """Where the M1 telemetry files live (``m1_events_<runtime>.jsonl`` WALs,
+    ``application_rate_<runtime>.log``) — Python twin of ``@digital-me/contracts``
+    ``resolveM1DirPath``: $DIGITAL_ME_M1_DIR → <root>/.data/m1 when it exists →
+    the legacy <OPENCLAW_HOME or ~/.openclaw>/data when it exists → canonical.
+
+    ``home`` stands in for ``~`` (derive_application_rate ``--home``) for both
+    the default root and the legacy dir; an explicit $DIGITAL_ME_WIKI_ROOT still
+    names the root.
+    """
+    override = (os.environ.get("DIGITAL_ME_M1_DIR") or "").strip()
+    if override:
+        return Path(override).expanduser()
+    home = Path.home() if home is None else home
+    root = digital_me_root() if os.environ.get("DIGITAL_ME_WIKI_ROOT") else home / "digital-me"
+    canonical = root / ".data" / "m1"
+    if canonical.exists():
+        return canonical
+    oc_home = os.environ.get("OPENCLAW_HOME")
+    legacy = (Path(oc_home).expanduser() if oc_home else home / ".openclaw") / "data"
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
 def tastes_root() -> Path:
     """The tastes tree: ``$DIGITAL_ME_TASTES_DIR``, else ``<root>/tastes``."""
     override = os.environ.get("DIGITAL_ME_TASTES_DIR")

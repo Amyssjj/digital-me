@@ -2,8 +2,9 @@
 # E2E test for the Claude Code M1 ack path: feeds a synthetic transcript
 # (knowledge_surfaced via hook attachment + an assistant reply carrying the
 # [Digital Me] marker) through dm_application_rate.sh and asserts the
-# emitted assistant_ack signal. HOME is redirected to a tempdir so the M1 WAL
-# never touches the live ~/.openclaw/data files.
+# emitted assistant_ack signal. HOME is redirected to a tempdir (and the M1
+# dir overrides are cleared) so the WAL lands in the fresh-install M1 dir,
+# <tmp>/digital-me/.data/m1, never the live telemetry files.
 #
 # Usage: bash scripts/e2e_claude_code_ack.sh
 set -euo pipefail
@@ -35,7 +36,8 @@ PY
 
 run() {
   echo "{\"session_id\":\"$1\",\"transcript_path\":\"$TRANSCRIPT\"}" \
-    | HOME="$TMP" OPENCLAW_GATEWAY_URL="http://127.0.0.1:1" \
+    | env -u DIGITAL_ME_M1_DIR -u DIGITAL_ME_WIKI_ROOT -u OPENCLAW_HOME \
+      HOME="$TMP" OPENCLAW_GATEWAY_URL="http://127.0.0.1:1" \
       bash "$HOOKS/dm_application_rate.sh" --runtime claude-code
 }
 
@@ -43,7 +45,7 @@ mk_transcript "[Digital Me] applying m1-universal-event-protocol — here's how.
 mk_transcript "[Digital Me] no applicable wiki entries. Proceeding.";          run "e2e-B"
 mk_transcript "Sure, here's a plain answer with no protocol prefix.";            run "e2e-C"
 
-python3 - "$TMP/.openclaw/data/m1_events_claude_code.jsonl" <<'PY'
+python3 - "$TMP/digital-me/.data/m1/m1_events_claude_code.jsonl" <<'PY'
 import json, sys
 want = {"e2e-A": "explicit_path", "e2e-B": "no_applicable", "e2e-C": "no_acknowledgement"}
 got = {}

@@ -34,13 +34,25 @@ import tempfile
 from datetime import date, datetime, timezone
 from pathlib import Path
 
+import pytest
+
+from dashboard_intake import m1_dir
 from dashboard_intake.derive_application_rate import (
+    aggregate,
     aggregate_from_brain,
     aggregate_from_wal,
+    hook_log_paths,
     merge_count_maps,
     _classify_path,
     M1_EVENT_WALS,
 )
+
+
+@pytest.fixture(autouse=True)
+def _no_m1_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The M1 dir resolves from these; keep the host's values out."""
+    for var in ("DIGITAL_ME_M1_DIR", "DIGITAL_ME_WIKI_ROOT", "OPENCLAW_HOME"):
+        monkeypatch.delenv(var, raising=False)
 
 
 # ── Helpers ─────────────────────────────────────────────────────────────
@@ -304,8 +316,7 @@ def test_classify_drops_dot_and_double_dot_in_bare_branch():
 
 
 def _wal_path_for_test(home: Path, runtime: str) -> Path:
-    rel = M1_EVENT_WALS[runtime]
-    p = home / rel
+    p = m1_dir(home) / M1_EVENT_WALS[runtime]
     p.parent.mkdir(parents=True, exist_ok=True)
     return p
 
@@ -324,6 +335,48 @@ def test_wal_aggregator_returns_empty_when_no_files(tmp_path: Path):
     assert by_day == {}
     assert by_dom == {}
     assert by_agent == {}
+
+
+def test_wal_aggregator_follows_the_m1_dir_canonical_over_legacy(tmp_path: Path):
+    """Once <home>/digital-me/.data/m1 exists it is the only dir read — a stale
+    legacy ~/.openclaw/data WAL beside it is ignored (no double count)."""
+    ev = {"event_type": "knowledge_surfaced", "t": _epoch_ms(date(2026, 5, 27))}
+    legacy = tmp_path / ".openclaw" / "data"
+    legacy.mkdir(parents=True)
+    _write_wal(legacy / M1_EVENT_WALS["hermes"], [{**ev, "entries": [{"path": "wiki/a/old.md"}]}])
+    by_day, _, _ = aggregate_from_wal(tmp_path, date(2026, 5, 27), date(2026, 5, 27))
+    assert by_day[("2026-05-27", "wiki")] == (1, 0)  # legacy read while it alone exists
+
+    canonical = tmp_path / "digital-me" / ".data" / "m1"
+    canonical.mkdir(parents=True)
+    _write_wal(canonical / M1_EVENT_WALS["hermes"], [
+        {**ev, "entries": [{"path": "wiki/a/new1.md"}]},
+        {**ev, "entries": [{"path": "wiki/a/new2.md"}]},
+    ])
+    by_day, _, _ = aggregate_from_wal(tmp_path, date(2026, 5, 27), date(2026, 5, 27))
+    assert by_day[("2026-05-27", "wiki")] == (2, 0)
+
+
+def test_hook_log_paths_put_openclaw_and_hermes_in_the_m1_dir(tmp_path: Path):
+    paths = hook_log_paths(tmp_path)
+    assert paths["claude-code"] == tmp_path / ".claude" / "hooks" / "application_rate.log"
+    m1 = tmp_path / "digital-me" / ".data" / "m1"
+    assert paths["openclaw"] == m1 / "application_rate_openclaw.log"
+    assert paths["hermes"] == m1 / "application_rate_hermes.log"
+
+
+def test_session_aggregate_reads_hermes_log_from_the_m1_dir(tmp_path: Path):
+    """aggregate() reads the hermes/openclaw session logs from the M1 dir."""
+    log = hook_log_paths(tmp_path)["hermes"]
+    log.parent.mkdir(parents=True)
+    log.write_text(json.dumps({
+        "session_date": "2026-05-27",
+        "acted_paths": ["wiki/infra/a.md"],
+        "ignored_paths": ["wiki/infra/b.md"],
+    }) + "\n", encoding="utf-8")
+    by_day, _, by_agent = aggregate(tmp_path, date(2026, 5, 27), date(2026, 5, 27))
+    assert by_day[("2026-05-27", "wiki")] == (2, 1)
+    assert by_agent[("2026-05-27", "wiki", "hermes")] == (2, 1)
 
 
 def test_wal_aggregator_reads_knowledge_surfaced(tmp_path: Path):

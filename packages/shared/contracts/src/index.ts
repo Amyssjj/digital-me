@@ -17,6 +17,7 @@ export type { EnvKey } from "./env.js";
 export {
   resolveBrainDbPath,
   resolveEnvFilePath,
+  resolveM1DirPath,
   wikiRootOf,
   openclawHomeOf,
   brainDataDirOf,

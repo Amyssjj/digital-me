@@ -61,10 +61,31 @@ def _resolve_brain_db() -> Path:
 
 BRAIN_DB = _resolve_brain_db()
 
+
+
+def _resolve_m1_dir(home: Path = HOME) -> Path:
+    """The M1 telemetry dir — Python twin of ``@digital-me/contracts``
+    ``resolveM1DirPath``: ``$DIGITAL_ME_M1_DIR`` → ``<wiki-root>/.data/m1``
+    when it exists → the legacy ``<OPENCLAW_HOME or ~/.openclaw>/data`` when
+    it exists → ``<wiki-root>/.data/m1``."""
+    explicit = os.environ.get("DIGITAL_ME_M1_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    canonical = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or home / "digital-me").expanduser() / ".data" / "m1"
+    if canonical.exists():
+        return canonical
+    legacy = Path(os.environ.get("OPENCLAW_HOME") or home / ".openclaw").expanduser() / "data"
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
+M1_DIR = _resolve_m1_dir()
+
 HOOK_LOGS = {
     "claude-code": HOME / ".claude" / "hooks" / "application_rate.log",
-    "openclaw":    HOME / ".openclaw" / "data" / "application_rate_openclaw.log",
-    "hermes":      HOME / ".openclaw" / "data" / "application_rate_hermes.log",
+    "openclaw":    M1_DIR / "application_rate_openclaw.log",
+    "hermes":      M1_DIR / "application_rate_hermes.log",
 }
 
 

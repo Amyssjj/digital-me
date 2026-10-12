@@ -109,8 +109,8 @@ const METRIC_INFO: Record<MetricId, MetricInfo> = {
     datasource:
       "Three-source union (2026-05-27 cutover, see wiki: infrastructure/m1-universal-event-protocol.md): " +
       "(1) brain.db.m1_events (canonical, per-turn — knowledge_surfaced + assistant_ack events from every runtime); " +
-      "(2) ~/.openclaw/data/m1_events_{claude_code,openclaw,hermes}.jsonl (raw event WAL — same shape as brain, durable local copy for backfill); " +
-      "(3) ~/.claude/hooks/application_rate.log + ~/.openclaw/data/application_rate_{openclaw,hermes}.log (legacy session-aggregate — kept for historical days < 2026-05-27). " +
+      "(2) m1_events_{claude_code,openclaw,hermes}.jsonl in the M1 dir (<wiki-root>/.data/m1, or the legacy ~/.openclaw/data until that exists) (raw event WAL — same shape as brain, durable local copy for backfill); " +
+      "(3) ~/.claude/hooks/application_rate.log + application_rate_{openclaw,hermes}.log in the M1 dir (legacy session-aggregate — kept for historical days < 2026-05-27). " +
       "Aggregated by dashboard_intake.derive_application_rate (--source=all merges all three by per-key max() of distinct paths) into application_rate{,_by_domain,_by_agent}.",
     metrics: [
       {

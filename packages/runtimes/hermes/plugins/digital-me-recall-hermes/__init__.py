@@ -79,7 +79,26 @@ def _hit_score(hit: Dict[str, Any]) -> float:
 
 HOME = Path.home()
 WIKI_ROOT = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or HOME / "digital-me") / "wiki"
-APP_RATE_LOG = HOME / ".openclaw" / "data" / "application_rate_hermes.log"
+APP_RATE_LOG_NAME = "application_rate_hermes.log"
+
+
+def _m1_dir() -> Path:
+    """The M1 telemetry dir — Python twin of ``@digital-me/contracts``
+    ``resolveM1DirPath``: ``$DIGITAL_ME_M1_DIR`` → ``<wiki-root>/.data/m1``
+    when it exists → the legacy ``<OPENCLAW_HOME or ~/.openclaw>/data`` when
+    it exists → ``<wiki-root>/.data/m1``. Resolved per write (two stats), not
+    at import: Hermes is long-lived, and a module constant would keep writing
+    the legacy dir after the canonical one is created until a restart."""
+    explicit = (os.environ.get("DIGITAL_ME_M1_DIR") or "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    canonical = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or HOME / "digital-me").expanduser() / ".data" / "m1"
+    if canonical.exists():
+        return canonical
+    legacy = Path(os.environ.get("OPENCLAW_HOME") or HOME / ".openclaw").expanduser() / "data"
+    if legacy.exists():
+        return legacy
+    return canonical
 
 # Brain endpoint precedence (mirrors transport/brain-mcp-proxy config.ts and
 # the claude-code dm_memory_search_inject.sh / dm_m1_emit.py hooks):
@@ -444,7 +463,7 @@ M1_AGENT_ID = "hermes"
 # Source of truth for backfill when brain ingest is unreachable. See wiki:
 # infrastructure/m1-universal-event-protocol.md, pillar 4 ("Durable
 # transport / buffering").
-M1_EVENTS_WAL = HOME / ".openclaw" / "data" / "m1_events_hermes.jsonl"
+M1_EVENTS_WAL_NAME = "m1_events_hermes.jsonl"
 
 
 def _platform_for_extra(platform: Optional[str], session_id: str = "") -> Optional[str]:
@@ -472,9 +491,10 @@ def _m1_wal_append(payload: Dict[str, Any]) -> None:
     """Append one canonical event to the local raw-event WAL. The full
     payload — not the brain MCP wire shape — so a backfill loop can
     reconstruct emitter intent verbatim. Best-effort; swallows IOErrors."""
+    wal = _m1_dir() / M1_EVENTS_WAL_NAME
     try:
-        M1_EVENTS_WAL.parent.mkdir(parents=True, exist_ok=True)
-        with M1_EVENTS_WAL.open("a", encoding="utf-8") as f:
+        wal.parent.mkdir(parents=True, exist_ok=True)
+        with wal.open("a", encoding="utf-8") as f:
             f.write(json.dumps(payload, separators=(",", ":")) + "\n")
     except OSError as exc:
         logger.debug("digital-me-recall-hermes m1 wal append failed: %s", exc)
@@ -727,11 +747,12 @@ def _seed_session_m1_started_from_wal(max_lines: int = 5000) -> int:
     plugin register stays fast even after months of accumulated history.
     Returns the count of sessions seeded for the register-log line.
     """
-    if not M1_EVENTS_WAL.exists():
+    wal = _m1_dir() / M1_EVENTS_WAL_NAME
+    if not wal.exists():
         return 0
     seeded = 0
     try:
-        with M1_EVENTS_WAL.open("rb") as f:
+        with wal.open("rb") as f:
             # Read from the end so we don't load the whole file. ~200B
             # per line, max_lines * 256 is a safe upper bound.
             try:
@@ -1096,9 +1117,10 @@ def _write_app_rate_record(
         "ignored_paths": ignored,
         "flush_reason": reason,
     }
+    log_path = _m1_dir() / APP_RATE_LOG_NAME
     try:
-        APP_RATE_LOG.parent.mkdir(parents=True, exist_ok=True)
-        with APP_RATE_LOG.open("a", encoding="utf-8") as f:
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        with log_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
         _SESSION_LAST_FLUSHED_REV[session_id] = _SESSION_REV.get(session_id, 0)
     except OSError as exc:

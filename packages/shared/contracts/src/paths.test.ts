@@ -5,6 +5,7 @@ import {
   openclawHomeOf,
   resolveBrainDbPath,
   resolveEnvFilePath,
+  resolveM1DirPath,
   wikiRootOf,
 } from "./paths.js";
 
@@ -83,5 +84,34 @@ describe("resolveEnvFilePath", () => {
       path: "/home/t/digital-me/.data/.env",
       source: "canonical",
     });
+  });
+});
+
+describe("resolveM1DirPath", () => {
+  it("DIGITAL_ME_M1_DIR → canonical <wiki-root>/.data/m1 → legacy ~/.openclaw/data → canonical", () => {
+    expect(resolveM1DirPath(deps({ DIGITAL_ME_M1_DIR: "/m" }, ["/home/t/digital-me/.data/m1"]))).toEqual({
+      path: "/m",
+      source: "env",
+    });
+    expect(resolveM1DirPath(deps({}, ["/home/t/digital-me/.data/m1", "/home/t/.openclaw/data"]))).toEqual({
+      path: "/home/t/digital-me/.data/m1",
+      source: "canonical",
+    });
+    expect(resolveM1DirPath(deps({}, ["/home/t/.openclaw/data"]))).toEqual({
+      path: "/home/t/.openclaw/data",
+      source: "legacy-openclaw",
+    });
+    expect(resolveM1DirPath(deps({}))).toEqual({ path: "/home/t/digital-me/.data/m1", source: "canonical" });
+  });
+
+  it("an existing legacy dir keeps winning until the canonical dir is created (no silent split)", () => {
+    expect(resolveM1DirPath(deps({ DIGITAL_ME_M1_DIR: " " }, ["/home/t/.openclaw/data"])).source).toBe(
+      "legacy-openclaw",
+    );
+  });
+
+  it("honours DIGITAL_ME_WIKI_ROOT and OPENCLAW_HOME", () => {
+    expect(resolveM1DirPath(deps({ DIGITAL_ME_WIKI_ROOT: "/w" })).path).toBe("/w/.data/m1");
+    expect(resolveM1DirPath(deps({ OPENCLAW_HOME: "/oc" }, ["/oc/data"])).path).toBe("/oc/data");
   });
 });

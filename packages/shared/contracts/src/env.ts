@@ -110,6 +110,12 @@ const REGISTRY = {
       "Env file holding provider keys (GEMINI_API_KEY, …), loaded by the brain-host service and inherited by the workers it dispatches. When unset: <DIGITAL_ME_WIKI_ROOT>/.data/.env if it exists, else the legacy <OPENCLAW_HOME>/.env if it exists, else <DIGITAL_ME_WIKI_ROOT>/.data/.env.",
     required: false,
   },
+  DIGITAL_ME_M1_DIR: {
+    default: null, // resolved by resolveM1DirPath(): <wiki-root>/.data/m1, else the legacy <OPENCLAW_HOME>/data while only that exists
+    description:
+      "Directory holding the M1 telemetry files (m1_events_<runtime>.jsonl WALs, application_rate_<runtime>.log). When unset: <DIGITAL_ME_WIKI_ROOT>/.data/m1 if it exists, else the legacy <OPENCLAW_HOME>/data if it exists, else <DIGITAL_ME_WIKI_ROOT>/.data/m1.",
+    required: false,
+  },
   BRAIN_PROXY_PATH: {
     default: null,
     description:
