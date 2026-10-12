@@ -7,6 +7,32 @@ from textwrap import dedent
 
 import pytest
 
+from dream_cycle import brain_learnings
+
+
+@pytest.fixture(autouse=True)
+def _isolate_from_host_brain(
+    monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory
+) -> None:
+    """Keep every test off the host's live wiki root and brain.db.
+
+    `resolve_brain_db_path()` prefers `<wiki-root>/.data/brain.db` whenever it
+    exists, and the wiki root defaults to `~/digital-me` -- on a dev host that
+    is the live DB, so a test that only patched the legacy default silently
+    read production rows (CI has no such file, which hid it). Point the wiki
+    root at an empty tmp dir, drop the env overrides, and aim the legacy
+    `~/.openclaw` rung at a missing file. Tests that need a DB still set
+    `DIGITAL_ME_BRAIN_DB` / `OPENCLAW_HOME` / `DEFAULT_BRAIN_DB_PATH` themselves.
+    """
+    isolated = tmp_path_factory.mktemp("isolated-wiki-root")
+    monkeypatch.setenv("DIGITAL_ME_WIKI_ROOT", str(isolated))
+    monkeypatch.delenv("DIGITAL_ME_BRAIN_DB", raising=False)
+    monkeypatch.delenv("DIGITAL_ME_CONFIG_PATH", raising=False)
+    monkeypatch.delenv("OPENCLAW_HOME", raising=False)
+    monkeypatch.setattr(
+        brain_learnings, "DEFAULT_BRAIN_DB_PATH", isolated / "no-legacy" / "brain.db"
+    )
+
 
 MINIMAL_CONFIG_YAML = dedent("""\
     engine: standalone
