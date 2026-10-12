@@ -1115,6 +1115,28 @@ def _write_principle_file(
     return path
 
 
+def _evidence_record(evidence: dict, today_iso: str) -> dict:
+    """Normalize a reverse-engineer `evidence_record` into the stored shape."""
+    return {
+        "project_id": evidence.get("project_id", ""),
+        "date": evidence.get("date") or today_iso,
+        "wiki_paths": evidence.get("wiki_paths") or [],
+        "what_happened": evidence.get("what_happened", "").strip(),
+        "what_triggers_principle": evidence.get("what_triggers_principle", "").strip(),
+    }
+
+
+def _evidence_key(record: dict) -> tuple[str, str, str]:
+    """Identity of an evidence record: whitespace-normalized `what_happened`
+    plus `date` and `project_id`. Two records with the same key are one
+    observation applied twice, never independent triangulation."""
+    return (
+        " ".join(str(record.get("what_happened") or "").split()),
+        str(record.get("date") or "").strip(),
+        str(record.get("project_id") or "").strip(),
+    )
+
+
 def _find_existing_principle(
     fingerprint: str,
 ) -> Optional[tuple[Path, str, dict]]:
@@ -1163,8 +1185,16 @@ def apply_skill_outcome(outcome: dict) -> Optional[tuple[Path, str]]:
                     is matched_existing_fingerprint OR principle_fingerprint,
                     whichever is non-empty — never require both.
 
-    Returns (path_written, action_tag) where action_tag is one of:
-      "candidate-new", "candidate-merged", "evidence-appended", "promoted-to-leaf"
+    Idempotent: when the matched principle already holds a record with the
+    same `_evidence_key`, the file is left untouched (no append, no hint
+    merges, no promotion) and the tag is "evidence-duplicate". A retried
+    apply step or a stale-handoff re-fold re-applies identical outcomes;
+    appending them double-counted evidence and promoted candidates on one
+    real record (2026-10-08..10).
+
+    Returns (path, action_tag) where action_tag is one of:
+      "candidate-new", "candidate-merged", "evidence-appended",
+      "promoted-to-leaf", "evidence-duplicate"
     or None on neither/invalid input.
     """
     kind = outcome.get("outcome")
@@ -1222,15 +1252,14 @@ def apply_skill_outcome(outcome: dict) -> Optional[tuple[Path, str]]:
     today_iso = date.today().isoformat()
 
     if target_path is not None and target_fm is not None:
-        # Append to existing file
+        # Append to existing file — unless this exact observation is already
+        # recorded, in which case re-applying it must be a no-op.
         evidence_records = _read_evidence_records(target_path)
-        evidence_records.append({
-            "project_id": evidence.get("project_id", ""),
-            "date": evidence.get("date") or today_iso,
-            "wiki_paths": evidence.get("wiki_paths") or [],
-            "what_happened": evidence.get("what_happened", "").strip(),
-            "what_triggers_principle": evidence.get("what_triggers_principle", "").strip(),
-        })
+        new_record = _evidence_record(evidence, today_iso)
+        new_key = _evidence_key(new_record)
+        if any(isinstance(r, dict) and _evidence_key(r) == new_key for r in evidence_records):
+            return target_path, "evidence-duplicate"
+        evidence_records.append(new_record)
 
         # Merge fire signature hints (dedupe, preserve order)
         existing_sig = list(target_fm.get("fire_signature") or [])
@@ -1303,13 +1332,7 @@ def apply_skill_outcome(outcome: dict) -> Optional[tuple[Path, str]]:
         "created": today_iso,
         "updated": today_iso,
     }
-    evidence_records = [{
-        "project_id": evidence.get("project_id", ""),
-        "date": evidence.get("date") or today_iso,
-        "wiki_paths": evidence.get("wiki_paths") or [],
-        "what_happened": evidence.get("what_happened", "").strip(),
-        "what_triggers_principle": evidence.get("what_triggers_principle", "").strip(),
-    }]
+    evidence_records = [_evidence_record(evidence, today_iso)]
     written = _write_principle_file(new_path, fm, evidence_records, outcome.get("rationale"))
     return written, "candidate-new"
 
@@ -1792,6 +1815,7 @@ def run_compile(
     skill_candidates_merged = 0
     skill_evidence_appended = 0
     skill_promotions = 0
+    skill_evidence_duplicate = 0
     skill_neither = 0
     skipped_limit_transcript = 0
     skipped_limit_other = 0
@@ -1968,7 +1992,13 @@ def run_compile(
                         print(f"      principle outcome: NEITHER ({outcome.get('rationale', '')[:80]})")
                     else:
                         applied = apply_skill_outcome(outcome)
-                        if applied:
+                        if applied and applied[1] == "evidence-duplicate":
+                            # Already recorded — file untouched, manifest
+                            # unchanged, nothing to report as touched.
+                            skill_evidence_duplicate += 1
+                            print(f"      principle EVIDENCE-DUPLICATE (already recorded): "
+                                  f"{applied[0].relative_to(Path.home())}")
+                        elif applied:
                             proposal_path, action = applied
                             skill_files.append(str(proposal_path))
                             rel = proposal_path.relative_to(Path.home())
@@ -2088,6 +2118,7 @@ def run_compile(
         "skill_candidates_merged": skill_candidates_merged,
         "skill_evidence_appended": skill_evidence_appended,
         "skill_promotions": skill_promotions,
+        "skill_evidence_duplicate": skill_evidence_duplicate,
         "skill_neither": skill_neither,
         "skill_files": skill_files,
     }
@@ -2105,6 +2136,7 @@ def run_compile(
         or skill_candidates_merged
         or skill_evidence_appended
         or skill_promotions
+        or skill_evidence_duplicate
         or skill_neither
     ):
         print(
@@ -2112,6 +2144,7 @@ def run_compile(
             f"{skill_candidates_merged} merged into candidates, "
             f"{skill_evidence_appended} evidence appended, "
             f"{skill_promotions} promoted to leaf, "
+            f"{skill_evidence_duplicate} duplicate evidence skipped, "
             f"{skill_neither} neither"
         )
         if skill_files:
