@@ -54,7 +54,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="digital-me-digest install-workflows",
         description=(
-            "Import the bundled digest workflow into the openclaw brain. "
+            "Import the bundled digest workflow into the brain. "
             "Run by `digital-me install --runtime digest`."
         ),
     )
@@ -94,7 +94,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"install-workflows: found {len(paths)} workflow(s)", file=sys.stderr)
 
     try:
-        results = install_workflows(paths, vars)
+        results = install_workflows(paths, vars, wiki_root=wiki_root)
     except BrainClientError as e:
         print(f"install-workflows: gateway unreachable: {e}", file=sys.stderr)
         return 3

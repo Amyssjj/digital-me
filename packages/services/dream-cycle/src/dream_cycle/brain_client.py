@@ -146,12 +146,19 @@ def _brain_host_service_endpoint(env_: dict[str, str]) -> Optional[GatewayEndpoi
 def load_gateway(
     env: Optional[dict[str, str]] = None,
     openclaw_home: Optional[Path] = None,
+    wiki_root: Optional[Path] = None,
 ) -> GatewayEndpoint:
     """Resolve the brain endpoint: DIGITAL_ME_BRAIN_URL (brain-host; token from
     DIGITAL_ME_BRAIN_TOKEN, else DIGITAL_ME_BRAIN_TOKEN_FILE, else the default
     token file) > the brain-host service when the default token file is
-    non-empty > OPENCLAW_GATEWAY_* env > openclaw.json > defaults."""
+    non-empty > OPENCLAW_GATEWAY_* env > openclaw.json > defaults.
+
+    `wiki_root` (a caller's resolved --wiki-root) overrides DIGITAL_ME_WIKI_ROOT
+    for the default token file, as the CLI's `brainChildEnv` does for the
+    installers it spawns."""
     env_ = dict(os.environ if env is None else env)
+    if wiki_root is not None:
+        env_["DIGITAL_ME_WIKI_ROOT"] = str(wiki_root)
 
     # digital-me brain-host takes precedence over the openclaw gateway when it
     # is configured. Resolved BEFORE touching ~/.openclaw so a missing or
@@ -262,8 +269,9 @@ class BrainClient:
         gateway: Optional[GatewayEndpoint] = None,
         fetcher: Optional[Fetcher] = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
+        wiki_root: Optional[Path] = None,
     ):
-        self.gateway = gateway or load_gateway()
+        self.gateway = gateway or load_gateway(wiki_root=wiki_root)
         self.fetcher = fetcher or _urllib_fetcher
         self.timeout_s = timeout_s
 

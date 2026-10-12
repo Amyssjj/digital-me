@@ -219,6 +219,7 @@ def install_workflows(
     workflow_paths: Iterable[Path],
     vars: dict[str, str],
     client: Optional[BrainClient] = None,
+    wiki_root: Optional[Path] = None,
 ) -> list[tuple[Path, bool, str]]:
     """Materialize + import each workflow. Returns one tuple per file:
     (path, ok, message). Doesn't raise — caller decides how to react to
@@ -233,8 +234,10 @@ def install_workflows(
     Bundled-schedule convention: if a sibling <workflow-name>.schedule.json
     file exists, the schedule is registered (idempotently) after import.
     This lets `digital-me install --runtime dashboard` land a ticking cron
-    in one shot — no separate `tasks.schedule_add` step required."""
-    client = client or BrainClient()
+    in one shot — no separate `tasks.schedule_add` step required.
+
+    `wiki_root` scopes the default client's brain-host token-file lookup."""
+    client = client or BrainClient(wiki_root=wiki_root)
     results: list[tuple[Path, bool, str]] = []
     for wf_path in workflow_paths:
         try:
@@ -379,7 +382,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"install-workflows: found {len(paths)} workflow(s)", file=sys.stderr)
 
     try:
-        results = install_workflows(paths, vars)
+        results = install_workflows(paths, vars, wiki_root=wiki_root)
     except BrainClientError as e:
         print(f"install-workflows: gateway unreachable: {e}", file=sys.stderr)
         return 3

@@ -77,6 +77,36 @@ export function noBrainEndpointMessage(context: string, tokenFile: string): stri
 }
 
 /**
+ * The hint printed when a Python workflow importer (`-m dream_cycle.install_workflows`
+ * / `-m digest.install_workflows`) exits non-zero. `command` is the exact argv the
+ * installer ran, so the re-run line keeps `--wiki-root`: a bare re-run finds
+ * brain-host through DIGITAL_ME_BRAIN_URL or, when that is unset, through the
+ * token file under that wiki root — the same brain the installer targeted.
+ */
+export function workflowImportFailureMessage(opts: {
+  readonly runtime: string;
+  readonly status: number | null;
+  /** What did not happen, e.g. "workflows aren't imported". */
+  readonly missing: string;
+  readonly tokenFile: string;
+  readonly command: readonly string[];
+}): string {
+  return (
+    `install ${opts.runtime}: workflow import returned exit ${opts.status ?? "?"}. ` +
+    `The venv is ready, but ${opts.missing}. ` +
+    `Common causes: brain-host is not installed or not running — the importer finds it through DIGITAL_ME_BRAIN_URL, ` +
+    `else through its token file ${opts.tokenFile} (check with \`digital-me doctor\`); ` +
+    `without brain-host, the openclaw gateway is not running or its auth token is missing in ~/.openclaw/openclaw.json. ` +
+    `Re-run later with: ${opts.command.map(shellQuote).join(" ")}`
+  );
+}
+
+/** POSIX-shell quoting for a copy-pasteable command line. */
+function shellQuote(arg: string): string {
+  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replace(/'/g, `'\\''`)}'`;
+}
+
+/**
  * Runtimes that need a brain endpoint to be useful. brain-host IS the
  * endpoint and the openclaw plugin materializes into openclaw's own tree, so
  * neither is gated.

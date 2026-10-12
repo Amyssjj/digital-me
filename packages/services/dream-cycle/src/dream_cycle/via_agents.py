@@ -223,7 +223,7 @@ def run(args: argparse.Namespace, client: Optional[BrainClient] = None) -> int:
     materialized = materialize_workflow(template, vars)
     template_id = args.template_id or materialized["id"]
 
-    client = client or BrainClient()
+    client = client or BrainClient(wiki_root=wiki_root)
     print(f"gateway:     {client.gateway.url}", file=sys.stderr)
     print(f"template:    {template_id}", file=sys.stderr)
     print(f"wiki_root:   {wiki_root}", file=sys.stderr)

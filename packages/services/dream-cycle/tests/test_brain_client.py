@@ -447,6 +447,39 @@ def test_load_gateway_explicit_brain_url_without_token_still_errors(tmp_path: Pa
         )
 
 
+def test_load_gateway_wiki_root_arg_overrides_env_for_token_file(tmp_path: Path) -> None:
+    """A caller's --wiki-root (passed as `wiki_root`) beats DIGITAL_ME_WIKI_ROOT
+    for the default token file, as the CLI's brainChildEnv does — for both the
+    service rung and an explicit URL's default token file."""
+    _write_token(tmp_path / "flag-root" / ".data" / "brain-host.token", "flag-secret\n")
+    _write_token(tmp_path / "env-root" / ".data" / "brain-host.token", "env-secret\n")
+    env = {"DIGITAL_ME_WIKI_ROOT": str(tmp_path / "env-root")}
+    gw = load_gateway(env=env, openclaw_home=tmp_path, wiki_root=tmp_path / "flag-root")
+    assert (gw.url, gw.token) == ("http://127.0.0.1:18791/tools/invoke", "flag-secret")
+    gw = load_gateway(
+        env={**env, "DIGITAL_ME_BRAIN_URL": BRAIN_URL},
+        openclaw_home=tmp_path,
+        wiki_root=tmp_path / "flag-root",
+    )
+    assert (gw.url, gw.token) == (BRAIN_URL, "flag-secret")
+    assert env == {"DIGITAL_ME_WIKI_ROOT": str(tmp_path / "env-root")}  # caller's mapping untouched
+
+
+def test_brain_client_resolves_gateway_under_wiki_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """BrainClient(wiki_root=...) with no gateway resolves from the process env,
+    scoped to that wiki root."""
+    for name in ("DIGITAL_ME_BRAIN_URL", "DIGITAL_ME_BRAIN_TOKEN", "DIGITAL_ME_BRAIN_TOKEN_FILE"):
+        monkeypatch.delenv(name, raising=False)
+    _write_token(tmp_path / ".data" / "brain-host.token", "svc-secret\n")
+    client = BrainClient(wiki_root=tmp_path, fetcher=lambda *a: b"{}")
+    assert (client.gateway.url, client.gateway.token) == (
+        "http://127.0.0.1:18791/tools/invoke",
+        "svc-secret",
+    )
+
+
 def test_load_gateway_token_error_mentions_brain_host(tmp_path: Path) -> None:
     """The no-token hint must name the brain-host env contract, not only openclaw."""
     with pytest.raises(BrainClientError, match="DIGITAL_ME_BRAIN_URL") as excinfo:

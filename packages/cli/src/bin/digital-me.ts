@@ -161,6 +161,7 @@ import {
   noBrainEndpointMessage,
   orderRuntimesHubFirst,
   runtimesNeedingBrain,
+  workflowImportFailureMessage,
 } from "../brain-endpoint.js";
 import { planBrainDbMigration, postMigrationSteps } from "../brain-db.js";
 import {
@@ -749,6 +750,11 @@ function brainChildEnv(home: string, wikiRoot?: string): NodeJS.ProcessEnv {
     : env;
 }
 
+/** The brain-host token file a workflow importer spawned with brainChildEnv(home, wikiRoot) reads. */
+function importerTokenFile(home: string, wikiRoot?: string): string {
+  return brainHostTokenFileOf({ home, env: wikiRoot ? { ...process.env, DIGITAL_ME_WIKI_ROOT: wikiRoot } : process.env });
+}
+
 function installCodex(home: string): void {
   const codexDir = path.join(home, ".codex");
   mkdirSync(codexDir, { recursive: true });
@@ -1017,7 +1023,7 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
     return smokeResult.status ?? 1;
   }
 
-  // Import bundled workflows into the openclaw brain. This makes
+  // Import bundled workflows into the brain. This makes
   // `digital-me install --runtime dream-cycle` a one-stop setup: venv
   // ready + workflows imported with the correct python_path + wiki_root
   // baked in. Skip if the brain is unreachable — the workflow import
@@ -1036,11 +1042,13 @@ function installDreamCycle(home: string, wikiRoot?: string): number {
   });
   if (wfResult.status !== 0) {
     console.error(
-      `install dream-cycle: workflow import returned exit ${wfResult.status ?? "?"}. ` +
-        `The venv is ready, but workflows aren't imported. ` +
-        `Common causes: the brain endpoint is unreachable — with brain-host, set DIGITAL_ME_BRAIN_URL (+ DIGITAL_ME_BRAIN_TOKEN_FILE if the token is not at the default path); ` +
-        `with the openclaw gateway, it is not running or the auth token is missing in ~/.openclaw/openclaw.json. ` +
-        `Re-run later with: ${venvPython} -m dream_cycle.install_workflows`,
+      workflowImportFailureMessage({
+        runtime: "dream-cycle",
+        status: wfResult.status,
+        missing: "workflows aren't imported",
+        tokenFile: importerTokenFile(home, wikiRoot),
+        command: [venvPython, ...installWorkflowsArgs],
+      }),
     );
     // Non-zero exit but don't return — we still want to print the
     // success summary so the user knows the venv part worked.
@@ -1167,10 +1175,13 @@ function installDigest(home: string, wikiRoot?: string): number {
   });
   if (wfResult.status !== 0) {
     console.error(
-      `install digest: workflow import returned exit ${wfResult.status ?? "?"}. ` +
-        `The venv is ready, but the workflow isn't imported. ` +
-        `Common causes: openclaw gateway not running, or auth token missing. ` +
-        `Re-run later with: ${venvPython} -m digest.install_workflows`,
+      workflowImportFailureMessage({
+        runtime: "digest",
+        status: wfResult.status,
+        missing: "the workflow isn't imported",
+        tokenFile: importerTokenFile(home, wikiRoot),
+        command: [venvPython, ...installWorkflowsArgs],
+      }),
     );
   }
 
