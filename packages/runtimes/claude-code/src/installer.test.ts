@@ -7,10 +7,41 @@ import {
   PACKAGE_ROOT,
   SKILL_NAMES,
   SKILLS_DIR,
+  buildClaudeCodeMcpEnv,
   buildClaudeHooksManifest,
   mergeBrainEnvIntoSettings,
   mergeHooksIntoSettings,
 } from "./installer.js";
+
+describe("buildClaudeCodeMcpEnv", () => {
+  const brain = {
+    brainUrl: "http://127.0.0.1:18791/tools/invoke",
+    brainTokenFile: "/home/t/digital-me/.data/brain-host.token",
+  };
+
+  it("without brain-host: the claude-code attribution id only (proxy stays on the openclaw gateway)", () => {
+    expect(buildClaudeCodeMcpEnv()).toEqual({ OPENCLAW_AGENT_ID: "claude-code" });
+    expect(buildClaudeCodeMcpEnv({ agentId: "cc-lab" })).toEqual({ OPENCLAW_AGENT_ID: "cc-lab" });
+  });
+
+  it("with brain-host: adds DIGITAL_ME_BRAIN_URL + DIGITAL_ME_BRAIN_TOKEN_FILE (the path), never the secret", () => {
+    expect(buildClaudeCodeMcpEnv({ brain })).toEqual({
+      OPENCLAW_AGENT_ID: "claude-code",
+      DIGITAL_ME_BRAIN_URL: brain.brainUrl,
+      DIGITAL_ME_BRAIN_TOKEN_FILE: brain.brainTokenFile,
+    });
+  });
+
+  it("never writes OPENCLAW_HOME (the proxy defaults it; re-install = remove + add, so an old one is dropped)", () => {
+    expect(buildClaudeCodeMcpEnv()).not.toHaveProperty("OPENCLAW_HOME");
+    expect(buildClaudeCodeMcpEnv({ brain })).not.toHaveProperty("OPENCLAW_HOME");
+  });
+
+  it("refuses half a brain-host contract", () => {
+    expect(() => buildClaudeCodeMcpEnv({ brain: { ...brain, brainTokenFile: "" } })).toThrow(/set together/);
+    expect(() => buildClaudeCodeMcpEnv({ brain: { ...brain, brainUrl: " " } })).toThrow(/DIGITAL_ME_BRAIN_TOKEN_FILE/);
+  });
+});
 
 describe("PACKAGE_ROOT + paths", () => {
   it("PACKAGE_ROOT carries skills/; the hooks come from the shared agent-hooks package", () => {

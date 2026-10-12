@@ -102,7 +102,6 @@ synced or duplicated.
 ### Server setup (brain machine)
 
 ```bash
-export OPENCLAW_HOME=~/.openclaw
 export BRAIN_MCP_HTTP_TOKEN="$(openssl rand -hex 32)"   # required — no default
 digital-me-brain-mcp-http
 ```

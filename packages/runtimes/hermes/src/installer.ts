@@ -76,9 +76,11 @@ export const SECTION_END =
  * ~/.hermes/config.yaml (written by `hermes mcp add --env KEY=VALUE ...`).
  */
 export interface HermesMcpEnvInputs {
-  /** OPENCLAW_HOME — the openclaw state dir the proxy reads openclaw.json from. */
-  readonly openclawHome: string;
-  /** OPENCLAW_AGENT_ID attribution label; defaults to "hermes". */
+  /**
+   * OPENCLAW_AGENT_ID attribution label (stamped on every tool call by the
+   * proxy — not an openclaw dependency); defaults to "hermes". OPENCLAW_HOME
+   * is deliberately not written: the proxy defaults it to ~/.openclaw.
+   */
   readonly agentId?: string;
   /**
    * digital-me brain-host: `DIGITAL_ME_BRAIN_URL` plus the PATH of its token
@@ -98,13 +100,12 @@ export interface HermesMcpEnvInputs {
  * the CLI spawns the command. Throws on half a brain-host contract (a URL
  * with no token file or vice versa): every caller treats a URL with no
  * resolvable token as a hard error, never a gateway fallback, so the
- * installer must not write one.
+ * installer must not write one. The CLI runs `hermes mcp remove` first, so
+ * the stanza's `env:` is exactly this list after a re-install — an
+ * OPENCLAW_HOME an earlier installer wrote is gone.
  */
-export function buildHermesMcpEnv(inputs: HermesMcpEnvInputs): string[] {
-  const env = [
-    `OPENCLAW_HOME=${inputs.openclawHome}`,
-    `OPENCLAW_AGENT_ID=${inputs.agentId ?? "hermes"}`,
-  ];
+export function buildHermesMcpEnv(inputs: HermesMcpEnvInputs = {}): string[] {
+  const env = [`OPENCLAW_AGENT_ID=${inputs.agentId ?? "hermes"}`];
   const brain = inputs.brain;
   if (brain !== undefined) {
     if (brain.brainUrl.trim() === "" || brain.brainTokenFile.trim() === "") {

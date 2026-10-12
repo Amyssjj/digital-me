@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   DEPLOYABLE_RUNTIMES,
   findNewestTmpLog,
+  listGatewayLogs,
   resolveGatewayLog,
   analyzeDeployPreflight,
   parseAheadBehind,
@@ -252,6 +253,32 @@ describe("resolveGatewayLog", () => {
       },
     } as typeof realFs;
     expect(resolveGatewayLog({}, home, { tmpLogDir: path.join(home, "no-tmp"), fs })).toBe(launchd);
+  });
+});
+
+describe("listGatewayLogs", () => {
+  it("lists every existing candidate newest-first (resolveGatewayLog is its head)", () => {
+    const home = scratch();
+    const tmp = path.join(home, "tmp-openclaw");
+    const launchd = touch(path.join(home, "Library", "Logs", "openclaw", "gateway.log"), 3600);
+    const legacy = touch(path.join(home, ".openclaw", "logs", "gateway.log"), 7200);
+    const debug = touch(path.join(tmp, "openclaw-2026-10-11.log"), 1);
+    expect(listGatewayLogs({}, home, { tmpLogDir: tmp })).toEqual([debug, launchd, legacy]);
+    expect(resolveGatewayLog({}, home, { tmpLogDir: tmp })).toBe(debug);
+  });
+
+  it("keeps candidate priority on equal mtimes, and returns [] when nothing exists", () => {
+    const home = scratch();
+    const launchd = touch(path.join(home, "Library", "Logs", "openclaw", "gateway.log"), 60);
+    const legacy = touch(path.join(home, ".openclaw", "logs", "gateway.log"), 60);
+    const same = statSync(launchd).mtime;
+    utimesSync(legacy, same, same);
+    expect(listGatewayLogs({}, home, { tmpLogDir: path.join(home, "no-tmp") })).toEqual([launchd, legacy]);
+    expect(listGatewayLogs({}, scratch(), { tmpLogDir: "/nonexistent-tmp" })).toEqual([]);
+  });
+
+  it("OPENCLAW_GATEWAY_LOG is the only candidate when set", () => {
+    expect(listGatewayLogs({ OPENCLAW_GATEWAY_LOG: "/x/y.log" }, scratch())).toEqual(["/x/y.log"]);
   });
 });
 

@@ -51,6 +51,7 @@ import {
   HOOK_NAMES,
   HOOKS_DIR as CLAUDE_HOOKS_DIR,
   SKILLS_DIR as CLAUDE_SKILLS_DIR,
+  buildClaudeCodeMcpEnv,
   buildClaudeHooksManifest,
   mergeBrainEnvIntoSettings,
   mergeHooksIntoSettings,
@@ -86,9 +87,19 @@ import { materializeOpenclawOverlay } from "../openclaw-overlay.js";
 import {
   runDoctor,
   formatReport,
+  type DoctorDeps,
   type RuntimeId,
   type WorkflowProvenance,
 } from "../doctor.js";
+import {
+  GATEWAY_LOG_TAIL_BYTES,
+  collectOpenclawGatewayEvidence,
+  gatewayBrainPluginPaths,
+  openclawGatewayHealthUrl,
+  probeBrainHostHealth,
+  readFileTail,
+  resolveBrainHostHealthTarget,
+} from "../brain-host-live.js";
 import { resolveOpenclawExtensionsDir } from "../openclaw-paths.js";
 import JSON5 from "json5";
 import {
@@ -126,6 +137,7 @@ import {
   parseRecallAckMode,
   planDeployRuntimes,
   expectedRecallAckMode,
+  listGatewayLogs,
   resolveGatewayLog,
 } from "../deploy.js";
 import {
@@ -481,7 +493,9 @@ function readWorkflowProvenance(): WorkflowProvenance[] {
   }
 }
 
-function doctor(runtimes: RuntimeId[]): number {
+async function doctor(runtimes: RuntimeId[]): Promise<number> {
+  const enabled = runtimes.length > 0 ? runtimes : defaultDoctorRuntimes();
+  const live = enabled.includes("brain-host") ? await collectBrainHostLiveEvidence(process.env) : {};
   const report = runDoctor(
     {
       fileExists: (p) => existsSync(p),
@@ -499,11 +513,44 @@ function doctor(runtimes: RuntimeId[]): number {
           return undefined;
         }
       },
+      ...live,
     },
-    runtimes.length > 0 ? runtimes : defaultDoctorRuntimes(),
+    enabled,
   );
   console.log(formatReport(report));
   return report.summary.failed > 0 ? 1 : 0;
+}
+
+/**
+ * The doctor's live inputs (runbook Stage 7.4): brain-host's authenticated
+ * /health — URL + token resolved exactly as the installers resolve them for
+ * client registrations — and the openclaw gateway's scheduler-tick evidence.
+ * Read-only, bounded by LIVE_PROBE_TIMEOUT_MS per probe, never throws.
+ */
+async function collectBrainHostLiveEvidence(
+  env: NodeJS.ProcessEnv,
+): Promise<Pick<DoctorDeps, "brainHostHealth" | "openclawGateway">> {
+  const home = env.HOME ?? env.USERPROFILE ?? "";
+  const cfg = resolveBrainHostServiceConfig(home, env, which("node") ?? "node");
+  const brainHostHealth = await probeBrainHostHealth(
+    resolveBrainHostHealthTarget(env, cfg, readTokenFileIfExists),
+    fetch,
+  );
+  let openclawConfig: unknown;
+  try {
+    openclawConfig = JSON5.parse(readFileSync(resolveOpenclawConfigPath(home, env), "utf-8"));
+  } catch {
+    openclawConfig = undefined; // no / unreadable config: the gateway port falls back to its default
+  }
+  const openclawGateway = await collectOpenclawGatewayEvidence({
+    pluginPaths: gatewayBrainPluginPaths(home, env),
+    fileExists: existsSync,
+    fetch,
+    healthUrl: openclawGatewayHealthUrl(env, openclawConfig),
+    logPaths: listGatewayLogs(env, home),
+    readTail: (p) => readFileTail(p, GATEWAY_LOG_TAIL_BYTES),
+  });
+  return { brainHostHealth, openclawGateway };
 }
 
 /**
@@ -685,11 +732,8 @@ function installCodex(home: string): void {
   writeFileSync(target, mergeCodexMd(existing, newManaged), "utf-8");
   // config.toml — build the digital-me-brain MCP entry with absolute paths
   // resolved at install time. No PATH dependency, no global npm install.
-  // OPENCLAW_HOME is canonically the openclaw state dir (~/.openclaw),
-  // NOT the openclaw source checkout (~/openclaw). The proxy reads
-  // openclaw.json from this path to discover the gateway port + auth token.
-  const openclawHome =
-    process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
+  // OPENCLAW_HOME is not baked in (the proxy defaults it to ~/.openclaw);
+  // the block is replaced wholesale, so a re-install drops an old one.
   // ~/.codex/config.toml is persistent user config — same hardening as the
   // other two clients (see stable-registration.ts).
   const codexStable = stabilizeRegistration(process.execPath, BRAIN_MCP_PROXY_BIN);
@@ -712,7 +756,6 @@ function installCodex(home: string): void {
   const tomlFragment = buildCodexMcpConfig({
     nodeBin: codexStable.nodePath,
     proxyBinPath: codexStable.binPath,
-    openclawHome,
     agentId: "codex",
     brainUrl: brainCaller?.brainUrl,
     brainTokenFile: brainCaller?.brainTokenFile,
@@ -812,22 +855,11 @@ function installClaudeCodeMcp(brainCaller: BrainCallerEnv | undefined): void {
       });
     }
   }
-  const home = process.env.HOME ?? process.env.USERPROFILE ?? "";
-  // OPENCLAW_HOME is canonically the openclaw state dir (~/.openclaw),
-  // NOT the openclaw source checkout (~/openclaw). The proxy reads
-  // openclaw.json from this path to discover the gateway port + auth token.
-  const openclawHome =
-    process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
-  const env: Record<string, string> = {
-    OPENCLAW_HOME: openclawHome,
-    OPENCLAW_AGENT_ID: "claude-code",
-    ...(brainCaller
-      ? {
-          DIGITAL_ME_BRAIN_URL: brainCaller.brainUrl,
-          DIGITAL_ME_BRAIN_TOKEN_FILE: brainCaller.brainTokenFile,
-        }
-      : {}),
-  };
+  // The registration was just removed from every scope, so its env is
+  // exactly this map: OPENCLAW_HOME an earlier installer wrote is dropped
+  // (the proxy defaults it to ~/.openclaw); OPENCLAW_AGENT_ID stays — it is
+  // the proxy's attribution label.
+  const env = buildClaudeCodeMcpEnv({ brain: brainCaller });
   // Install at user scope so the server is available across all
   // projects, not just the current cwd's project-local scope.
   const args: string[] = ["mcp", "add", BRAIN_MCP_SERVER_NAME, "-s", "user"];
@@ -1505,8 +1537,6 @@ function installHermesMcp(home: string): void {
       stdio: ["ignore", "ignore", "ignore"],
     });
   }
-  const openclawHome =
-    process.env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
   // ~/.hermes/config.yaml is persistent user config: harden the same way as
   // claude-code. Hermes was found in 2026-09 still pointing at a worktree
   // deleted months earlier, pinned to a since-broken Cellar node.
@@ -1533,11 +1563,11 @@ function installHermesMcp(home: string): void {
     hermesStable.nodePath,
     // `hermes mcp add --help`: "--args ... must be the last option". With
     // --args before --env, argparse's REMAINDER swallowed the env flags into
-    // the args list, so the proxy was launched with `--env OPENCLAW_HOME=...`
+    // the args list, so the proxy was launched with `--env KEY=...` pairs
     // as positional arguments and NO environment at all (config showed
     // `env: None`). Keep --env first and --args strictly last.
     "--env",
-    ...buildHermesMcpEnv({ openclawHome, agentId: "hermes", brain: hermesBrain }),
+    ...buildHermesMcpEnv({ agentId: "hermes", brain: hermesBrain }),
     "--args",
     hermesStable.binPath,
   ];
@@ -2066,14 +2096,17 @@ async function setup(
   if (!minimal && !doctorRuntimes.includes("dream-cycle")) {
     doctorRuntimes.push("dream-cycle");
   }
+  const doctorEnv = { ...process.env, DIGITAL_ME_WIKI_ROOT: wikiRoot };
   const report = runDoctor(
     {
       fileExists: (p) => existsSync(p),
-      env: { ...process.env, DIGITAL_ME_WIKI_ROOT: wikiRoot },
+      env: doctorEnv,
       which,
       execCommand,
       brainMcpProxyBinPath: BRAIN_MCP_PROXY_BIN,
       repoRoot: resolveRepoRoot(),
+      // doctorRuntimes always includes brain-host: probe the service setup just started.
+      ...(await collectBrainHostLiveEvidence(doctorEnv)),
     },
     doctorRuntimes,
   );

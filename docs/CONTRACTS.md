@@ -15,7 +15,7 @@ A required variable has no default — the package errors at startup if it's not
 | `DIGITAL_ME_WIKI_DIR` | no | `$DIGITAL_ME_WIKI_ROOT/wiki` (or `$DIGITAL_ME_HOME/wiki`) | data repo | contracts-layer derived value |
 | `DREAM_CYCLE_HOME` | no | `$DIGITAL_ME_HOME/dream_cycle` | data repo | `services/dream-cycle` |
 | `DREAM_CYCLE_VENV` | no | `$DREAM_CYCLE_HOME/.venv` | data repo | `services/dream-cycle` |
-| `OPENCLAW_HOME` | no | `~/.openclaw` | openclaw | `plugins/brain-orchestrator`, `services/dashboard` |
+| `OPENCLAW_HOME` | no | `~/.openclaw` | openclaw | `plugins/brain-orchestrator`, `services/dashboard`, legacy fallbacks in every brain.db / env-file reader. Installers no longer write it into client registrations (Claude Code, Codex, Hermes): readers default it, and a re-install removes one an earlier version wrote. |
 | `OPENCLAW_DATA_DIR` | no | `$OPENCLAW_HOME/data` | openclaw | `plugins/brain-orchestrator`, `services/dashboard` |
 | `OPENCLAW_GATEWAY_HOST` | no | `127.0.0.1` | openclaw | `transport/brain-mcp-proxy` |
 | `OPENCLAW_GATEWAY_PORT` | no | `18789` | openclaw | `transport/brain-mcp-proxy` |

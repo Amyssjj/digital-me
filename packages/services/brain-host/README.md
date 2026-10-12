@@ -17,8 +17,13 @@ of the gateway.
 **Single-ticker rule.** The scheduler tick is OFF by default
 (`DIGITAL_ME_BRAIN_SCHEDULER=on` enables it). Exactly one process may tick a
 brain.db; while the openclaw `digital-me-brain` plugin still ticks, leave this
-off or schedules double-fire. Dispatch in Phase 2 is exec-only: `spawn` tasks
-are left `ready` and logged, never failed.
+off or schedules double-fire. `digital-me doctor` checks it live (row
+`scheduler: single ticker`): brain-host's side from `/health`
+`orchestrator.scheduler`, the gateway's from the tick decision its plugin logs
+at load (`scheduler tick DISABLED` follows `registered N tools` only when it
+will not tick) plus a probe of the gateway's `/health`. FAIL when both tick or
+neither does; WARN when either side cannot be read. Dispatch in Phase 2 is
+exec-only: `spawn` tasks are left `ready` and logged, never failed.
 
 **Spawn-step schedules.** Because dispatch is exec-only, an *enabled* schedule
 whose workflow has a `spawn` step can never complete here: its run sits `ready`
