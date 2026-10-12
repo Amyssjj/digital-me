@@ -1110,7 +1110,9 @@ describe("runBrainHostLiveChecks (runbook 7.4)", () => {
       expect(off.ok).toBe(false);
       if (!off.ok) {
         expect(off.reason).toContain("NO scheduler ticks");
-        expect(off.reason).toContain("DIGITAL_ME_BRAIN_SCHEDULER=on digital-me install --runtime brain-host");
+        expect(off.reason).toContain("digital-me install --runtime brain-host");
+        expect(off.reason).toContain("unset it first");
+        expect(off.reason).not.toContain("DIGITAL_ME_BRAIN_SCHEDULER=on");
       }
       expect(rows(healthy(null), { state: "absent" }).tick).toMatchObject({ ok: false, reason: expect.stringContaining("brain-host hosts no orchestrator") });
     });
@@ -1118,6 +1120,10 @@ describe("runBrainHostLiveChecks (runbook 7.4)", () => {
     it("WARN when only the legacy gateway ticks (one ticker, but the wrong one)", () => {
       const legacy = rows(healthy({ brainDb: CANON, scheduler: "off" }), TICKING).tick;
       expect(legacy).toMatchObject({ ok: true, warn: true, note: expect.stringContaining("one ticker, but the legacy one") });
+      if (legacy.ok) {
+        expect(legacy.note).toContain("set plugins.entries.digital-me-brain.config.scheduler=false");
+        expect(legacy.note).toContain("then `digital-me install --runtime brain-host`");
+      }
     });
 
     it("WARN — never FAIL — when either side cannot be read", () => {

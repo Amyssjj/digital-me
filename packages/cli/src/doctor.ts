@@ -31,6 +31,11 @@ import path from "node:path";
 import JSON5 from "json5";
 import { brainDataDirOf, openclawHomeOf, resolveEnvFilePath } from "@digital-me/contracts";
 import type { BrainHostHealth, OpenclawGatewayEvidence } from "./brain-host-live.js";
+import {
+  DISABLE_GATEWAY_TICK_COMMAND,
+  INSTALL_BRAIN_HOST_COMMAND,
+  foldOpenclawGatewayEvidence,
+} from "./brain-host-scheduler.js";
 import { HOOK_NAMES as CLAUDE_HOOK_FILES } from "@digital-me/runtime-claude-code";
 import {
   HOOK_NAMES as CODEX_HOOK_FILES,
@@ -716,36 +721,48 @@ function brainHostTick(h: BrainHostHealth): TickSide {
   return { state: "on", detail: `brain-host ticks (scheduler=on${ticks}${failed})` };
 }
 
+/** Doctor wording for a load decision. The on/off fold itself is shared with install. */
+function gatewayLoadDetail(g: Extract<OpenclawGatewayEvidence, { readonly state: "ticking" | "disabled" }>): string {
+  const at = g.decision.at ? ` at ${g.decision.at}` : "";
+  if (g.state === "disabled") {
+    return `the gateway's digital-me-brain plugin logged 'scheduler tick DISABLED' at its last load${at} (${g.decision.logPath})`;
+  }
+  return `the gateway's digital-me-brain plugin enabled its tick at its last load${at} (${g.decision.logPath}: no 'scheduler tick DISABLED' followed; ${g.liveness})`;
+}
+
+/**
+ * Doctor wording for one gateway probe. Whether the gateway counts as
+ * ticking comes from {@link foldOpenclawGatewayEvidence} — the same fold
+ * install uses — so a ticking decision from a gateway that did not answer
+ * just now is unconfirmed here too.
+ */
 function gatewayTick(g: OpenclawGatewayEvidence | undefined): TickSide {
-  if (g === undefined) return { state: "unknown", detail: "the openclaw gateway was not inspected" };
-  switch (g.state) {
+  const view = foldOpenclawGatewayEvidence(g);
+  switch (view.kind) {
     case "absent":
       return { state: "off", detail: "no digital-me-brain plugin installed in openclaw" };
     case "not-running":
-      return { state: "off", detail: `openclaw gateway not running (${g.url}: ${g.reason})` };
+      return { state: "off", detail: `openclaw gateway not running (${view.detail})` };
     case "disabled":
-    case "ticking": {
-      const at = g.decision.at ? ` at ${g.decision.at}` : "";
-      if (g.state === "disabled") {
-        return {
-          state: "off",
-          detail: `the gateway's digital-me-brain plugin logged 'scheduler tick DISABLED' at its last load${at} (${g.decision.logPath})`,
-        };
+      return {
+        state: "off",
+        detail: gatewayLoadDetail(g as Extract<OpenclawGatewayEvidence, { readonly state: "disabled" }>),
+      };
+    case "ticking":
+      return {
+        state: "on",
+        detail: gatewayLoadDetail(g as Extract<OpenclawGatewayEvidence, { readonly state: "ticking" }>),
+      };
+    case "unconfirmed":
+      // A logged tick from a gateway that did not answer just now stays the
+      // "enabled" sentence, but the fold says unconfirmed so this row WARNs.
+      if (g?.state === "ticking") return { state: "unknown", detail: gatewayLoadDetail(g) };
+      if (g?.state === "unknown") {
+        return { state: "unknown", detail: `openclaw gateway tick decision unreadable: ${view.detail}` };
       }
-      const enabled = `the gateway's digital-me-brain plugin enabled its tick at its last load${at} (${g.decision.logPath}: no 'scheduler tick DISABLED' followed; ${g.liveness})`;
-      // A decision from a gateway that did not answer just now is unconfirmed:
-      // it may have stopped since that load (or be wedged and not ticking).
-      return g.answering ? { state: "on", detail: enabled } : { state: "unknown", detail: enabled };
-    }
-    case "unknown":
-      return { state: "unknown", detail: `openclaw gateway tick decision unreadable: ${g.reason}` };
+      return { state: "unknown", detail: view.detail };
   }
 }
-
-const DISABLE_GATEWAY_TICK =
-  "set plugins.entries.digital-me-brain.config.scheduler=false in openclaw.json (or DIGITAL_ME_OPENCLAW_SCHEDULER=off in the gateway's environment) and restart the gateway";
-const ENABLE_BRAIN_HOST_TICK =
-  "DIGITAL_ME_BRAIN_SCHEDULER=on digital-me install --runtime brain-host";
 
 /**
  * Exactly one process may tick a brain.db, or schedules double-fire — and
@@ -768,7 +785,7 @@ function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvi
       return {
         ok: false,
         label,
-        reason: `TWO schedulers tick: ${both}. Keep brain-host's: ${DISABLE_GATEWAY_TICK}.`,
+        reason: `TWO schedulers tick: ${both}. Keep brain-host's: ${DISABLE_GATEWAY_TICK_COMMAND}.`,
       };
     }
     return { ok: true, warn: true, label, note: `cannot rule out a second ticker — ${both}.` };
@@ -779,8 +796,8 @@ function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvi
       warn: true,
       label,
       note:
-        `one ticker, but the legacy one — ${both}. To move the tick to brain-host: ` +
-        `${ENABLE_BRAIN_HOST_TICK}, then ${DISABLE_GATEWAY_TICK}.`,
+        `one ticker, but the legacy one — ${both}. To move the tick to brain-host without starting a second timer: ` +
+        `${DISABLE_GATEWAY_TICK_COMMAND}, then \`${INSTALL_BRAIN_HOST_COMMAND}\`.`,
     };
   }
   if (gateway.state === "off") {
@@ -789,7 +806,8 @@ function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvi
       label,
       reason:
         `NO scheduler ticks, so nothing scheduled (dream-cycle, digest, sweeps) ever runs — ${both}. ` +
-        `Run: ${ENABLE_BRAIN_HOST_TICK}.`,
+        `Run \`${INSTALL_BRAIN_HOST_COMMAND}\` — brain-host is the default ticker, and that install turns it on unless the gateway is confirmed ticking. ` +
+        `If DIGITAL_ME_BRAIN_SCHEDULER=off is set, unset it first (that opt-out wins).`,
     };
   }
   return {
