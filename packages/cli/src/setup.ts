@@ -85,6 +85,8 @@ export type AliasStanza = {
   readonly env?: Readonly<Record<string, string>>;
   readonly timeoutMs?: number;
   readonly finalMessageArg?: string;
+  /** Alias to run when this one exits non-zero (see CliAliasConfig.fallback). */
+  readonly fallback?: string;
 };
 
 export type AliasMap = Readonly<Record<string, AliasStanza>>;
@@ -136,6 +138,9 @@ export function buildDefaultAliases(runtimes: readonly DetectedRuntime[]): Alias
         `mcp_servers.${BRAIN_MCP_SERVER_NAME}.tools.memory_search.approval_mode="approve"`,
         "-c",
         `mcp_servers.${BRAIN_MCP_SERVER_NAME}.tools.traces_record.approval_mode="approve"`,
+        // tasks carries the handoff — without it a headless run can't deliver.
+        "-c",
+        `mcp_servers.${BRAIN_MCP_SERVER_NAME}.tools.tasks.approval_mode="approve"`,
         "--sandbox",
         "workspace-write",
         "--ask-for-approval",
@@ -149,6 +154,11 @@ export function buildDefaultAliases(runtimes: readonly DetectedRuntime[]): Alias
       timeoutMs: 1_800_000,
       finalMessageArg: "--output-last-message",
     };
+  }
+  // Two independent logins: when claude's lapses (it did four times in 2026),
+  // the same task runs on codex instead of failing.
+  if (out["claude-code-cli"] && out["codex-cli"]) {
+    out["claude-code-cli"] = { ...out["claude-code-cli"], fallback: "codex-cli" };
   }
   return out;
 }
@@ -242,6 +252,9 @@ export function renderStarterConfig(opts: {
       }
       if (alias.finalMessageArg !== undefined) {
         lines.push(`    finalMessageArg: ${JSON.stringify(alias.finalMessageArg)}`);
+      }
+      if (alias.fallback !== undefined) {
+        lines.push(`    fallback: ${JSON.stringify(alias.fallback)}`);
       }
     }
     lines.push("");

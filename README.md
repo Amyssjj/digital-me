@@ -208,6 +208,8 @@ Then a workflow step like:
 
 …gets materialized at task-creation time by [`@digital-me/runtime-openclaw`](packages/runtimes/openclaw)'s alias resolver, which wraps it in a `cli-exec-worker.mjs` invocation that handles prompt rendering, handoff capture, and verify gating. `digital-me setup` auto-populates `cli_exec_aliases` for whichever CLIs it detects — third-party CLIs are added by hand.
 
+An alias can name a `fallback` alias, or a list of them. If the CLI exits non-zero or can't be started (for example, `claude` after its login expires), the same task runs on the fallback, within whatever time the task has left. A timeout never triggers a fallback. When setup detects both claude and codex, it sets `fallback: codex-cli` on the claude alias.
+
 ## Architecture at a glance
 
 Five package roles, each with one clear job:
