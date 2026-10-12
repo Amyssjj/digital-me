@@ -15,12 +15,22 @@ from typing import Any
 import pytest
 
 from dream_cycle.brain_client import (
+    BRAIN_HOST_DEFAULT_PORT,
     BrainClient,
     BrainClientError,
     DEFAULT_PORT,
     GatewayEndpoint,
     load_gateway,
 )
+
+
+@pytest.fixture(autouse=True)
+def _isolate_home(monkeypatch: pytest.MonkeyPatch, tmp_path_factory: pytest.TempPathFactory) -> None:
+    """`load_gateway(env={...})` without HOME or DIGITAL_ME_WIKI_ROOT resolves the
+    brain-host token file through Path.home(). On a host with brain-host
+    installed that is a live token, which would silently route the openclaw-rung
+    tests to brain-host. Point HOME at an empty dir; tests that need it set it."""
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("isolated-home")))
 
 
 # ── load_gateway: arg → env → file resolution ─────────────────────────────
@@ -300,6 +310,141 @@ def test_load_gateway_blank_brain_url_falls_through_to_openclaw(tmp_path: Path) 
     )
     assert gw.token == "file-tok"
     assert gw.url == f"http://localhost:{DEFAULT_PORT}/tools/invoke"
+
+
+# ── load_gateway: brain-host service detected by its default token file ──────
+
+
+def test_load_gateway_brain_host_service_from_default_token_file(tmp_path: Path) -> None:
+    """No DIGITAL_ME_BRAIN_URL, but <wiki-root>/.data/brain-host.token holds a
+    token → the brain-host service default, ahead of every openclaw rung —
+    mirrors cli/src/brain-host-service.ts `resolveBrainCallerEnv`."""
+    (tmp_path / "openclaw.json").write_text(
+        json.dumps({"gateway": {"port": 19000, "auth": {"token": "file-tok"}}})
+    )
+    _write_token(tmp_path / "wiki-root" / ".data" / "brain-host.token", "  svc-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path / "wiki-root"),
+            "OPENCLAW_GATEWAY_HOST": "10.0.0.1",
+            "OPENCLAW_GATEWAY_PORT": "20000",
+            "OPENCLAW_GATEWAY_TOKEN": "env-tok",
+        },
+        openclaw_home=tmp_path,
+    )
+    assert (gw.host, gw.port, gw.token) == ("127.0.0.1", BRAIN_HOST_DEFAULT_PORT, "svc-secret")
+    assert gw.url == "http://127.0.0.1:18791/tools/invoke"
+
+
+def test_load_gateway_brain_host_service_token_file_under_home(tmp_path: Path) -> None:
+    """Without DIGITAL_ME_WIKI_ROOT the token file is $HOME/digital-me/.data/brain-host.token,
+    and a corrupt openclaw.json is never read once it is found."""
+    (tmp_path / "openclaw.json").write_text("{ this is not json")
+    _write_token(tmp_path / "digital-me" / ".data" / "brain-host.token", "home-secret\n")
+    gw = load_gateway(env={"HOME": str(tmp_path)}, openclaw_home=tmp_path)
+    assert (gw.url, gw.token) == ("http://127.0.0.1:18791/tools/invoke", "home-secret")
+
+
+def test_load_gateway_brain_host_service_host_port_overrides(tmp_path: Path) -> None:
+    _write_token(tmp_path / ".data" / "brain-host.token", "svc-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path),
+            "DIGITAL_ME_BRAIN_HOST": "100.64.0.7",
+            "DIGITAL_ME_BRAIN_PORT": " 9000 ",
+        },
+        openclaw_home=tmp_path,
+    )
+    assert (gw.host, gw.port) == ("100.64.0.7", 9000)
+    assert gw.url == "http://100.64.0.7:9000/tools/invoke"
+
+
+@pytest.mark.parametrize("bad_port", ["", "nope", "0", "-5"])
+def test_load_gateway_brain_host_service_bad_port_uses_default(
+    tmp_path: Path, bad_port: str
+) -> None:
+    """Blank host / unusable port fall back to the defaults the service unit
+    writer applies (it writes the default port into the unit in that case)."""
+    _write_token(tmp_path / ".data" / "brain-host.token", "svc-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path),
+            "DIGITAL_ME_BRAIN_HOST": "  ",
+            "DIGITAL_ME_BRAIN_PORT": bad_port,
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.url == "http://127.0.0.1:18791/tools/invoke"
+
+
+@pytest.mark.parametrize("contents", [None, "", "   \n\n"])
+def test_load_gateway_brain_host_service_missing_or_empty_token_falls_through(
+    tmp_path: Path, contents: str | None
+) -> None:
+    """A missing, empty or whitespace-only default token file is "brain-host not
+    installed" — not an error: the openclaw rungs run as before."""
+    (tmp_path / "openclaw.json").write_text(
+        json.dumps({"gateway": {"auth": {"token": "file-tok"}}})
+    )
+    if contents is not None:
+        _write_token(tmp_path / ".data" / "brain-host.token", contents)
+    gw = load_gateway(
+        env={"DIGITAL_ME_WIKI_ROOT": str(tmp_path), "DIGITAL_ME_BRAIN_PORT": "9000"},
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "file-tok"
+    assert gw.url == f"http://localhost:{DEFAULT_PORT}/tools/invoke"
+
+
+def test_load_gateway_brain_host_service_ignores_token_file_env(tmp_path: Path) -> None:
+    """Detection keys on the DEFAULT token file only, like resolveBrainCallerEnv:
+    DIGITAL_ME_BRAIN_TOKEN / _TOKEN_FILE without a URL do not select brain-host."""
+    (tmp_path / "openclaw.json").write_text(
+        json.dumps({"gateway": {"auth": {"token": "file-tok"}}})
+    )
+    explicit = _write_token(tmp_path / "custom.token", "explicit-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path / "wiki-root"),
+            "DIGITAL_ME_BRAIN_TOKEN": "env-secret",
+            "DIGITAL_ME_BRAIN_TOKEN_FILE": str(explicit),
+        },
+        openclaw_home=tmp_path,
+    )
+    assert gw.token == "file-tok"
+
+
+def test_load_gateway_explicit_brain_url_beats_brain_host_service(tmp_path: Path) -> None:
+    """An explicit DIGITAL_ME_BRAIN_URL still wins over the detected service, and
+    DIGITAL_ME_BRAIN_HOST/PORT do not rewrite it."""
+    _write_token(tmp_path / ".data" / "brain-host.token", "svc-secret\n")
+    gw = load_gateway(
+        env={
+            "DIGITAL_ME_BRAIN_URL": "https://brain.example/tools/invoke",
+            "DIGITAL_ME_WIKI_ROOT": str(tmp_path),
+            "DIGITAL_ME_BRAIN_HOST": "100.64.0.7",
+            "DIGITAL_ME_BRAIN_PORT": "9000",
+        },
+        openclaw_home=tmp_path,
+    )
+    assert (gw.url, gw.token) == ("https://brain.example/tools/invoke", "svc-secret")
+
+
+def test_load_gateway_explicit_brain_url_without_token_still_errors(tmp_path: Path) -> None:
+    """The service rung never rescues a URL whose token cannot be resolved: an
+    explicit DIGITAL_ME_BRAIN_TOKEN_FILE that is blank is a hard error even when
+    the default token file (which detection would use) is populated."""
+    _write_token(tmp_path / ".data" / "brain-host.token", "svc-secret\n")
+    blank = _write_token(tmp_path / "blank.token", "")
+    with pytest.raises(BrainClientError, match="no token was found"):
+        load_gateway(
+            env={
+                "DIGITAL_ME_BRAIN_URL": BRAIN_URL,
+                "DIGITAL_ME_BRAIN_TOKEN_FILE": str(blank),
+                "DIGITAL_ME_WIKI_ROOT": str(tmp_path),
+            },
+            openclaw_home=tmp_path,
+        )
 
 
 def test_load_gateway_token_error_mentions_brain_host(tmp_path: Path) -> None:
