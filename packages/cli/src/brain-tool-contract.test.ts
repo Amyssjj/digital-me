@@ -182,7 +182,7 @@ describe("default cli_exec_aliases grant brain tools under the registered server
   function claudeBrainGrants(): string[] {
     const args = aliases["claude-code-cli"]!.args;
     const value = args[args.indexOf("--allowedTools") + 1]!;
-    const mcp = value.split(/[\s,]+/).filter((t) => t.startsWith("mcp__"));
+    const mcp = value.split(/[\s,]+/).filter((t) => /^mcp_/.test(t));
     for (const t of mcp) expect(t.startsWith(claudePrefix), `${t} names another server`).toBe(true);
     return mcp.map((t) => t.slice(claudePrefix.length));
   }
@@ -214,8 +214,8 @@ describe("default cli_exec_aliases grant brain tools under the registered server
   });
 
   it("every brain tool the worker's default prompt asks for is granted", () => {
-    // Run the real worker with /bin/echo as the CLI: it prints the rendered
-    // default prompt, which includes the completion marker, so the run passes.
+    // Run the real worker with node as the CLI: it prints the rendered default
+    // prompt, which includes the completion marker, so the run passes.
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "brain-tool-contract-"));
     try {
       const artifactDir = path.join(dir, "artifacts");
@@ -231,8 +231,8 @@ describe("default cli_exec_aliases grant brain tools under the registered server
           cwd: dir,
           artifactDir,
           timeoutMs: 30_000,
-          binary: "/bin/echo",
-          args: ["{{prompt}}"],
+          binary: process.execPath,
+          args: ["-e", "console.log(process.argv[1])", "{{prompt}}"],
           env: {},
         }),
       );
@@ -241,7 +241,9 @@ describe("default cli_exec_aliases grant brain tools under the registered server
       const prompt = fs.readFileSync(path.join(artifactDir, "final-message.txt"), "utf8");
 
       expect(prompt).toContain(`Use the ${BRAIN_MCP_SERVER_NAME} MCP server.`);
-      const asked = [...served].filter((tool) => new RegExp(`\\b${tool}\\b`).test(prompt));
+      // A tool counts as asked for when the prompt calls it (`tasks.handoff`,
+      // `memory_search with …`), not whenever its name appears as an English word.
+      const asked = [...served].filter((tool) => new RegExp(`\\b${tool}(?:\\.\\w+| with\\b)`).test(prompt));
       expect(asked).toEqual(expect.arrayContaining(["tasks", "memory_search"]));
       expect(claudeBrainGrants()).toEqual(expect.arrayContaining(asked));
     } finally {
