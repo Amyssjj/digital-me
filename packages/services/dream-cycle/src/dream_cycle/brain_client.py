@@ -1,4 +1,5 @@
-"""HTTP client for the openclaw brain gateway.
+"""HTTP client for the brain's /tools/invoke endpoint (brain-host, or the
+legacy openclaw gateway).
 
 Lets dream_cycle (Python) instantiate workflows + poll their status without
 ever talking to an LLM directly. Mirrors what `@digital-me/brain-mcp-proxy`
@@ -15,8 +16,10 @@ Two reasons we shell out via HTTP rather than via the MCP stdio proxy:
 2. **No new dependencies.** urllib + json are stdlib. The MCP client lib
    would add a dep and a subprocess.
 
-Brain endpoint discovery mirrors `packages/transport/brain-mcp-proxy/src/config.ts`
-(and the claude-code hooks `dm_memory_search_inject.sh` / `dm_m1_emit.py`):
+Brain endpoint discovery. Rungs 1 and 3 mirror
+`packages/transport/brain-mcp-proxy/src/config.ts` (and the claude-code hooks
+`dm_memory_search_inject.sh` / `dm_m1_emit.py`); rung 2 mirrors the CLI
+installer:
 
   1. $DIGITAL_ME_BRAIN_URL — the digital-me brain-host. Its bearer token is
      $DIGITAL_ME_BRAIN_TOKEN when non-empty, else the trimmed contents of
@@ -28,7 +31,18 @@ Brain endpoint discovery mirrors `packages/transport/brain-mcp-proxy/src/config.
      verbatim as the /tools/invoke endpoint and ~/.openclaw is never read on
      this path.
 
-  2. Otherwise the openclaw gateway:
+  2. Otherwise the always-on brain-host service, when its default token file
+     (same path as above) exists and is non-empty. Endpoint
+     `http://<host>:<port>/tools/invoke` with host $DIGITAL_ME_BRAIN_HOST
+     (default 127.0.0.1) and port $DIGITAL_ME_BRAIN_PORT (default 18791; a
+     non-positive or non-integer value falls back to it) — the values
+     `digital-me install --runtime brain-host` writes into the service unit.
+     Mirrors `resolveBrainCallerEnv` in packages/cli/src/brain-host-service.ts,
+     so a bare `python -m dream_cycle.install_workflows` reaches the same
+     brain-host the CLI installer does. An empty or unreadable token file
+     falls through to the openclaw gateway.
+
+  3. Otherwise the openclaw gateway:
      Token:  $OPENCLAW_GATEWAY_TOKEN  →  ~/.openclaw/openclaw.json:gateway.auth.token
                                      →  ~/.openclaw/openclaw.json:gateway.auth.password
      Port:   $OPENCLAW_GATEWAY_PORT   →  ~/.openclaw/openclaw.json:gateway.port  →  18789
@@ -54,6 +68,8 @@ from typing import Any, Optional
 
 DEFAULT_HOST = "localhost"
 DEFAULT_PORT = 18789
+BRAIN_HOST_DEFAULT_HOST = "127.0.0.1"
+BRAIN_HOST_DEFAULT_PORT = 18791
 DEFAULT_TIMEOUT_S = 30.0
 TERMINAL_GOAL_STATUSES = frozenset({"completed", "failed", "cancelled"})
 
@@ -109,14 +125,40 @@ def _read_brain_token_file(path: Path) -> str:
         return ""
 
 
+def _brain_host_service_endpoint(env_: dict[str, str]) -> Optional[GatewayEndpoint]:
+    """The always-on brain-host service, when its default token file holds a
+    token; None otherwise. Host/port parsing matches the service-unit writer
+    (brain-host-service.ts `resolveBrainHostServiceConfig`): a bad port there
+    is written to the unit as the default, so the default is where it listens."""
+    token = _read_brain_token_file(_default_brain_token_file(env_))
+    if not token:
+        return None
+    host = (env_.get("DIGITAL_ME_BRAIN_HOST") or "").strip() or BRAIN_HOST_DEFAULT_HOST
+    try:
+        port = int((env_.get("DIGITAL_ME_BRAIN_PORT") or "").strip())
+    except ValueError:
+        port = 0
+    if port <= 0:
+        port = BRAIN_HOST_DEFAULT_PORT
+    return GatewayEndpoint(host=host, port=port, token=token)
+
+
 def load_gateway(
     env: Optional[dict[str, str]] = None,
     openclaw_home: Optional[Path] = None,
+    wiki_root: Optional[Path] = None,
 ) -> GatewayEndpoint:
     """Resolve the brain endpoint: DIGITAL_ME_BRAIN_URL (brain-host; token from
     DIGITAL_ME_BRAIN_TOKEN, else DIGITAL_ME_BRAIN_TOKEN_FILE, else the default
-    token file) > OPENCLAW_GATEWAY_* env > openclaw.json > defaults."""
+    token file) > the brain-host service when the default token file is
+    non-empty > OPENCLAW_GATEWAY_* env > openclaw.json > defaults.
+
+    `wiki_root` (a caller's resolved --wiki-root) overrides DIGITAL_ME_WIKI_ROOT
+    for the default token file, as the CLI's `brainChildEnv` does for the
+    installers it spawns."""
     env_ = dict(os.environ if env is None else env)
+    if wiki_root is not None:
+        env_["DIGITAL_ME_WIKI_ROOT"] = str(wiki_root)
 
     # digital-me brain-host takes precedence over the openclaw gateway when it
     # is configured. Resolved BEFORE touching ~/.openclaw so a missing or
@@ -135,7 +177,7 @@ def load_gateway(
                 "DIGITAL_ME_BRAIN_URL is set but no token was found — set "
                 "DIGITAL_ME_BRAIN_TOKEN, or point DIGITAL_ME_BRAIN_TOKEN_FILE at a "
                 f"readable token file (looked in {token_file}), or unset the URL "
-                "to fall back to the openclaw gateway"
+                "to fall back to the brain-host service / openclaw gateway lookup"
             )
         parts = urllib.parse.urlsplit(brain_url)
         if parts.scheme not in ("http", "https") or not parts.hostname:
@@ -152,6 +194,12 @@ def load_gateway(
         return GatewayEndpoint(
             host=parts.hostname, port=port, token=brain_token, invoke_url=brain_url
         )
+
+    # No explicit URL: the installed brain-host service, detected by its
+    # default token file — still before ~/.openclaw is touched.
+    service = _brain_host_service_endpoint(env_)
+    if service is not None:
+        return service
 
     openclaw_home = openclaw_home or Path(env_.get("OPENCLAW_HOME") or (Path.home() / ".openclaw"))
     file_shape = _read_openclaw_file(openclaw_home)
@@ -221,8 +269,9 @@ class BrainClient:
         gateway: Optional[GatewayEndpoint] = None,
         fetcher: Optional[Fetcher] = None,
         timeout_s: float = DEFAULT_TIMEOUT_S,
+        wiki_root: Optional[Path] = None,
     ):
-        self.gateway = gateway or load_gateway()
+        self.gateway = gateway or load_gateway(wiki_root=wiki_root)
         self.fetcher = fetcher or _urllib_fetcher
         self.timeout_s = timeout_s
 

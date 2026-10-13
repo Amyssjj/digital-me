@@ -529,3 +529,49 @@ def test_main_still_fails_when_only_one_agent_id_given(
     rc = main(["--wiki-root", str(tmp_path), "--classifier-agent-id", "my-worker"])
     assert rc == 4
     assert "no CLI worker alias configured" in capsys.readouterr().err
+
+
+# ── --wiki-root reaches the brain client's token-file lookup ─────────────────
+
+
+def test_install_workflows_default_client_is_scoped_to_wiki_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No injected client → BrainClient(wiki_root=...), so the brain-host token
+    file is looked up under the caller's wiki root, not only $DIGITAL_ME_WIKI_ROOT."""
+    import dream_cycle.install_workflows as iw
+
+    seen: dict[str, object] = {}
+
+    def fake_client(**kwargs: object) -> object:
+        seen.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(iw, "BrainClient", fake_client)
+    assert install_workflows([], vars={}, wiki_root=tmp_path) == []
+    assert seen == {"wiki_root": tmp_path}
+
+
+def test_main_passes_resolved_wiki_root_to_install_workflows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import dream_cycle.install_workflows as iw
+
+    wf_dir = tmp_path / "workflows"
+    wf_dir.mkdir()
+    (wf_dir / "wf.json").write_text("{}", encoding="utf-8")
+    seen: dict[str, object] = {}
+
+    def fake_install(paths: object, vars: object, **kwargs: object) -> list:
+        seen.update(kwargs)
+        return []
+
+    monkeypatch.setattr(iw, "install_workflows", fake_install)
+    rc = main([
+        "--wiki-root", str(tmp_path),
+        "--classifier-agent-id", "w",
+        "--compiler-agent-id", "w",
+        "--workflows-dir", str(wf_dir),
+    ])
+    assert rc == 0
+    assert seen == {"wiki_root": tmp_path.resolve()}
