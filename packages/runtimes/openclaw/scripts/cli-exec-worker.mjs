@@ -22,7 +22,7 @@
  *     "artifactDir":      "/abs/path/.../task-artifacts/<goalId>/<taskId>",
  *     "timeoutMs":        1800000,
  *     "binary":           "claude",
- *     "args":             ["-p", "--allowedTools", "Bash,Read,Write", "{{prompt}}"],
+ *     "args":             ["-p", "{{prompt}}", "--allowedTools", "mcp__digital-me-brain__tasks,Read"],
  *     "env":              { "OPENCLAW_AGENT_ID": "claude-code" },
  *     "prompt_template":  "You are {{alias}} launched by digital-me. Task: {{task}}",
  *     "final_message_arg":  "--output-last-message" | null,
