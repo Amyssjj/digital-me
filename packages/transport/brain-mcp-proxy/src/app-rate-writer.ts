@@ -4,7 +4,8 @@
  * Records per-agent (surfaced, accessed) wiki-path sets observed at the
  * MCP-proxy chokepoint, then flushes JSONL records to the runtime-scoped
  * log file the dashboard intake reads from
- * (~/.openclaw/data/application_rate_{openclaw,hermes}.log).
+ * (`application_rate_{openclaw,hermes}.log` in the M1 dir — see
+ * `defaultAppRateLogs`).
  *
  * WHY THIS LIVES IN THE PROXY (and not in digital-me-recall):
  * The recall plugin observes turns via openclaw gateway hooks
@@ -42,7 +43,10 @@
  * paths dedup naturally.
  */
 
+import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import path from "node:path";
+import { resolveM1DirPath } from "@digital-me/contracts";
 import type { CallToolResult } from "./gateway.js";
 
 // ESM contexts don't have a `require` binding — createRequire bridges to
@@ -386,6 +390,25 @@ function realFs(): AppRateFs {
 }
 
 // ─── default agent → log path policy ──────────────────────────────────────
+
+/**
+ * The openclaw + hermes app-rate logs, in the M1 telemetry dir
+ * (`@digital-me/contracts` `resolveM1DirPath`: `$DIGITAL_ME_M1_DIR` →
+ * `<wiki-root>/.data/m1` → the legacy `~/.openclaw/data` while only that
+ * exists). Called per flush, not once at startup, so a long-lived proxy
+ * follows the canonical dir as soon as it is created.
+ */
+export function defaultAppRateLogs(
+  home: string,
+  env: Readonly<Record<string, string | undefined>> = process.env,
+  exists: (p: string) => boolean = existsSync,
+): { openclawLog: string; hermesLog: string } {
+  const dir = resolveM1DirPath({ env, home, exists }).path;
+  return {
+    openclawLog: path.join(dir, "application_rate_openclaw.log"),
+    hermesLog: path.join(dir, "application_rate_hermes.log"),
+  };
+}
 
 /**
  * Default policy: write hermes-* agents to the hermes log, claude-code

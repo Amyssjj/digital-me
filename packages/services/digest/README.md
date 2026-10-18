@@ -39,6 +39,11 @@ This package pins that seam:
    renders deterministically from the staged data (no LLM); if even that is
    empty it posts a minimal "nothing to report" card. The digest is **never**
    silently dropped — only a real infra failure (Discord post) fails the step.
+   When the summarizer failed because the `claude` CLI login expired, the
+   fallback digest opens with a warning saying to run `claude` and `/login`.
+   That failure doesn't recover on its own, and the fallback otherwise looks
+   normal. If a fallback alias (e.g. `codex-cli`) did the summarizing instead,
+   the digest is the agent's, and the warning says which CLI wrote it.
 
 ## Configuration (nothing personal is baked into source)
 
@@ -112,7 +117,7 @@ workflow + a 7:00am schedule with the brain — no manual `workflow_import`.
 ## Usage
 
 ```bash
-python -m digest.daily_digest --stage   /tmp/daily-digest-staging.json
-python -m digest.daily_digest --publish /tmp/daily-digest-staging.json --dry-run
-python -m digest.daily_digest --publish /tmp/daily-digest-staging.json
+python -m digest.daily_digest --stage   ~/digital-me/.data/staging/daily-digest-staging.json
+python -m digest.daily_digest --publish ~/digital-me/.data/staging/daily-digest-staging.json --dry-run
+python -m digest.daily_digest --publish ~/digital-me/.data/staging/daily-digest-staging.json
 ```

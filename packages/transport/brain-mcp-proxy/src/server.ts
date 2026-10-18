@@ -26,6 +26,7 @@ import {
 } from "./trace-writer.js";
 import {
   createAppRateWriter,
+  defaultAppRateLogs,
   defaultLogPathForAgent,
 } from "./app-rate-writer.js";
 
@@ -92,21 +93,9 @@ export async function main(): Promise<void> {
   // log files the dashboard intake reads. Self-contained fallback for the
   // openclaw + hermes runtimes where gateway-hook dispatch is unreliable.
   // See wiki: infrastructure/m1-application-rate-openclaw-hermes-hook-lifecycle.md
-  const openclawLog = path.join(
-    homedir(),
-    ".openclaw",
-    "data",
-    "application_rate_openclaw.log",
-  );
-  const hermesLog = path.join(
-    homedir(),
-    ".openclaw",
-    "data",
-    "application_rate_hermes.log",
-  );
   const appRateWriter = createAppRateWriter({
     logPathForAgent: (agentId) =>
-      defaultLogPathForAgent(agentId, { openclawLog, hermesLog }),
+      defaultLogPathForAgent(agentId, defaultAppRateLogs(homedir())),
     warn: emitStderr,
   });
   appRateShutdownHook = () => appRateWriter.shutdown();

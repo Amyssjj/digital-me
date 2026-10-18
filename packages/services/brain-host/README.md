@@ -14,11 +14,22 @@ tick runs here when enabled. That makes the tool surface identical to what
 `brain-mcp-proxy` advertises, so the proxy can be pointed at brain-host instead
 of the gateway.
 
-**Single-ticker rule.** The scheduler tick is OFF by default
-(`DIGITAL_ME_BRAIN_SCHEDULER=on` enables it). Exactly one process may tick a
-brain.db; while the openclaw `digital-me-brain` plugin still ticks, leave this
-off or schedules double-fire. Dispatch in Phase 2 is exec-only: `spawn` tasks
-are left `ready` and logged, never failed.
+**Single-ticker rule.** The process leaves the scheduler tick OFF unless
+`DIGITAL_ME_BRAIN_SCHEDULER=on` (the service unit sets this). Exactly one
+process may tick a brain.db. `digital-me install --runtime brain-host` writes
+`on` into the unit by default, including when openclaw is installed, and
+writes `off` when the gateway is confirmed ticking or
+`DIGITAL_ME_BRAIN_SCHEDULER=off` is set — so the two timers never start
+together, and stopping the gateway never leaves zero schedulers. An explicit
+`on` while that gateway is confirmed ticking is left off, and install logs it
+with a `WARN:` prefix.
+`digital-me doctor` checks it live (row
+`scheduler: single ticker`): brain-host's side from `/health`
+`orchestrator.scheduler`, the gateway's from the tick decision its plugin logs
+at load (`scheduler tick DISABLED` follows `registered N tools` only when it
+will not tick) plus a probe of the gateway's `/health`. FAIL when both tick or
+neither does; WARN when either side cannot be read. Dispatch in Phase 2 is
+exec-only: `spawn` tasks are left `ready` and logged, never failed.
 
 **Spawn-step schedules.** Because dispatch is exec-only, an *enabled* schedule
 whose workflow has a `spawn` step can never complete here: its run sits `ready`
@@ -107,7 +118,7 @@ Environment: `DIGITAL_ME_BRAIN_DB` (default `<wiki-root>/.data/brain.db`; the le
 `<OPENCLAW_HOME or ~/.openclaw>/data/brain.db` is used while only that file exists —
 `/health` reports which as `orchestrator.brainDbSource`, and `digital-me brain-db migrate`
 moves it), `DIGITAL_ME_ENV_FILE` (provider keys; default `<wiki-root>/.data/.env`, legacy
-`~/.openclaw/.env`), `DIGITAL_ME_BRAIN_SCHEDULER` (`on`|`off`, default off),
+`~/.openclaw/.env`), `DIGITAL_ME_BRAIN_SCHEDULER` (`on`|`off`; the process defaults to off, and `digital-me install --runtime brain-host` writes `on` unless the gateway is confirmed ticking or you set `off`),
 `DIGITAL_ME_TICK_MS` (60000), `DIGITAL_ME_STALL_MS` (3600000),
 `DIGITAL_ME_WIKI_ROOT` (default `~/digital-me`),
 `DIGITAL_ME_RETRIEVAL_DB` (default `<wiki-root>/.data/retrieval.db`),

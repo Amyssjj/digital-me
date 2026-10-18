@@ -98,6 +98,18 @@ describe("buildDefaultAliases", () => {
     expect(Object.keys(a).sort()).toEqual(["claude-code-cli", "codex-cli"]);
   });
 
+  it("falls back from claude to codex only when both are detected", () => {
+    expect(buildDefaultAliases(["claude-code", "codex"])["claude-code-cli"]!.fallback).toBe("codex-cli");
+    expect(buildDefaultAliases(["claude-code"])["claude-code-cli"]!.fallback).toBeUndefined();
+    expect(buildDefaultAliases(["codex"])["codex-cli"]!.fallback).toBeUndefined();
+  });
+
+  it("lets a headless codex run call tasks, so it can hand off", () => {
+    expect(buildDefaultAliases(["codex"])["codex-cli"]!.args).toContain(
+      'mcp_servers.digital-me-brain.tools.tasks.approval_mode="approve"',
+    );
+  });
+
   it("does not emit an alias for hermes (no exec dispatch pattern yet)", () => {
     expect(buildDefaultAliases(["hermes"])).toEqual({});
   });
@@ -193,6 +205,15 @@ describe("renderStarterConfig", () => {
     expect(out).toContain("cli_exec_aliases:");
     expect(out).toContain("claude-code-cli:");
     expect(out).toContain('binary: "claude"');
+    expect(out).not.toContain("fallback:");
+  });
+
+  it("renders the fallback when both CLIs are detected", () => {
+    const out = renderStarterConfig({
+      wikiRoot: "/x",
+      aliases: buildDefaultAliases(["claude-code", "codex"]),
+    });
+    expect(out).toContain('    fallback: "codex-cli"');
   });
 
   it("renders all the alias sub-fields (env, timeoutMs, finalMessageArg)", () => {

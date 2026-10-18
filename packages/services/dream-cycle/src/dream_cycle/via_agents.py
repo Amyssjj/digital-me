@@ -198,6 +198,9 @@ def run(args: argparse.Namespace, client: Optional[BrainClient] = None) -> int:
         "dry_run": "true" if args.dry_run else "false",
         "python_path": python_path,
     })
+    # Defaults may reference the vars above (e.g. the staging paths live
+    # under `{{wiki_root}}`); resolve them before they are substituted.
+    vars = {k: _substitute_vars(v, vars) for k, v in vars.items()}
 
     # The agent steps carry no default agentId on purpose (a default would
     # resurrect the bare `claude-code` spawn agent, which has no tools and
@@ -220,7 +223,7 @@ def run(args: argparse.Namespace, client: Optional[BrainClient] = None) -> int:
     materialized = materialize_workflow(template, vars)
     template_id = args.template_id or materialized["id"]
 
-    client = client or BrainClient()
+    client = client or BrainClient(wiki_root=wiki_root)
     print(f"gateway:     {client.gateway.url}", file=sys.stderr)
     print(f"template:    {template_id}", file=sys.stderr)
     print(f"wiki_root:   {wiki_root}", file=sys.stderr)

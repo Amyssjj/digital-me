@@ -13,8 +13,8 @@ Called from `dm_memory_search_inject.sh` (UserPromptSubmit) and
 
 One script serves both runtimes; the runtime picks the defaults (see
 RUNTIME_PROFILES): the runtime/agent_id/platform labels, the WAL
-(~/.openclaw/data/m1_events_claude_code.jsonl | m1_events_codex.jsonl) and the
-once-only session_start flag prefix. It is resolved from, in order:
+(m1_events_claude_code.jsonl | m1_events_codex.jsonl in the M1 dir — see
+resolve_m1_dir) and the once-only session_start flag prefix. It is resolved from, in order:
 `--runtime <id>` on the command line, DM_RUNTIME in the environment (the
 hooks export it — see dm_hook_lib.sh), the install location (a copy under a
 `.codex/` directory is Codex), else claude-code. The brain de-dupes on
@@ -201,7 +201,28 @@ HOOK_RUNTIME = resolve_runtime(
 DEFAULT_RUNTIME = HOOK_RUNTIME
 DEFAULT_AGENT_ID = HOOK_RUNTIME
 DEFAULT_PLATFORM = HOOK_RUNTIME
-DEFAULT_WAL = HOME / ".openclaw" / "data" / RUNTIME_PROFILES[HOOK_RUNTIME]["wal"]
+
+
+def resolve_m1_dir(env: Dict[str, str], home: Path) -> Path:
+    """The M1 telemetry dir — Python twin of ``@digital-me/contracts``
+    ``resolveM1DirPath``: ``$DIGITAL_ME_M1_DIR`` → ``<wiki-root>/.data/m1``
+    when it exists → the legacy ``<OPENCLAW_HOME or ~/.openclaw>/data`` when
+    it exists → ``<wiki-root>/.data/m1``. A pre-move install keeps appending
+    to the legacy dir until the canonical one is created, so WALs never split
+    across two dirs; a machine with no openclaw never writes under it."""
+    explicit = (env.get("DIGITAL_ME_M1_DIR") or "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    canonical = Path(env.get("DIGITAL_ME_WIKI_ROOT") or home / "digital-me").expanduser() / ".data" / "m1"
+    if canonical.exists():
+        return canonical
+    legacy = Path(env.get("OPENCLAW_HOME") or home / ".openclaw").expanduser() / "data"
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
+DEFAULT_WAL = resolve_m1_dir(dict(os.environ), HOME) / RUNTIME_PROFILES[HOOK_RUNTIME]["wal"]
 
 # Once-only-per-session session_start guard. Same idea as the hermes
 # plugin's _SESSION_M1_STARTED set, but our process is a one-shot CLI —
@@ -496,6 +517,8 @@ def run_selftest() -> int:
 
     print("[selftest] brain sidecar (digital-me-brain.env)")
     _selftest_brain_sidecar()
+    print("[selftest] M1 dir resolution")
+    _selftest_m1_dir()
 
     print("[selftest] PASSED")
     return 0
@@ -678,6 +701,32 @@ def _selftest_brain_sidecar() -> None:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+
+
+def _selftest_m1_dir() -> None:
+    """Offline: $DIGITAL_ME_M1_DIR wins; the canonical <wiki-root>/.data/m1
+    beats the legacy openclaw data dir once it exists; the legacy dir is used
+    only while it alone exists; a fresh machine gets the canonical dir."""
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td)
+        canonical = home / "digital-me" / ".data" / "m1"
+        legacy = home / ".openclaw" / "data"
+        assert resolve_m1_dir({}, home) == canonical
+        print("  ✓ fresh machine → <wiki-root>/.data/m1 (never under ~/.openclaw)")
+        legacy.mkdir(parents=True)
+        assert resolve_m1_dir({}, home) == legacy
+        assert resolve_m1_dir({"OPENCLAW_HOME": str(home / "elsewhere")}, home) == canonical
+        print("  ✓ legacy ~/.openclaw/data while only it exists (honours OPENCLAW_HOME)")
+        canonical.mkdir(parents=True)
+        assert resolve_m1_dir({}, home) == canonical
+        wiki = home / "w"
+        assert resolve_m1_dir({"DIGITAL_ME_WIKI_ROOT": str(wiki)}, home) == legacy
+        print("  ✓ canonical wins once created (honours DIGITAL_ME_WIKI_ROOT)")
+        assert resolve_m1_dir({"DIGITAL_ME_M1_DIR": "/m1"}, home) == Path("/m1")
+        assert resolve_m1_dir({"DIGITAL_ME_M1_DIR": "  "}, home) == canonical
+        print("  ✓ $DIGITAL_ME_M1_DIR wins; blank counts as unset")
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────

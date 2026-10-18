@@ -223,3 +223,45 @@ export function mergeBrainEnvIntoSettings(
     },
   };
 }
+
+/** Inputs for the env of the `digital-me-brain` MCP registration (`claude mcp add -e`). */
+export interface ClaudeCodeMcpEnvInputs {
+  /**
+   * OPENCLAW_AGENT_ID: the proxy's attribution label, stamped as agent_id on
+   * every tool call (not an openclaw dependency). Defaults to "claude-code".
+   */
+  readonly agentId?: string;
+  /**
+   * digital-me brain-host: `DIGITAL_ME_BRAIN_URL` plus the PATH of its token
+   * file (`DIGITAL_ME_BRAIN_TOKEN_FILE`), never the secret. Omit to leave the
+   * proxy on the openclaw gateway.
+   */
+  readonly brain?: {
+    readonly brainUrl: string;
+    readonly brainTokenFile: string;
+  };
+}
+
+/**
+ * The env of the `digital-me-brain` MCP registration in ~/.claude.json. Pure —
+ * the CLI passes each pair as `claude mcp add -e KEY=VALUE`. OPENCLAW_HOME is
+ * deliberately absent: the proxy defaults it to ~/.openclaw. The CLI removes
+ * the registration from every scope before re-adding it, so after a
+ * re-install the env is exactly this map and an OPENCLAW_HOME an earlier
+ * installer wrote is gone. Throws on half a brain-host contract, like the
+ * codex and hermes builders.
+ */
+export function buildClaudeCodeMcpEnv(inputs: ClaudeCodeMcpEnvInputs = {}): Record<string, string> {
+  const env: Record<string, string> = { OPENCLAW_AGENT_ID: inputs.agentId ?? "claude-code" };
+  const brain = inputs.brain;
+  if (brain !== undefined) {
+    if (brain.brainUrl.trim() === "" || brain.brainTokenFile.trim() === "") {
+      throw new Error(
+        "buildClaudeCodeMcpEnv: brainUrl and brainTokenFile must be set together (DIGITAL_ME_BRAIN_URL without DIGITAL_ME_BRAIN_TOKEN_FILE is a configuration error)",
+      );
+    }
+    env.DIGITAL_ME_BRAIN_URL = brain.brainUrl;
+    env.DIGITAL_ME_BRAIN_TOKEN_FILE = brain.brainTokenFile;
+  }
+  return env;
+}

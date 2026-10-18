@@ -405,6 +405,68 @@ describe("createOpenClawAliasResolver", () => {
     expect(spec.completion_marker).toBe("DIGITAL_ME_EXEC_OK claude-code-cli t-1");
   });
 
+  describe("fallback", () => {
+    type FallbackSpec = {
+      alias: string;
+      binary: string;
+      args: string[];
+      env: Record<string, string>;
+      prompt_template?: string;
+      final_message_arg: string | null;
+      timeoutMs: number | null;
+    };
+    function fallbacks(aliases: Parameters<typeof createOpenClawAliasResolver>[0]["aliases"]) {
+      createOpenClawAliasResolver({ aliases, artifactRoot })("claude-code-cli", makeCtx());
+      return (
+        JSON.parse(
+          fs.readFileSync(path.join(artifactRoot, "g-1", "t-1", "spec.json"), "utf8"),
+        ) as { fallbacks: FallbackSpec[] }
+      ).fallbacks;
+    }
+
+    it("is an empty list when the alias names none", () => {
+      expect(fallbacks({ "claude-code-cli": claudeAlias })).toEqual([]);
+    });
+
+    it("embeds the named alias's own invocation, so the worker needs no config", () => {
+      expect(
+        fallbacks({
+          "claude-code-cli": { ...claudeAlias, fallback: "codex-cli" },
+          "codex-cli": { ...codexAlias, promptTemplate: "{{task}}" },
+        }),
+      ).toEqual([
+        {
+          alias: "codex-cli",
+          timeoutMs: null,
+          binary: "/usr/local/bin/codex",
+          args: ["exec", "--ephemeral", "{{prompt}}"],
+          env: {},
+          prompt_template: "{{task}}",
+          final_message_arg: "--output-last-message",
+        },
+      ]);
+    });
+
+    it("keeps list order, rewrites legacy brain refs, and drops itself and unknown names", () => {
+      const listed = fallbacks({
+        "claude-code-cli": {
+          ...claudeAlias,
+          fallback: ["claude-code-cli", "missing-cli", "codex-cli", "gemini-cli"],
+        },
+        "codex-cli": {
+          ...codexAlias,
+          args: ["-c", 'mcp_servers.openclaw-brain.tools.tasks.approval_mode="approve"', "exec"],
+          // A fallback's own fallback is ignored, so this can't loop back.
+          fallback: "claude-code-cli",
+        },
+        "gemini-cli": { binary: "gemini", args: ["{{prompt}}"], env: { X: "1" }, timeoutMs: 600_000 },
+      });
+      expect(listed.map((f) => f.alias)).toEqual(["codex-cli", "gemini-cli"]);
+      expect(listed[0]!.args[1]).toBe('mcp_servers.digital-me-brain.tools.tasks.approval_mode="approve"');
+      expect(listed[1]).toMatchObject({ env: { X: "1" }, timeoutMs: 600_000, final_message_arg: null });
+    });
+  });
+
   it("creates the artifact subdir if it doesn't exist", () => {
     const resolver = createOpenClawAliasResolver({
       aliases: { "claude-code-cli": claudeAlias },

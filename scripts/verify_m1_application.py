@@ -3,7 +3,8 @@
 
 Scans the canonical M1 event sources — brain.db `m1_events` (located by the
 shared path rule; see `default_brain_db`) and the per-runtime
-WALs (`~/.openclaw/data/m1_events_<runtime>.jsonl`) — over a recent window and,
+WALs (`m1_events_<runtime>.jsonl` in the M1 dir; see `default_m1_dir`) — over a
+recent window and,
 for each runtime (claude-code, openclaw, hermes), reports:
 
   - surfaced turns          (knowledge_surfaced events)
@@ -50,11 +51,30 @@ def _synthetic(runtime: str) -> bool:
 # context" — must match brain-orchestrator handlers/m1.ts ACK_SIGNALS_THAT_COUNT.
 COUNTING_ACK_SIGNALS = {"explicit_path", "title_match", "no_applicable"}
 
-WALS = {
-    "claude-code": ".openclaw/data/m1_events_claude_code.jsonl",
-    "openclaw": ".openclaw/data/m1_events_openclaw.jsonl",
-    "hermes": ".openclaw/data/m1_events_hermes.jsonl",
+WALS = {  # file names in the M1 dir (default_m1_dir)
+    "claude-code": "m1_events_claude_code.jsonl",
+    "openclaw": "m1_events_openclaw.jsonl",
+    "hermes": "m1_events_hermes.jsonl",
 }
+
+
+def default_m1_dir(home: Path) -> Path:
+    """The M1 telemetry dir — Python twin of ``@digital-me/contracts``
+    ``resolveM1DirPath``: ``$DIGITAL_ME_M1_DIR`` → ``<wiki-root>/.data/m1``
+    when it exists → the legacy ``<OPENCLAW_HOME or ~/.openclaw>/data`` when
+    it exists → ``<wiki-root>/.data/m1``.
+
+    ``home`` stands in for ``~`` so ``--home`` keeps working."""
+    explicit = os.environ.get("DIGITAL_ME_M1_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    canonical = Path(os.environ.get("DIGITAL_ME_WIKI_ROOT") or home / "digital-me").expanduser() / ".data" / "m1"
+    if canonical.exists():
+        return canonical
+    legacy = Path(os.environ.get("OPENCLAW_HOME") or home / ".openclaw").expanduser() / "data"
+    if legacy.exists():
+        return legacy
+    return canonical
 
 
 def default_brain_db(home: Path) -> Path:
@@ -121,8 +141,9 @@ def _read_brain(brain_db: Path, since_ms: int):
 
 def _read_wals(home: Path, since_ms: int):
     out = []
-    for runtime, rel in WALS.items():
-        p = home / rel
+    wal_dir = default_m1_dir(home)
+    for runtime, name in WALS.items():
+        p = wal_dir / name
         if not p.exists():
             continue
         with p.open("r", encoding="utf-8", errors="ignore") as f:
@@ -169,9 +190,21 @@ def main(argv=None) -> int:
         action="store_true",
         help="Fail unless EVERY known runtime is healthy (surfaced>0 and acked>0).",
     )
+    ap.add_argument(
+        "--retired",
+        action="append",
+        default=[],
+        metavar="RUNTIME",
+        help=(
+            "A runtime deliberately taken out of service (repeatable). Still "
+            "reported, never failed: its silence is the expected outcome, not "
+            "a regression."
+        ),
+    )
     args = ap.parse_args(argv)
 
     home = args.home
+    retired = set(args.retired)
     brain_db = args.brain_db or default_brain_db(home)
     since_ms = int(
         (datetime.now(timezone.utc) - timedelta(days=args.days)).timestamp() * 1000
@@ -196,6 +229,8 @@ def main(argv=None) -> int:
         rate_str = f"{rate*100:5.1f}%" if rate is not None else "   n/a"
         if _synthetic(rt):
             status = "synthetic (test traffic, not checked)"
+        elif rt in retired:
+            status = "retired (not checked)"
         elif s > 0 and a == 0:
             status = "FAIL (surfaces but never acks)"
             unhealthy.append(rt)
@@ -244,11 +279,11 @@ def main(argv=None) -> int:
                 .astimezone().strftime("%Y-%m-%d %H:%M")
                 if ts else "never"
             )
-            if base > 0 and rec == 0 and not _synthetic(rt):
+            if base > 0 and rec == 0 and not _synthetic(rt) and rt not in retired:
                 stalled.append(rt)
                 mark = "  ← STALLED"
             else:
-                mark = ""
+                mark = "  (retired)" if rt in retired else ""
             print(f"{rt:<14}{base:>10}{rec:>8}   {when}{mark}")
         print()
 

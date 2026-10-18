@@ -31,7 +31,7 @@ from typing import Any, Iterable, Optional
 from dream_cycle.brain_client import BrainClient, BrainClientError
 from dream_cycle.config import resolve_wiki_root
 from dream_cycle.workers import WORKER_AGENT_PREFERENCE, detect_worker_agent_id
-from dream_cycle.via_agents import materialize_workflow
+from dream_cycle.via_agents import _substitute_vars, materialize_workflow
 
 
 def _bundled_workflows_dir() -> Path:
@@ -81,6 +81,10 @@ def _apply_template_defaults(
     the brain doesn't interpolate dispatch — so defaults must be applied
     here too. Otherwise `{{classifier_agent_id}}` (with defaultValue
     "claude-code") stays as a literal placeholder in the stored dispatch.
+
+    A default may itself reference vars already known here (e.g.
+    `{{wiki_root}}/.data/staging/...`); those resolve now, so the stored
+    dispatch, prompt and schedule variables all carry the concrete path.
     """
     merged = dict(vars)
     for v in template.get("variables", []) or []:
@@ -93,7 +97,7 @@ def _apply_template_defaults(
             and isinstance(default, str)
             and name not in merged
         ):
-            merged[name] = default
+            merged[name] = _substitute_vars(default, merged)
     return merged
 
 
@@ -215,6 +219,7 @@ def install_workflows(
     workflow_paths: Iterable[Path],
     vars: dict[str, str],
     client: Optional[BrainClient] = None,
+    wiki_root: Optional[Path] = None,
 ) -> list[tuple[Path, bool, str]]:
     """Materialize + import each workflow. Returns one tuple per file:
     (path, ok, message). Doesn't raise — caller decides how to react to
@@ -229,8 +234,10 @@ def install_workflows(
     Bundled-schedule convention: if a sibling <workflow-name>.schedule.json
     file exists, the schedule is registered (idempotently) after import.
     This lets `digital-me install --runtime dashboard` land a ticking cron
-    in one shot — no separate `tasks.schedule_add` step required."""
-    client = client or BrainClient()
+    in one shot — no separate `tasks.schedule_add` step required.
+
+    `wiki_root` scopes the default client's brain-host token-file lookup."""
+    client = client or BrainClient(wiki_root=wiki_root)
     results: list[tuple[Path, bool, str]] = []
     for wf_path in workflow_paths:
         try:
@@ -375,7 +382,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"install-workflows: found {len(paths)} workflow(s)", file=sys.stderr)
 
     try:
-        results = install_workflows(paths, vars)
+        results = install_workflows(paths, vars, wiki_root=wiki_root)
     except BrainClientError as e:
         print(f"install-workflows: gateway unreachable: {e}", file=sys.stderr)
         return 3

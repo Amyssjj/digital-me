@@ -15,11 +15,27 @@
  *      embedding config can build an index on this machine (openclaw's
  *      default provider is `openai`, which silently indexes nothing without
  *      an API key — the #1 "memory_search finds nothing" fresh-install trap).
+ *   6. brain-host live (from the caller's probe of its authenticated
+ *      `/health`): the service answers, `orchestrator.brainDb` is the
+ *      canonical `<wiki-root>/.data/brain.db` (WARN on the legacy openclaw
+ *      path), and exactly one scheduler ticks — brain-host's
+ *      `orchestrator.scheduler` vs the openclaw gateway plugin's logged tick
+ *      decision (see brain-host-live.ts).
+ *
+ * A row is PASS, FAIL, or — when its signal cannot be read, or something is
+ * worth knowing but not broken — WARN (`warn: true` on a passing row): WARN
+ * and skipped rows never fail the doctor.
  */
 
 import path from "node:path";
 import JSON5 from "json5";
-import { resolveEnvFilePath } from "@digital-me/contracts";
+import { brainDataDirOf, openclawHomeOf, resolveEnvFilePath } from "@digital-me/contracts";
+import type { BrainHostHealth, OpenclawGatewayEvidence } from "./brain-host-live.js";
+import {
+  DISABLE_GATEWAY_TICK_COMMAND,
+  INSTALL_BRAIN_HOST_COMMAND,
+  foldOpenclawGatewayEvidence,
+} from "./brain-host-scheduler.js";
 import { HOOK_NAMES as CLAUDE_HOOK_FILES } from "@digital-me/runtime-claude-code";
 import {
   HOOK_NAMES as CODEX_HOOK_FILES,
@@ -37,15 +53,23 @@ import {
 } from "./openclaw-memory.js";
 
 export type CheckResult =
-  | { readonly ok: true; readonly label: string; readonly note?: string }
+  | {
+      readonly ok: true;
+      readonly label: string;
+      readonly note?: string;
+      /** Passing, but worth a look (an unreadable signal, a legacy setup). Rendered [WARN]. */
+      readonly warn?: boolean;
+    }
   | { readonly ok: false; readonly label: string; readonly reason: string };
 
 export type DoctorReport = {
   readonly checks: readonly CheckResult[];
   readonly summary: {
     readonly total: number;
+    /** Includes the WARN rows: a warning never fails the doctor. */
     readonly passed: number;
     readonly failed: number;
+    readonly warned: number;
   };
 };
 
@@ -93,6 +117,19 @@ export type DoctorDeps = {
   readonly workflowProvenance?: () => readonly WorkflowProvenance[];
   /** sha256 of a file's raw bytes; undefined when unreadable. */
   readonly hashFile?: (path: string) => string | undefined;
+  /**
+   * brain-host's `/health` answer, probed by the caller before runDoctor
+   * (probeBrainHostHealth in brain-host-live.ts; the probe is async, the
+   * doctor is not). Optional — when undefined the brain-host live rows
+   * report themselves as skipped.
+   */
+  readonly brainHostHealth?: BrainHostHealth;
+  /**
+   * The openclaw gateway's scheduler-tick evidence for the single-ticker
+   * check (collectOpenclawGatewayEvidence). Optional — when undefined the
+   * gateway side counts as unknown.
+   */
+  readonly openclawGateway?: OpenclawGatewayEvidence;
 };
 
 /** One template's link back to the file it was imported from. */
@@ -332,6 +369,10 @@ export function runDoctor(
     }
   }
 
+  if (enabledRuntimes.includes("brain-host")) {
+    checks.push(...runBrainHostLiveChecks(deps));
+  }
+
   if (enabledRuntimes.includes("codex")) {
     checks.push(runCodexHookTrustCheck(deps));
   }
@@ -358,6 +399,7 @@ export function runDoctor(
       total: checks.length,
       passed,
       failed: checks.length - passed,
+      warned: checks.filter((c) => c.ok && c.warn === true).length,
     },
   };
 }
@@ -531,6 +573,248 @@ export function runCodexHookTrustCheck(deps: DoctorDeps): CheckResult {
       `Codex skips ${skipped.length} of ${entries.length} Digital Me hooks (${which}): their trusted_hash in ` +
       `${configPath} is missing or stale, so recall injection and M1 stop with no error. Run ` +
       `'digital-me install --runtime codex' (it records trust for its own hooks), or approve them in Codex's hook review.`,
+  };
+}
+
+// ── brain-host live checks (runbook Stage 7.4) ─────────────────────────────
+
+export const BRAIN_HOST_HEALTH_LABEL = "brain-host: live /health";
+export const BRAIN_DB_LOCATION_LABEL = "brain-host: brain.db location";
+export const SINGLE_TICKER_LABEL = "scheduler: single ticker";
+
+/**
+ * The three rows read from the live services: brain-host answers its
+ * authenticated `/health`; the brain.db it serves is the canonical one; and
+ * exactly one scheduler ticks. Each reports WARN/skip — never FAIL — when its
+ * signal cannot be read. Exported for direct unit testing.
+ */
+export function runBrainHostLiveChecks(deps: DoctorDeps): CheckResult[] {
+  return [
+    brainHostHealthCheck(deps.brainHostHealth),
+    brainDbLocationCheck(deps),
+    singleTickerCheck(deps.brainHostHealth, deps.openclawGateway),
+  ];
+}
+
+const NOT_PROBED = "caller did not probe brain-host /health";
+
+/** One line on why an unusable /health answer is unusable. */
+function healthProblem(h: Exclude<BrainHostHealth, { readonly status: "ok" }>): string {
+  switch (h.status) {
+    case "skipped":
+      return h.reason;
+    case "unreachable":
+      return `nothing answered at ${h.url} (${h.reason})`;
+    case "error":
+      return `${h.url} answered without a health report (${h.reason})`;
+    case "liveness-only":
+      return `${h.url} rejected the token in ${h.tokenFile}`;
+  }
+}
+
+function brainHostHealthCheck(h: BrainHostHealth | undefined): CheckResult {
+  const label = BRAIN_HOST_HEALTH_LABEL;
+  if (h === undefined) return { ok: true, label, note: `(skipped — ${NOT_PROBED})` };
+  switch (h.status) {
+    case "ok": {
+      const version = typeof h.body.version === "string" ? ` (version ${h.body.version})` : "";
+      return { ok: true, label, note: `${h.url}${version}` };
+    }
+    case "skipped":
+      return { ok: true, label, note: `(skipped — ${h.reason})` };
+    case "unreachable":
+      return {
+        ok: true,
+        warn: true,
+        label,
+        note:
+          `${healthProblem(h)}. Is the service running? 'digital-me service brain-host install' (re)starts it; ` +
+          `its errors go to ~/Library/Logs/digital-me-brain-host/server.error.log (journalctl --user -u ai.digital-me.brain-host on Linux).`,
+      };
+    case "error":
+      return { ok: true, warn: true, label, note: `${healthProblem(h)}.` };
+    case "liveness-only":
+      return {
+        ok: true,
+        warn: true,
+        label,
+        note:
+          `${healthProblem(h)} (it answered liveness only): the token file and the running service disagree. ` +
+          `'digital-me install --runtime brain-host' rewrites both.`,
+      };
+  }
+}
+
+/** `orchestrator` from an authenticated /health body, or undefined when brain-host hosts none. */
+function orchestratorOf(body: Readonly<Record<string, unknown>>): Record<string, unknown> | undefined {
+  const o = body.orchestrator;
+  return o !== null && typeof o === "object" && !Array.isArray(o) ? (o as Record<string, unknown>) : undefined;
+}
+
+function brainDbLocationCheck(deps: DoctorDeps): CheckResult {
+  const label = BRAIN_DB_LOCATION_LABEL;
+  const h = deps.brainHostHealth;
+  if (h === undefined) return { ok: true, label, note: `(skipped — ${NOT_PROBED})` };
+  if (h.status !== "ok") {
+    return { ok: true, label, note: `(skipped — no authenticated /health report: ${healthProblem(h)})` };
+  }
+  const orchestrator = orchestratorOf(h.body);
+  if (!orchestrator) {
+    return {
+      ok: true,
+      warn: true,
+      label,
+      note: "brain-host reports no orchestrator, so it serves no brain.db (goals, schedules and traces are unavailable through it).",
+    };
+  }
+  const brainDb = orchestrator.brainDb;
+  if (typeof brainDb !== "string" || brainDb === "") {
+    return {
+      ok: true,
+      warn: true,
+      label,
+      note: "/health carries no orchestrator.brainDb (a brain-host older than this CLI?) — re-run 'digital-me install --runtime brain-host'.",
+    };
+  }
+  const home = deps.env.HOME ?? deps.env.USERPROFILE ?? "";
+  // brain-host's own wiki root (from /health) is authoritative; the doctor
+  // shell's DIGITAL_ME_WIKI_ROOT (often unexported) is the fallback.
+  const canonical = [
+    ...(typeof h.body.wikiRoot === "string" ? [path.join(h.body.wikiRoot, ".data", "brain.db")] : []),
+    path.join(brainDataDirOf(deps.env, home), "brain.db"),
+  ];
+  const legacy = path.join(openclawHomeOf(deps.env, home), "data", "brain.db");
+  const source = typeof orchestrator.brainDbSource === "string" ? `, source=${orchestrator.brainDbSource}` : "";
+  const served = path.resolve(brainDb);
+  if (canonical.some((c) => path.resolve(c) === served)) {
+    return { ok: true, label, note: `${brainDb} (canonical <wiki-root>/.data/brain.db${source})` };
+  }
+  if (path.resolve(legacy) === served) {
+    return {
+      ok: true,
+      warn: true,
+      label,
+      note:
+        `${brainDb} is the LEGACY openclaw location (canonical: ${canonical[0]}${source}). ` +
+        `Move it with 'digital-me brain-db migrate', then 'digital-me install --runtime brain-host'.`,
+    };
+  }
+  return {
+    ok: true,
+    warn: true,
+    label,
+    note:
+      `${brainDb} is neither the canonical ${canonical[0]} nor the legacy ${legacy}${source} — ` +
+      `DIGITAL_ME_BRAIN_DB in the service unit pins it there.`,
+  };
+}
+
+type TickSide = { readonly state: "on" | "off" | "unknown"; readonly detail: string };
+
+function brainHostTick(h: BrainHostHealth): TickSide {
+  if (h.status !== "ok") return { state: "unknown", detail: `brain-host /health unreadable: ${healthProblem(h)}` };
+  const orchestrator = orchestratorOf(h.body);
+  if (!orchestrator) return { state: "off", detail: "brain-host hosts no orchestrator" };
+  if (orchestrator.scheduler !== "on") return { state: "off", detail: "brain-host's scheduler is off" };
+  const ticks = typeof orchestrator.ticks === "number" ? `, ${orchestrator.ticks} ticks` : "";
+  const failed = typeof orchestrator.lastTickError === "string" ? `, last tick failed: ${orchestrator.lastTickError}` : "";
+  return { state: "on", detail: `brain-host ticks (scheduler=on${ticks}${failed})` };
+}
+
+/** Doctor wording for a load decision. The on/off fold itself is shared with install. */
+function gatewayLoadDetail(g: Extract<OpenclawGatewayEvidence, { readonly state: "ticking" | "disabled" }>): string {
+  const at = g.decision.at ? ` at ${g.decision.at}` : "";
+  if (g.state === "disabled") {
+    return `the gateway's digital-me-brain plugin logged 'scheduler tick DISABLED' at its last load${at} (${g.decision.logPath})`;
+  }
+  return `the gateway's digital-me-brain plugin enabled its tick at its last load${at} (${g.decision.logPath}: no 'scheduler tick DISABLED' followed; ${g.liveness})`;
+}
+
+/**
+ * Doctor wording for one gateway probe. Whether the gateway counts as
+ * ticking comes from {@link foldOpenclawGatewayEvidence} — the same fold
+ * install uses — so a ticking decision from a gateway that did not answer
+ * just now is unconfirmed here too.
+ */
+function gatewayTick(g: OpenclawGatewayEvidence | undefined): TickSide {
+  const view = foldOpenclawGatewayEvidence(g);
+  switch (view.kind) {
+    case "absent":
+      return { state: "off", detail: "no digital-me-brain plugin installed in openclaw" };
+    case "not-running":
+      return { state: "off", detail: `openclaw gateway not running (${view.detail})` };
+    case "disabled":
+      return {
+        state: "off",
+        detail: gatewayLoadDetail(g as Extract<OpenclawGatewayEvidence, { readonly state: "disabled" }>),
+      };
+    case "ticking":
+      return {
+        state: "on",
+        detail: gatewayLoadDetail(g as Extract<OpenclawGatewayEvidence, { readonly state: "ticking" }>),
+      };
+    case "unconfirmed":
+      // A logged tick from a gateway that did not answer just now stays the
+      // "enabled" sentence, but the fold says unconfirmed so this row WARNs.
+      if (g?.state === "ticking") return { state: "unknown", detail: gatewayLoadDetail(g) };
+      if (g?.state === "unknown") {
+        return { state: "unknown", detail: `openclaw gateway tick decision unreadable: ${view.detail}` };
+      }
+      return { state: "unknown", detail: view.detail };
+  }
+}
+
+/**
+ * Exactly one process may tick a brain.db, or schedules double-fire — and
+ * with none, nothing scheduled ever runs. brain-host's side comes from /health
+ * (`orchestrator.scheduler`); the gateway's from its plugin's logged decision
+ * at load plus a liveness probe. FAIL only when both sides were read.
+ */
+function singleTickerCheck(h: BrainHostHealth | undefined, g: OpenclawGatewayEvidence | undefined): CheckResult {
+  const label = SINGLE_TICKER_LABEL;
+  if (h === undefined) return { ok: true, label, note: `(skipped — ${NOT_PROBED})` };
+  const host = brainHostTick(h);
+  const gateway = gatewayTick(g);
+  const both = `${host.detail}; ${gateway.detail}`;
+  if (host.state === "unknown") {
+    return { ok: true, warn: true, label, note: `cannot confirm a single ticker — ${both}.` };
+  }
+  if (host.state === "on") {
+    if (gateway.state === "off") return { ok: true, label, note: both };
+    if (gateway.state === "on") {
+      return {
+        ok: false,
+        label,
+        reason: `TWO schedulers tick: ${both}. Keep brain-host's: ${DISABLE_GATEWAY_TICK_COMMAND}.`,
+      };
+    }
+    return { ok: true, warn: true, label, note: `cannot rule out a second ticker — ${both}.` };
+  }
+  if (gateway.state === "on") {
+    return {
+      ok: true,
+      warn: true,
+      label,
+      note:
+        `one ticker, but the legacy one — ${both}. To move the tick to brain-host without starting a second timer: ` +
+        `${DISABLE_GATEWAY_TICK_COMMAND}, then \`${INSTALL_BRAIN_HOST_COMMAND}\`.`,
+    };
+  }
+  if (gateway.state === "off") {
+    return {
+      ok: false,
+      label,
+      reason:
+        `NO scheduler ticks, so nothing scheduled (dream-cycle, digest, sweeps) ever runs — ${both}. ` +
+        `Run \`${INSTALL_BRAIN_HOST_COMMAND}\` — brain-host is the default ticker, and that install turns it on unless the gateway is confirmed ticking. ` +
+        `If DIGITAL_ME_BRAIN_SCHEDULER=off is set, unset it first (that opt-out wins).`,
+    };
+  }
+  return {
+    ok: true,
+    warn: true,
+    label,
+    note: `brain-host does not tick and the gateway's side is unknown — if the gateway does not tick either, nothing scheduled runs. ${both}.`,
   };
 }
 
@@ -736,16 +1020,22 @@ export function runEmbeddingsCheck(
 export function formatReport(report: DoctorReport): string {
   const lines: string[] = [];
   for (const c of report.checks) {
-    if (c.ok) {
+    if (c.ok && c.warn) {
+      lines.push(`[WARN] ${c.label}${c.note ? ` — ${c.note}` : ""}`);
+    } else if (c.ok) {
       const note = c.note ? ` (${c.note})` : "";
       lines.push(`[OK]   ${c.label}${note}`);
     } else {
       lines.push(`[FAIL] ${c.label} — ${c.reason}`);
     }
   }
-  const { total, passed, failed } = report.summary;
+  const { total, passed, failed, warned } = report.summary;
   lines.push("");
-  lines.push(`Summary: ${passed}/${total} passed, ${failed} failed.`);
+  lines.push(
+    warned > 0
+      ? `Summary: ${passed}/${total} passed (${warned} with warnings), ${failed} failed.`
+      : `Summary: ${passed}/${total} passed, ${failed} failed.`,
+  );
   return lines.join("\n");
 }
 

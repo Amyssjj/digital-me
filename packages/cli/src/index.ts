@@ -18,3 +18,10 @@ export type {
   DoctorReport,
   RuntimeId,
 } from "./doctor.js";
+// The async live probes behind DoctorDeps.brainHostHealth / openclawGateway.
+export {
+  collectOpenclawGatewayEvidence,
+  probeBrainHostHealth,
+  resolveBrainHostHealthTarget,
+} from "./brain-host-live.js";
+export type { BrainHostHealth, OpenclawGatewayEvidence } from "./brain-host-live.js";

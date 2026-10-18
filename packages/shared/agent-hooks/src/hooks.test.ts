@@ -254,8 +254,8 @@ describe.skipIf(missingTools.length > 0)(`${RUNTIME} hook scripts against a brai
     const search = seen[0]!.body.args as Record<string, unknown>;
     expect(search.query).toBe(PROMPT);
     expect(search.limit).toBe(6);
-    // The WAL landed under the sandboxed HOME, never the real one.
-    expect(fs.existsSync(path.join(tmp, ".openclaw", "data", WAL_NAME))).toBe(true);
+    // The WAL landed in the sandbox's M1 dir (<wiki-root>/.data/m1), never the real one.
+    expect(fs.existsSync(path.join(tmp, ".data", "m1", WAL_NAME))).toBe(true);
   });
 
   it("injects the post-fix brain-host shape (score == vectorScore, fusedScore separate)", async () => {

@@ -2,7 +2,7 @@
 """
 m1_backfill — Replay the hermes M1 write-ahead log into the brain.
 
-Reads ``~/.openclaw/data/m1_events_hermes.jsonl`` line by line, posts each
+Reads ``m1_events_hermes.jsonl`` from the M1 dir (``_resolve_m1_dir``) line by line, posts each
 event to the brain's ``m1_event_record`` tool (digital-me brain-host when
 ``DIGITAL_ME_BRAIN_URL`` is set — token from ``DIGITAL_ME_BRAIN_TOKEN``,
 else ``DIGITAL_ME_BRAIN_TOKEN_FILE``, else the default token file —
@@ -51,7 +51,27 @@ from typing import Any, Dict, Iterable, Optional
 
 
 HOME = Path.home()
-DEFAULT_WAL_PATH = HOME / ".openclaw" / "data" / "m1_events_hermes.jsonl"
+
+
+def _resolve_m1_dir(home: Path = HOME, env: Optional[Dict[str, str]] = None) -> Path:
+    """The M1 telemetry dir — Python twin of ``@digital-me/contracts``
+    ``resolveM1DirPath``: ``$DIGITAL_ME_M1_DIR`` → ``<wiki-root>/.data/m1``
+    when it exists → the legacy ``<OPENCLAW_HOME or ~/.openclaw>/data`` when
+    it exists → ``<wiki-root>/.data/m1``."""
+    env = os.environ if env is None else env
+    explicit = env.get("DIGITAL_ME_M1_DIR", "").strip()
+    if explicit:
+        return Path(explicit).expanduser()
+    canonical = Path(env.get("DIGITAL_ME_WIKI_ROOT") or home / "digital-me").expanduser() / ".data" / "m1"
+    if canonical.exists():
+        return canonical
+    legacy = Path(env.get("OPENCLAW_HOME") or home / ".openclaw").expanduser() / "data"
+    if legacy.exists():
+        return legacy
+    return canonical
+
+
+DEFAULT_WAL_PATH = _resolve_m1_dir() / "m1_events_hermes.jsonl"
 DEFAULT_GATEWAY_URL = "http://localhost:18789/tools/invoke"
 
 
@@ -418,6 +438,8 @@ def run_selftest() -> int:
     print("[selftest] endpoint precedence — DIGITAL_ME_BRAIN_URL/TOKEN beat OPENCLAW_GATEWAY_*")
     _selftest_endpoint_precedence()
 
+    print("[selftest] M1 dir — $DIGITAL_ME_M1_DIR → canonical → legacy while it alone exists → canonical")
+    _selftest_m1_dir()
     print("[selftest] PASSED")
     return 0
 
@@ -432,6 +454,24 @@ _ENDPOINT_ENV_KEYS = (
     "OPENCLAW_GATEWAY_HOST",
     "OPENCLAW_GATEWAY_PORT",
 )
+
+
+def _selftest_m1_dir() -> None:
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as td:
+        home = Path(td)
+        canonical = home / "digital-me" / ".data" / "m1"
+        legacy = home / ".openclaw" / "data"
+        assert _resolve_m1_dir(home, {}) == canonical
+        legacy.mkdir(parents=True)
+        assert _resolve_m1_dir(home, {}) == legacy
+        assert _resolve_m1_dir(home, {"OPENCLAW_HOME": str(home / "none")}) == canonical
+        canonical.mkdir(parents=True)
+        assert _resolve_m1_dir(home, {}) == canonical
+        assert _resolve_m1_dir(home, {"DIGITAL_ME_WIKI_ROOT": str(home / "w")}) == legacy
+        assert _resolve_m1_dir(home, {"DIGITAL_ME_M1_DIR": "  "}) == canonical
+        assert _resolve_m1_dir(home, {"DIGITAL_ME_M1_DIR": str(home / "x")}) == home / "x"
 
 
 def _selftest_endpoint_precedence() -> None:

@@ -160,7 +160,11 @@ The brain is [`@digital-me/brain-host`](packages/services/brain-host/): one Node
 digital-me service brain-host status                 # process, port, health
 curl -s -H "Authorization: Bearer $(cat ~/digital-me/.data/brain-host.token)" \
   http://127.0.0.1:18791/health | jq .               # index size, scheduler, brain.db location (tokenless: {ok, version} only)
-DIGITAL_ME_BRAIN_SCHEDULER=off digital-me service brain-host install   # hand the tick to another host
+# brain-host is the default ticker, including when openclaw is installed.
+# The install leaves it off only while the gateway is confirmed ticking
+# (an explicit on is left off too, and logged with a WARN: prefix),
+# or when you opt out (a machine that still wants the gateway to own the tick):
+DIGITAL_ME_BRAIN_SCHEDULER=off digital-me install --runtime brain-host
 ```
 
 ### Running openclaw agents on the same brain (optional)
@@ -207,6 +211,8 @@ Then a workflow step like:
 ```
 
 …gets materialized at task-creation time by [`@digital-me/runtime-openclaw`](packages/runtimes/openclaw)'s alias resolver, which wraps it in a `cli-exec-worker.mjs` invocation that handles prompt rendering, handoff capture, and verify gating. `digital-me setup` auto-populates `cli_exec_aliases` for whichever CLIs it detects — third-party CLIs are added by hand.
+
+An alias can name a `fallback` alias, or a list of them. If the CLI exits non-zero or can't be started (for example, `claude` after its login expires), the same task runs on the fallback, within whatever time the task has left. A timeout never triggers a fallback. When setup detects both claude and codex, it sets `fallback: codex-cli` on the claude alias.
 
 ## Architecture at a glance
 

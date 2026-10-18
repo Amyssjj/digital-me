@@ -55,7 +55,27 @@ export type CliAliasConfig = {
    * reads that file instead of stdout when this is configured.
    */
   readonly finalMessageArg?: string;
+  /**
+   * Alias name(s) to run, in order, when this CLI exits non-zero or can't be
+   * started (e.g. `claude` with an expired login → `codex-cli`). Each
+   * fallback runs with its own binary/args/env/template but shares this
+   * task's deadline; a timeout never falls back. Only this alias's list is
+   * used — a fallback's own `fallback` is ignored, so chains can't cycle.
+   * Names with no matching alias are skipped.
+   */
+  readonly fallback?: string | readonly string[];
 };
+
+function workerInvocation(rule: CliAliasConfig) {
+  return {
+    binary: rule.binary,
+    // Aliases saved before the openclaw-brain → digital-me-brain rename.
+    args: rule.args.map(migrateLegacyBrainServerRefs),
+    env: rule.env ?? {},
+    prompt_template: rule.promptTemplate,
+    final_message_arg: rule.finalMessageArg ?? null,
+  };
+}
 
 export type AliasResolverOptions = {
   /** Map of alias name → CLI config. */
@@ -178,13 +198,14 @@ export function createOpenClawAliasResolver(
       cwd,
       artifactDir: taskArtifactDir,
       timeoutMs,
-      binary: rule.binary,
-      // Aliases saved before the openclaw-brain → digital-me-brain rename.
-      args: rule.args.map(migrateLegacyBrainServerRefs),
-      env: rule.env ?? {},
-      prompt_template: rule.promptTemplate,
-      final_message_arg: rule.finalMessageArg ?? null,
+      ...workerInvocation(rule),
       completion_marker: `DIGITAL_ME_EXEC_OK ${agentId} ${ctx.taskId}`,
+      fallbacks: [rule.fallback ?? []].flat().flatMap((name) => {
+        const fb = name === agentId ? undefined : aliases[name];
+        return fb
+          ? [{ alias: name, timeoutMs: fb.timeoutMs ?? null, ...workerInvocation(fb) }]
+          : [];
+      }),
     };
     // spec.json carries the raw prompt + unredacted args + env. The worker
     // reads it back, so we can't sanitize the on-disk content — but we can

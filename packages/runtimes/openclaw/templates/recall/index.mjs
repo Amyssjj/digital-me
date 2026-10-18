@@ -149,25 +149,31 @@ Behavioral rules:
 // over `api` which is per-register — but they read/write the module-
 // level state through the helpers defined below.
 
-const APPLICATION_RATE_LOG = path.join(
-  os.homedir(),
-  ".openclaw",
-  "data",
-  "application_rate_openclaw.log",
-);
+// M1 telemetry dir — the same rule as @digital-me/contracts resolveM1DirPath:
+// DIGITAL_ME_M1_DIR → <wiki-root>/.data/m1 → the legacy ~/.openclaw/data
+// while only that dir exists → <wiki-root>/.data/m1. Resolved per write (the
+// gateway is long-lived), so the plugin follows the canonical dir as soon as
+// it is created. Inlined for the same reason as defaultBrainDbPath.
+function defaultM1Dir() {
+  const explicit = (process.env.DIGITAL_ME_M1_DIR ?? "").trim();
+  if (explicit !== "") return explicit;
+  const wikiRoot = process.env.DIGITAL_ME_WIKI_ROOT ?? path.join(os.homedir(), "digital-me");
+  const canonical = path.join(wikiRoot, ".data", "m1");
+  const legacy = path.join(process.env.OPENCLAW_HOME ?? path.join(os.homedir(), ".openclaw"), "data");
+  if (fs.existsSync(canonical)) return canonical;
+  if (fs.existsSync(legacy)) return legacy;
+  return canonical;
+}
+
+const applicationRateLog = () => path.join(defaultM1Dir(), "application_rate_openclaw.log");
 
 // ─── M1 universal-protocol event sink (2026-05-27) ──────────────────────
 //
-// Canonical event WAL — one canonical M1 event per line. Mirrors what
-// hermes (~/.openclaw/data/m1_events_hermes.jsonl) and claude-code
-// (~/.openclaw/data/m1_events_claude_code.jsonl) emit. See wiki:
+// Canonical event WAL — one canonical M1 event per line, in the M1 dir next
+// to what hermes (m1_events_hermes.jsonl) and claude-code
+// (m1_events_claude_code.jsonl) emit. See wiki:
 // infrastructure/m1-universal-event-protocol.md
-const M1_EVENTS_WAL = path.join(
-  os.homedir(),
-  ".openclaw",
-  "data",
-  "m1_events_openclaw.jsonl",
-);
+const m1EventsWal = () => path.join(defaultM1Dir(), "m1_events_openclaw.jsonl");
 
 // Once-only per-session session_start guard. Reset on module reload —
 // the seed-from-WAL routine below repopulates from disk on register().
@@ -200,8 +206,9 @@ function m1DeriveEventId(sessionId, turnId, eventType, entries, ackSignal) {
 
 function m1WalAppend(payload) {
   try {
-    fs.mkdirSync(path.dirname(M1_EVENTS_WAL), { recursive: true });
-    fs.appendFileSync(M1_EVENTS_WAL, JSON.stringify(payload) + "\n", "utf8");
+    const wal = m1EventsWal();
+    fs.mkdirSync(path.dirname(wal), { recursive: true });
+    fs.appendFileSync(wal, JSON.stringify(payload) + "\n", "utf8");
     return true;
   } catch {
     return false;
@@ -318,14 +325,15 @@ function m1MaybeEmitSessionStart(sessionId, agentId) {
  * session_start events for sessions that already had one.
  */
 function m1SeedSessionStartedFromWal(maxLines = 5000) {
-  if (!fs.existsSync(M1_EVENTS_WAL)) return 0;
+  const wal = m1EventsWal();
+  if (!fs.existsSync(wal)) return 0;
   let seeded = 0;
   try {
     // Tail-read: a few hundred KB max for max_lines=5000 (avg ~300B/line).
-    const stat = fs.statSync(M1_EVENTS_WAL);
+    const stat = fs.statSync(wal);
     const readSize = Math.min(stat.size, maxLines * 256);
     const buf = Buffer.alloc(readSize);
-    const fd = fs.openSync(M1_EVENTS_WAL, "r");
+    const fd = fs.openSync(wal, "r");
     fs.readSync(fd, buf, 0, readSize, Math.max(0, stat.size - readSize));
     fs.closeSync(fd);
     const tail = buf.toString("utf8").split("\n").slice(-maxLines);
@@ -463,13 +471,14 @@ function m1WriteAppRateRecord(sessionKey, stats, reason, dropAfter = false) {
     flush_reason: reason,
   };
 
+  const logPath = applicationRateLog();
   try {
-    fs.mkdirSync(path.dirname(APPLICATION_RATE_LOG), { recursive: true });
+    fs.mkdirSync(path.dirname(logPath), { recursive: true });
   } catch {
     // best-effort
   }
   fs.appendFileSync(
-    APPLICATION_RATE_LOG,
+    logPath,
     JSON.stringify(record) + "\n",
     "utf8",
   );
@@ -1092,7 +1101,7 @@ export default definePluginEntry({
 
     // ─── M1 application-rate live writer — session_end ────────────────
     // On session_end, compute per-session stats and append one JSONL record
-    // to APPLICATION_RATE_LOG. Mirrors Claude Code's
+    // to the app-rate log. Mirrors Claude Code's
     // ~/.claude/hooks/application_rate.log shape so M1/M2 analysis is
     // unified across surfaces. Fire-and-forget; failure must never affect
     // the agent.

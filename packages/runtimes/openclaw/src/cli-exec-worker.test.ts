@@ -231,3 +231,174 @@ describe("cli-exec-worker", () => {
     expect(finalMsg).toContain("DONE_MARKER");
   });
 });
+
+describe("cli-exec-worker — fallback aliases", () => {
+  const AUTH = "Failed to authenticate: OAuth session expired and could not be refreshed";
+  const marker = "DONE_MARKER";
+
+  function sh(script: string) {
+    return { binary: "/bin/sh", args: ["-c", script] };
+  }
+
+  function run(opts: {
+    primary: { binary: string; args: readonly string[]; final_message_arg?: string | null };
+    fallbacks?: readonly unknown[];
+    timeoutMs?: number;
+    task?: string;
+  }) {
+    const artifactDir = path.join(tmpRoot, "artifacts");
+    const specPath = path.join(tmpRoot, "spec.json");
+    fs.writeFileSync(
+      specPath,
+      JSON.stringify({
+        alias: "claude-code-cli",
+        taskId: "task-1",
+        goalId: "goal-1",
+        taskName: "Test task",
+        task: opts.task ?? "Do the thing",
+        cwd: tmpRoot,
+        artifactDir,
+        timeoutMs: opts.timeoutMs ?? 600_000,
+        env: {},
+        prompt_template: "{{alias}}: {{task}}\nmarker: {{marker}}",
+        final_message_arg: null,
+        completion_marker: marker,
+        ...opts.primary,
+        fallbacks: opts.fallbacks,
+      }),
+      "utf8",
+    );
+    const result = spawnSync(process.execPath, [workerScript, specPath], { encoding: "utf8" });
+    const read = (name: string) => {
+      const p = path.join(artifactDir, name);
+      return fs.existsSync(p) ? fs.readFileSync(p, "utf8") : null;
+    };
+    return { result, read };
+  }
+
+  const codex = (script: string, extra: Record<string, unknown> = {}) => ({
+    alias: "codex-cli",
+    ...sh(script),
+    env: {},
+    prompt_template: "{{alias}}: {{task}}\nmarker: {{marker}}",
+    final_message_arg: null,
+    timeoutMs: null,
+    ...extra,
+  });
+
+  it("runs the fallback when the primary exits non-zero, and says so on stdout", () => {
+    const { result, read } = run({
+      primary: sh(`echo "${AUTH}"; exit 1`),
+      // Echoes its rendered prompt, which must name the fallback alias.
+      fallbacks: [codex("", { args: ["-c", 'printf "%s\\n" "$1"', "sh", "{{prompt}}"] })],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain(
+      `fallback: running codex-cli because claude-code-cli failed: ${AUTH}\n`,
+    );
+    expect(result.stdout).toContain(marker);
+    expect(result.stderr).toContain(`claude-code-cli exited 1\n${AUTH}`);
+    expect(read("final-message.txt")).toContain("codex-cli: Do the thing");
+    expect(JSON.parse(read("handoff.json")!).alias).toBe("codex-cli");
+    const log = read("worker.log")!;
+    expect(log.indexOf("alias=claude-code-cli")).toBeLessThan(log.indexOf("alias=codex-cli"));
+  });
+
+  it("runs the fallback when the primary binary can't be started", () => {
+    const { result } = run({
+      primary: { binary: path.join(tmpRoot, "no-such-claude"), args: ["{{prompt}}"] },
+      fallbacks: [codex(`echo "${marker}"`)],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toContain("claude-code-cli spawn failed:");
+    expect(result.stdout).toMatch(/fallback: running codex-cli because claude-code-cli failed: .*ENOENT/);
+  });
+
+  it("reports every failed attempt and exits with the last one's code", () => {
+    const { result, read } = run({
+      primary: sh(`echo "${AUTH}"; exit 1`),
+      fallbacks: [codex(`echo "codex is not logged in" 1>&2; exit 3`)],
+    });
+
+    expect(result.status).toBe(3);
+    expect(result.stderr).toContain(`claude-code-cli exited 1\n${AUTH}`);
+    expect(result.stderr).toContain("codex-cli exited 3\ncodex is not logged in");
+    expect(read("handoff.json")).toBeNull();
+    expect(read("worker.log")).toContain("alias=codex-cli");
+  });
+
+  it("never falls back after a timeout", () => {
+    const ran = path.join(tmpRoot, "fallback-ran");
+    const { result } = run({
+      primary: sh("sleep 5"),
+      fallbacks: [codex(`touch ${ran}; echo "${marker}"`)],
+      timeoutMs: 300,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("claude-code-cli spawn failed:");
+    expect(result.stderr).toContain("ETIMEDOUT");
+    expect(result.stderr).not.toContain("skipped fallback");
+    expect(fs.existsSync(ran)).toBe(false);
+  });
+
+  it("skips a fallback that would have under two minutes before the deadline", () => {
+    const ran = path.join(tmpRoot, "fallback-ran");
+    const { result } = run({
+      primary: sh(`echo "${AUTH}"; exit 1`),
+      fallbacks: [codex(`touch ${ran}; echo "${marker}"`)],
+      timeoutMs: 60_000,
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/skipped fallback codex-cli: \d+s left before the task deadline/);
+    expect(result.stdout).not.toContain("fallback: running");
+    expect(fs.existsSync(ran)).toBe(false);
+  });
+
+  it("doesn't let the primary's final message satisfy the fallback's marker check", () => {
+    // The primary prints the marker but fails; the fallback succeeds without
+    // printing it and never writes its --output-last-message file.
+    const { result } = run({
+      primary: sh(`echo "${marker}"; exit 1`),
+      fallbacks: [codex("exit 0", { final_message_arg: "--output-last-message" })],
+    });
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain(`missing completion marker: ${marker}`);
+  });
+
+  it("redacts the prompt from the reason it prints on stdout", () => {
+    const { result } = run({
+      task: "SECRET_TASK_BODY_123",
+      primary: { binary: "/bin/sh", args: ["-c", 'echo "$1"; exit 1', "sh", "SECRET_TASK_BODY_123 rejected"] },
+      fallbacks: [codex(`echo "${marker}"`)],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("failed: [REDACTED:prompt] rejected");
+    expect(result.stdout).not.toContain("SECRET_TASK_BODY_123");
+  });
+
+  it("names the exit code when the primary fails silently", () => {
+    const { result } = run({
+      primary: sh("exit 4"),
+      fallbacks: [codex(`echo "${marker}"`)],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).toContain("fallback: running codex-cli because claude-code-cli failed: exit 4\n");
+  });
+
+  it("ignores malformed fallback entries", () => {
+    const { result } = run({
+      primary: sh(`echo "${AUTH}"; exit 1`),
+      fallbacks: [null, { alias: "half-configured" }, { alias: "x", binary: "/bin/sh" }],
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stdout).not.toContain("fallback: running");
+  });
+});

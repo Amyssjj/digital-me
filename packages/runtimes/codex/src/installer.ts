@@ -436,9 +436,13 @@ export interface CodexMcpConfigInputs {
   nodeBin: string;
   /** Absolute path to brain-mcp-proxy's bin/brain-mcp-proxy.mjs */
   proxyBinPath: string;
-  /** Absolute path to OPENCLAW_HOME (where openclaw.json lives) */
-  openclawHome: string;
-  /** Agent id to inject into outbound calls when caller doesn't set one. */
+  /**
+   * Agent id to inject into outbound calls when caller doesn't set one
+   * (OPENCLAW_AGENT_ID — the proxy's attribution label, not an openclaw
+   * dependency). OPENCLAW_HOME is deliberately NOT written: the proxy
+   * defaults it to ~/.openclaw, and a re-install drops one an earlier
+   * installer baked in (mergeMcpServer replaces the whole block).
+   */
   agentId?: string;
   /**
    * digital-me brain-host `/tools/invoke` URL. Emitted as DIGITAL_ME_BRAIN_URL
@@ -472,7 +476,6 @@ export function buildCodexMcpConfig(inputs: CodexMcpConfigInputs): string {
     );
   }
   const env = [
-    `OPENCLAW_HOME = ${tomlString(inputs.openclawHome)}`,
     `OPENCLAW_AGENT_ID = ${tomlString(agentId)}`,
     // Both are non-empty strings here: the guard above rejected every other
     // combination, so the casts only restate what it established. A

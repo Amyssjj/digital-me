@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   bucketKeyFor,
   createAppRateWriter,
+  defaultAppRateLogs,
   defaultLogPathForAgent,
   extractHitPaths,
   normaliseWikiPath,
@@ -103,6 +104,28 @@ describe("normaliseWikiPath", () => {
   });
   it("returns null for a bare wiki/ prefix with nothing after it", () => {
     expect(normaliseWikiPath("wiki/")).toBeNull();
+  });
+});
+
+describe("defaultAppRateLogs", () => {
+  const home = "/home/t";
+  it("puts both logs in the M1 dir: canonical once it exists, legacy ~/.openclaw/data while only that exists", () => {
+    const only = (...existing: string[]) => (p: string) => existing.includes(p);
+    expect(defaultAppRateLogs(home, {}, only("/home/t/.openclaw/data"))).toEqual({
+      openclawLog: "/home/t/.openclaw/data/application_rate_openclaw.log",
+      hermesLog: "/home/t/.openclaw/data/application_rate_hermes.log",
+    });
+    expect(
+      defaultAppRateLogs(home, {}, only("/home/t/.openclaw/data", "/home/t/digital-me/.data/m1")).hermesLog,
+    ).toBe("/home/t/digital-me/.data/m1/application_rate_hermes.log");
+    expect(defaultAppRateLogs(home, { DIGITAL_ME_M1_DIR: "/m" }, only()).openclawLog).toBe(
+      "/m/application_rate_openclaw.log",
+    );
+  });
+  it("defaults to the real env and filesystem", () => {
+    expect(defaultAppRateLogs("/nonexistent-home-for-test").openclawLog).toMatch(
+      /application_rate_openclaw\.log$/,
+    );
   });
 });
 

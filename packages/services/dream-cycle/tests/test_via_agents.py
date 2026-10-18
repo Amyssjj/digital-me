@@ -143,6 +143,27 @@ def test_run_returns_3_when_import_fails(capsys) -> None:
     client.run_workflow.assert_not_called()
 
 
+def test_run_default_client_is_scoped_to_wiki_root(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No injected client → BrainClient(wiki_root=<resolved --wiki-root>)."""
+    import dream_cycle.via_agents as va
+
+    seen: dict[str, object] = {}
+    client = MagicMock()
+    client.gateway.url = "http://127.0.0.1:18791/tools/invoke"
+    client.run_workflow.return_value = {"details": {"json": {"goalId": "g-1"}}}
+    client.wait_for_goal.return_value = {"id": "g-1", "status": "completed", "tasks": []}
+
+    def fake_client(**kwargs: object) -> MagicMock:
+        seen.update(kwargs)
+        return client
+
+    monkeypatch.setattr(va, "BrainClient", fake_client)
+    assert run(_args(wiki_root=tmp_path)) == 0
+    assert seen == {"wiki_root": tmp_path.resolve()}
+
+
 # ── run() — failure paths ─────────────────────────────────────────────────
 
 

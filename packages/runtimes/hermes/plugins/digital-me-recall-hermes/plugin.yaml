@@ -5,7 +5,8 @@ description: >
   recall injection (memory_search via digital-me-brain), per-tool route
   reminders, memory_search observability, and the M1 application_rate
   live writer that records per-session JSONL records to
-  ~/.openclaw/data/application_rate_hermes.log. Mirrors the
+  application_rate_hermes.log in the M1 dir (<wiki-root>/.data/m1, or the
+  legacy ~/.openclaw/data until that exists). Mirrors the
   digital-me-recall plugin shipped for OpenClaw native agents and the
   dm_memory_search_inject + dm_application_rate hooks shipped for
   Claude Code.

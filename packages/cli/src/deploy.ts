@@ -30,12 +30,26 @@ export function resolveGatewayLog(
   home: string,
   opts: { tmpLogDir?: string; fs?: GatewayLogFs } = {},
 ): string | null {
+  return listGatewayLogs(env, home, opts)[0] ?? null;
+}
+
+/**
+ * Every gateway log candidate that exists, NEWEST first (a tie keeps the
+ * priority order below). `resolveGatewayLog` is its head; the doctor's
+ * single-ticker check walks the rest when the newest file (e.g. today's
+ * rotated debug log) does not reach back to the plugin's last load.
+ * `OPENCLAW_GATEWAY_LOG` short-circuits to that one path, unchecked.
+ */
+export function listGatewayLogs(
+  env: NodeJS.ProcessEnv,
+  home: string,
+  opts: { tmpLogDir?: string; fs?: GatewayLogFs } = {},
+): string[] {
+  if (env.OPENCLAW_GATEWAY_LOG) {
+    return [env.OPENCLAW_GATEWAY_LOG];
+  }
   const fs: GatewayLogFs = opts.fs ?? { existsSync, readdirSync, statSync };
   const openclawHome = env.OPENCLAW_HOME ?? path.join(home, ".openclaw");
-
-  if (env.OPENCLAW_GATEWAY_LOG) {
-    return env.OPENCLAW_GATEWAY_LOG;
-  }
 
   // Candidates in priority order (newest file wins)
   const candidates = [
@@ -46,21 +60,17 @@ export function resolveGatewayLog(
     path.join(env.XDG_STATE_HOME ?? path.join(home, ".local", "state"), "openclaw", "gateway.log"),  // Linux systemd
   ];
 
-  let newest: string | null = null;
-  let newestMtime = 0;
+  const found: { readonly file: string; readonly mtime: number }[] = [];
   for (const c of candidates) {
     if (!fs.existsSync(c)) continue; // candidates are always non-empty strings
     try {
-      const mtime = fs.statSync(c).mtimeMs;
-      if (!newest || mtime > newestMtime) {
-        newest = c;
-        newestMtime = mtime;
-      }
+      found.push({ file: c, mtime: fs.statSync(c).mtimeMs });
     } catch {
       // skip unreadable
     }
   }
-  return newest;
+  // Array.prototype.sort is stable, so equal mtimes keep candidate priority.
+  return found.sort((a, b) => b.mtime - a.mtime).map((f) => f.file);
 }
 
 export function findNewestTmpLog(tmpDir: string, fs: GatewayLogFs = { existsSync, readdirSync, statSync }): string[] {

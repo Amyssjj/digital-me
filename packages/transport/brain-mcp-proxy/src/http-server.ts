@@ -14,10 +14,10 @@
 
 import http from "node:http";
 import { homedir } from "node:os";
-import path from "node:path";
 import { isLoopbackHost, loadConfig } from "@digital-me/contracts";
 import {
   createAppRateWriter,
+  defaultAppRateLogs,
   defaultLogPathForAgent,
 } from "./app-rate-writer.js";
 import { loadGatewayConfig } from "./config.js";
@@ -57,21 +57,9 @@ export async function mainHttp(): Promise<void> {
     warn: emitStderr,
   });
 
-  const openclawLog = path.join(
-    homedir(),
-    ".openclaw",
-    "data",
-    "application_rate_openclaw.log",
-  );
-  const hermesLog = path.join(
-    homedir(),
-    ".openclaw",
-    "data",
-    "application_rate_hermes.log",
-  );
   const appRateWriter = createAppRateWriter({
     logPathForAgent: (agentId) =>
-      defaultLogPathForAgent(agentId, { openclawLog, hermesLog }),
+      defaultLogPathForAgent(agentId, defaultAppRateLogs(homedir())),
     warn: emitStderr,
   });
 

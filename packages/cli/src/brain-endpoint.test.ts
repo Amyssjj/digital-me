@@ -7,6 +7,7 @@ import {
   noBrainEndpointMessage,
   orderRuntimesHubFirst,
   runtimesNeedingBrain,
+  workflowImportFailureMessage,
 } from "./brain-endpoint.js";
 
 const HOME = "/home/t";
@@ -69,6 +70,38 @@ describe("noBrainEndpointMessage", () => {
     expect(m).toContain("digital-me install --runtime brain-host");
     expect(m).toContain(`Looked for its token file at ${TOKEN}.`);
     expect(m).toContain("legacy openclaw gateway");
+  });
+});
+
+describe("workflowImportFailureMessage", () => {
+  const base = {
+    runtime: "dream-cycle",
+    missing: "workflows aren't imported",
+    tokenFile: TOKEN,
+  } as const;
+
+  it("names brain-host first, the token file, the openclaw fallback and the exact re-run command", () => {
+    const m = workflowImportFailureMessage({
+      ...base,
+      status: 3,
+      command: ["/home/t/.venvs/dream-cycle/bin/python3", "-m", "dream_cycle.install_workflows", "--wiki-root", "/home/t/digital-me"],
+    });
+    expect(m).toContain("install dream-cycle: workflow import returned exit 3. The venv is ready, but workflows aren't imported.");
+    expect(m).toContain(`else through its token file ${TOKEN} (check with \`digital-me doctor\`)`);
+    expect(m).toContain("without brain-host, the openclaw gateway is not running");
+    expect(m).toMatch(
+      /Re-run later with: \/home\/t\/\.venvs\/dream-cycle\/bin\/python3 -m dream_cycle\.install_workflows --wiki-root \/home\/t\/digital-me$/,
+    );
+  });
+
+  it("reports an unknown exit status and shell-quotes arguments that need it", () => {
+    const m = workflowImportFailureMessage({
+      ...base,
+      status: null,
+      command: ["python3", "-m", "digest.install_workflows", "--wiki-root", "/srv/my wiki/it's here"],
+    });
+    expect(m).toContain("returned exit ?.");
+    expect(m).toMatch(/Re-run later with: python3 -m digest\.install_workflows --wiki-root '\/srv\/my wiki\/it'\\''s here'$/);
   });
 });
 

@@ -9,10 +9,10 @@ parses those entries and writes them to the wiki via the same
 
 Staging file shape (input):
   {
-    "wiki_manifest": "...",
+    "wiki_manifest": [str, ...],      # text pieces (see dream_cycle.staging)
     "candidates": [
       {"content_key": str, "source_name": str, "title": str,
-       "prompt": str, "entries": [str, ...] | str | null}, ...
+       "prompt": [str, ...], "entries": [str, ...] | str | null}, ...
     ],
     "deferred_hashes": {content_key: content_hash, ...}
   }
@@ -26,7 +26,6 @@ leave the hash uncommitted so the candidate re-stages next night.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 from dream_cycle.compile import (
@@ -36,6 +35,7 @@ from dream_cycle.compile import (
     parse_compile_response,
     write_compiled_entries,
 )
+from dream_cycle.staging import load_staging
 
 
 def _entry_texts_from_field(field) -> list[str]:
@@ -58,7 +58,7 @@ def apply_entries(staging_path: Path, config) -> dict:
     commit the deferred hashes for candidates that processed cleanly."""
     if not staging_path.exists():
         raise SystemExit(f"compile staging file not found: {staging_path}")
-    payload = json.loads(staging_path.read_text(encoding="utf-8"))
+    payload = load_staging(staging_path)
     candidates = payload.get("candidates") or []
     wiki_manifest = payload.get("wiki_manifest") or ""
     deferred_hashes: dict[str, str] = payload.get("deferred_hashes") or {}

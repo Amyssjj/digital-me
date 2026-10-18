@@ -74,7 +74,7 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
-from . import brain_db_path, db_path
+from . import brain_db_path, db_path, m1_dir
 from .db import (
     connect,
     upsert_application_rate,
@@ -86,15 +86,25 @@ from .db import (
 # Hook log location per runtime. Each runtime emits its own JSONL log; the
 # agent_id is implicit per file.
 #
-# Layout note: claude-code keeps its log under its own .claude/hooks/, while
-# the openclaw + hermes recall plugins both write to ~/.openclaw/data/
-# (regardless of the agent runtime, because the openclaw gateway provides
-# the writer). Codex doesn't ship an application_rate hook yet.
-HOOK_LOGS: dict[str, str] = {
-    "claude-code": ".claude/hooks/application_rate.log",
-    "openclaw":    ".openclaw/data/application_rate_openclaw.log",
-    "hermes":      ".openclaw/data/application_rate_hermes.log",
+# Layout note: claude-code keeps its log under its own ~/.claude/hooks/, while
+# the openclaw + hermes writers (their recall plugins and brain-mcp-proxy) put
+# theirs in the M1 dir (`m1_dir`: <wiki-root>/.data/m1, or the legacy
+# ~/.openclaw/data until that exists). Codex doesn't ship an application_rate
+# hook yet.
+CLAUDE_CODE_HOOK_LOG = ".claude/hooks/application_rate.log"  # relative to home
+M1_HOOK_LOGS: dict[str, str] = {  # file names in the M1 dir
+    "openclaw": "application_rate_openclaw.log",
+    "hermes":   "application_rate_hermes.log",
 }
+
+
+def hook_log_paths(home: Path) -> dict[str, Path]:
+    """runtime → its session-aggregate hook log."""
+    m1 = m1_dir(home)
+    return {
+        "claude-code": home / CLAUDE_CODE_HOOK_LOG,
+        **{agent: m1 / name for agent, name in M1_HOOK_LOGS.items()},
+    }
 
 
 def _iter_log_records(p: Path) -> Iterable[dict]:
@@ -206,8 +216,7 @@ def aggregate(
     surfaced_by_agent: dict[tuple[str, str, str], set[str]] = defaultdict(set)   # (date,tree,agent)
     acted_by_agent: dict[tuple[str, str, str], set[str]] = defaultdict(set)
 
-    for agent_id, rel in HOOK_LOGS.items():
-        log = home / rel
+    for agent_id, log in hook_log_paths(home).items():
         for rec in _iter_log_records(log):
             d_str = rec.get("session_date")
             if not d_str:
@@ -277,7 +286,7 @@ def aggregate_from_brain(
       by_day_agent[(date, tree, agent_id)] = (surfaced, acted)
 
     Missing brain.db → all empty maps. Agent_id comes from `m1_events.runtime`
-    (claude-code, hermes, openclaw — same keys as HOOK_LOGS).
+    (claude-code, hermes, openclaw — same keys as hook_log_paths).
 
     See wiki: infrastructure/m1-universal-event-protocol.md
     """
@@ -373,10 +382,12 @@ def aggregate_from_brain(
 # regardless of whether their session_end ever fires — so these WALs
 # stay complete where the legacy session-aggregate log was structurally
 # incomplete (see infrastructure/hermes-runtime-onsessionend-hook-limitations.md).
+#
+# The WALs live in the M1 dir (`m1_dir`); these are their file names.
 M1_EVENT_WALS: dict[str, str] = {
-    "claude-code": ".openclaw/data/m1_events_claude_code.jsonl",
-    "openclaw":    ".openclaw/data/m1_events_openclaw.jsonl",
-    "hermes":      ".openclaw/data/m1_events_hermes.jsonl",
+    "claude-code": "m1_events_claude_code.jsonl",
+    "openclaw":    "m1_events_openclaw.jsonl",
+    "hermes":      "m1_events_hermes.jsonl",
 }
 
 
@@ -406,8 +417,9 @@ def aggregate_from_wal(
     surfaced_by_agent: dict[tuple[str, str, str], set[str]] = defaultdict(set)
     acted_by_agent: dict[tuple[str, str, str], set[str]] = defaultdict(set)
 
-    for agent_id, rel in M1_EVENT_WALS.items():
-        log = home / rel
+    wal_dir = m1_dir(home)
+    for agent_id, name in M1_EVENT_WALS.items():
+        log = wal_dir / name
         if not log.exists():
             continue
         with log.open("r", encoding="utf-8", errors="ignore") as f:
