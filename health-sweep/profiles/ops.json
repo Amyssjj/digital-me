@@ -1,9 +1,9 @@
 {
-  "_doc": "OPS profile for the GLOBAL motus-ops-sweep engine \u2014 gates the machine that runs the machines on THIS machine: the openclaw orchestrator's schedules, the dream-cycle's step log, and the transcript/artifact sources every digest and dashboard count depends on. Personal-machine ops config (paths are ~-absolute, like fleet.json); the engine is dimension-registered in motus-sweep/dimensions.json.",
+  "_doc": "OPS profile for the GLOBAL motus-ops-sweep engine \u2014 gates the machine that runs the machines on THIS machine: the brain-host orchestrator's schedules, the dream-cycle's step log, and the transcript/artifact sources every digest and dashboard count depends on. Personal-machine ops config (paths are ~-absolute, like fleet.json); the engine is dimension-registered in motus-sweep/dimensions.json.",
   "dimension": "ops",
   "artifacts": "scoped",
   "critiques": "none",
-  "brainDb": "~/.openclaw/data/brain.db",
+  "brainDb": "~/digital-me/.data/brain.db",
   "opsRules": {
     "zombieStreak": 10
   },
@@ -19,11 +19,6 @@
     {
       "id": "claude-code",
       "path": "~/.claude/projects",
-      "cadenceHours": 24
-    },
-    {
-      "id": "openclaw-agents",
-      "path": "~/.openclaw/agents",
       "cadenceHours": 24
     },
     {
