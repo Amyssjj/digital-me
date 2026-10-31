@@ -5,7 +5,8 @@
   "critiques": "none",
   "brainDb": "~/digital-me/.data/brain.db",
   "opsRules": {
-    "zombieStreak": 10
+    "zombieStreak": 5,
+    "_why": "The failure streak is counted from surviving goals, and brain-host deletes terminal cron goals after 7 days (CRON_GOAL_RETENTION_MS), so a daily schedule's streak tops out at about 7. The engine default of 10 could never fire for a daily schedule; 5 can, with room for retention timing."
   },
   "stepLogs": [
     {
