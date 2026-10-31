@@ -1,5 +1,5 @@
 {
-  "_doc": "OPS profile for the GLOBAL motus-ops-sweep engine \u2014 gates the machine that runs the machines on THIS machine: the brain-host orchestrator's schedules, the dream-cycle's step log, and the transcript/artifact sources every digest and dashboard count depends on. Personal-machine ops config (paths are ~-absolute, like fleet.json); the engine is dimension-registered in motus-sweep/dimensions.json.",
+  "_doc": "OPS profile for the GLOBAL motus-ops-sweep engine \u2014 gates the machine that runs the machines on THIS machine: the brain-host orchestrator's schedules, the dream-cycle's step log, Crystal Core's nightly, and the transcript/artifact sources every digest and dashboard count depends on. Personal-machine ops config (paths are ~-absolute, like fleet.json); the engine is dimension-registered in motus-sweep/dimensions.json.",
   "dimension": "ops",
   "artifacts": "scoped",
   "critiques": "none",
@@ -13,6 +13,12 @@
       "dir": "~/digital-me/dream_cycle/logs",
       "pattern": "^\\d{4}-\\d{2}-\\d{2}\\.md$",
       "_why": "The logs dir mixes families (lint-/consolidate-/drift- prefixed reports); only the main <date>.md is the step log."
+    },
+    {
+      "id": "crystal-nightly",
+      "dir": "health-sweep",
+      "pattern": "^capture-crystal-nightly\\.md$",
+      "_why": "Crystal Core's nightly (LaunchAgent com.jingshi.crystal-nightly, 04:15) logs to ~/Library/Logs/crystal/nightly.log, which has no ## sections and quotes Jing's words. captureCmd's first command, bin/crystal-nightly-status.py, reads that log, launchd, ~/crystal/backups and ~/crystal/judgments/pending (read-only) and writes this derived step log, one section per check: fresh-run (a run in the last 26h, done exit 0/0, chain ok, refold identical), launchd (last exit code 0), backup (log-<today|yesterday>.db), judge (no failed answers), pending (none older than 48h). Times, exit codes and counts only. A failing check is an O2 block; override it as crystal-nightly#<check>."
     }
   ],
   "sources": [
@@ -37,7 +43,13 @@
       "cadenceHours": 24,
       "required": false,
       "_why": "Codex moved to ChatGPT-app cloud threads 2026-07-04 \u2014 no local artifacts. Advisory keeps the gap visible until the local surface returns or a cloud poller lands (wiki: codex/codex-session-store-migration-breaks-jsonl-readers)."
+    },
+    {
+      "id": "crystal-nightly-check",
+      "path": "health-sweep/capture-crystal-nightly.md",
+      "cadenceHours": 1,
+      "_why": "The engine reads a step-log dir with no matching file as clean, so without this a capture that skipped bin/crystal-nightly-status.py would pass the crystal-nightly checks on a missing or old file. Each captureCmd rewrites it seconds before the ops capture."
     }
   ],
-  "captureCmd": "node \"$HOME/.agents/skills/motus-ops-sweep/engine/lib/capture-ops.mjs\" --repo . --profile health-sweep/profiles/ops.json --out health-sweep/capture-ops.json"
+  "captureCmd": "python3 health-sweep/bin/crystal-nightly-status.py --out health-sweep/capture-crystal-nightly.md && node \"$HOME/.agents/skills/motus-ops-sweep/engine/lib/capture-ops.mjs\" --repo . --profile health-sweep/profiles/ops.json --out health-sweep/capture-ops.json"
 }
