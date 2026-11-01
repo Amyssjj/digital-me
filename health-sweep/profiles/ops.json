@@ -18,7 +18,15 @@
       "id": "crystal-nightly",
       "dir": "health-sweep",
       "pattern": "^capture-crystal-nightly\\.md$",
-      "_why": "Crystal Core's nightly (LaunchAgent com.jingshi.crystal-nightly, 04:15) logs to ~/Library/Logs/crystal/nightly.log, which has no ## sections and quotes Jing's words. captureCmd's first command, bin/crystal-nightly-status.py, reads that log, launchd, ~/crystal/backups and ~/crystal/judgments/pending (read-only) and writes this derived step log, one section per check: fresh-run (a run in the last 26h, done exit 0/0, chain ok, refold identical), launchd (last exit code 0), backup (log-<today|yesterday>.db), judge (no failed answers), pending (none older than 48h). Times, exit codes and counts only. A failing check is an O2 block; override it as crystal-nightly#<check>."
+      "_why": "Crystal Core's nightly (LaunchAgent com.jingshi.crystal-nightly, 04:15) logs to ~/Library/Logs/crystal/nightly.log, which has no ## sections and quotes Jing's words. captureCmd's first command, bin/crystal-nightly-status.py, reads that log, launchd and the file names in ~/crystal/backups (read-only) and writes this derived step log, one section per check. This reader takes its `- error:` lines, each an O2 block (override as crystal-nightly#<check>): fresh-run (a run started in the last 30h, done exit 0/0, chain ok, refold identical), launchd (last exit code 0), backup (log-<today|yesterday>.db). 30h, not 24h: the sweep (03:30) runs before the nightly (04:15), so it reads yesterday's run at ~23h, and at more when the Mac slept through both and they fire together on wake. Times, exit codes and counts only."
+    },
+    {
+      "id": "crystal-nightly-warn",
+      "dir": "health-sweep",
+      "pattern": "^capture-crystal-nightly\\.md$",
+      "errorRegex": "^\\s*-\\s*warn:\\s*(.+)$",
+      "required": false,
+      "_why": "The same derived log's `- warn:` lines, as O2 advisory: the nightly still exits 0 when its judge can't answer, so these don't block. judge (a `judge: answered N, failed M` line with M > 0 in the latest run), waiting (`judgments waiting for an answer: N` above 0 at the end of each of the last 3 nights). Override as crystal-nightly-warn#<check>."
     }
   ],
   "sources": [
@@ -48,7 +56,7 @@
       "id": "crystal-nightly-check",
       "path": "health-sweep/capture-crystal-nightly.md",
       "cadenceHours": 1,
-      "_why": "The engine reads a step-log dir with no matching file as clean, so without this a capture that skipped bin/crystal-nightly-status.py would pass the crystal-nightly checks on a missing or old file. Each captureCmd rewrites it seconds before the ops capture."
+      "_why": "The engine reads a step-log dir with no matching file as clean, so without this a capture that skipped bin/crystal-nightly-status.py would pass the crystal-nightly and crystal-nightly-warn checks on a missing or old file. Each captureCmd rewrites it seconds before the ops capture."
     }
   ],
   "captureCmd": "python3 health-sweep/bin/crystal-nightly-status.py --out health-sweep/capture-crystal-nightly.md && node \"$HOME/.agents/skills/motus-ops-sweep/engine/lib/capture-ops.mjs\" --repo . --profile health-sweep/profiles/ops.json --out health-sweep/capture-ops.json"

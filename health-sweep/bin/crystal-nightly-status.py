@@ -6,29 +6,32 @@
 ~/Library/Logs/crystal/nightly.log. Nothing else reads that log or launchd's
 exit code, so a failed night, a judge whose `claude` login expired, or a missing
 backup would pass silently. This reads them and writes a derived step log the
-ops capture scans like any other (profiles/ops.json stepLogs `crystal-nightly`):
-one `## <check>` section per check, with `- error: …` when it fails, so each
-check is its own O2 finding, overridable as `crystal-nightly#<check>`.
+ops capture scans like any other: one `## <check>` section per check. A failing
+check writes `- error: …` (profiles/ops.json stepLog `crystal-nightly`, an O2
+block, overridable as `crystal-nightly#<check>`); a check that only warns writes
+`- warn: …` (stepLog `crystal-nightly-warn`, required:false, so O2 advisory).
 
-  fresh-run  the log's latest run started within --max-age-hours, its last line
-             reads `done: nightly exit 0, verify exit 0`, and it printed
-             `chain: ok` and `refold: identical`
-  launchd    `launchctl print gui/<uid>/<label>` says `last exit code = 0`
-  backup     <backups>/log-<today or yesterday>.db exists, and the latest run
-             printed a `backup:` line
-  judge      no `judge: answered N, failed M` line with M > 0 in the latest run
-  pending    no <pending>/*.md older than --pending-max-age-hours
+  fresh-run  error: the log's latest run started within --max-age-hours, its
+             last line reads `done: nightly exit 0, verify exit 0`, and it
+             printed `chain: ok` and `refold: identical`
+  launchd    error: `launchctl print gui/<uid>/<label>` says `last exit code = 0`
+  backup     error: <backups>/log-<today or yesterday>.db exists, and the latest
+             run printed a `backup:` line
+  judge      warn: no `judge: answered N, failed M` line with M > 0 in the
+             latest run
+  waiting    warn: `judgments waiting for an answer: N` was above 0 at the end
+             of the last run of each of the last --waiting-nights nights
 
-Read-only: it reads the log, the names, sizes and mtimes in the backups and
-pending folders, and `launchctl print`; its only write is --out. The log and the
-judgments quote Jing's words, so only fixed status lines are matched and only
-times, exit codes, counts and file names go out, never a line's free text.
-Stdlib-only, Python 3.9+ (`bash -lc` resolves python3 to /usr/bin/python3).
+Read-only: it reads the log, the names and sizes in the backups folder, and
+`launchctl print`; its only write is --out. The log quotes Jing's words, so only
+fixed status lines are matched and only times, exit codes, counts and file names
+go out, never a line's free text. Stdlib-only, Python 3.9+ (`bash -lc` resolves
+python3 to /usr/bin/python3).
 
   crystal-nightly-status.py --out health-sweep/capture-crystal-nightly.md
-      [--log ~/Library/Logs/crystal/nightly.log] [--max-age-hours 26]
-      [--backups ~/crystal/backups] [--pending ~/crystal/judgments/pending]
-      [--pending-max-age-hours 48] [--label com.jingshi.crystal-nightly]
+      [--log ~/Library/Logs/crystal/nightly.log] [--max-age-hours 30]
+      [--backups ~/crystal/backups] [--waiting-nights 3]
+      [--label com.jingshi.crystal-nightly]
       [--launchctl-print <file>]   # canned `launchctl print` output (tests)
 
 Exit 0 whenever the checks ran (a failing check is a finding, not a crash); a
@@ -41,7 +44,6 @@ import datetime
 import os
 import re
 import subprocess
-import time
 from pathlib import Path
 
 RUN = re.compile(r"^── (\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}) nightly$")
@@ -54,15 +56,16 @@ BACKUP = re.compile(r"^backup: .*?(log-\d{4}-\d{2}-\d{2}\.db)$")
 LAUNCHD = {k: re.compile(rf"^\s*{k} = (.+)$", re.MULTILINE) for k in ("last exit code", "runs", "state")}
 
 
-def latest_run(log: Path) -> tuple[datetime.datetime | None, list[str]]:
-    """The start time (local) and the lines of the log's last run, or (None, []) when it has none."""
-    lines = log.read_text(encoding="utf-8", errors="replace").splitlines()
-    for i in range(len(lines) - 1, -1, -1):
-        m = RUN.match(lines[i])
+def runs(log: Path) -> list[tuple[datetime.datetime, list[str]]]:
+    """Every run in the log, oldest first: its start time (local) and its lines up to the next run."""
+    out: list[tuple[datetime.datetime, list[str]]] = []
+    for ln in log.read_text(encoding="utf-8", errors="replace").splitlines():
+        m = RUN.match(ln)
         if m:
-            start = datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").astimezone()
-            return start, lines[i + 1:]
-    return None, []
+            out.append((datetime.datetime.strptime(m.group(1), "%Y-%m-%d %H:%M:%S").astimezone(), []))
+        elif out:
+            out[-1][1].append(ln)
+    return out
 
 
 def first(rx: re.Pattern, lines: list[str]) -> re.Match | None:
@@ -137,28 +140,31 @@ def check_backup(backups: Path, run: list[str], has_run: bool, today: datetime.d
 def check_judge(run: list[str], has_run: bool) -> list[str]:
     if not has_run:
         return ["- no run to read (fresh-run reports it)"]
-    waiting = first(WAITING, run)
-    out = [f"- waiting after the run: {waiting.group(1) if waiting else 'not printed'}"]
     judged = [m for m in map(JUDGE.match, run) if m]
     if not judged:
-        return out + ["- judge: didn't run (nothing was waiting)"]
+        return ["- judge: didn't run in the latest run (nothing was waiting, or no `judge` model in config.toml)"]
     answered, failed = sum(int(m.group(1)) for m in judged), sum(int(m.group(2)) for m in judged)
-    out.append(f"- judge: answered {answered}, failed {failed}")
+    out = [f"- judge: answered {answered}, failed {failed}"]
     if failed:
-        out.append(f"- error: judge: answered {answered}, failed {failed} (an expired `claude` login? a timeout?)")
+        out.append(f"- warn: judge: answered {answered}, failed {failed} (an expired `claude` login? a timeout?)")
     return out
 
 
-def check_pending(pending: Path, max_age_h: float, now_ts: float) -> list[str]:
-    out = [f"- folder: {pending}"]
-    if not pending.is_dir():
-        return out + ["- pending: 0 (no folder yet: nothing has been asked)"]
-    ages = sorted(((now_ts - p.stat().st_mtime) / 3600 for p in pending.glob("*.md") if p.is_file()), reverse=True)
-    stale = [a for a in ages if a > max_age_h]
-    out.append(f"- pending: {len(ages)}" + (f", oldest {ages[0]:.0f}h" if ages else ""))
-    if stale:
-        out.append(f"- error: {len(stale)} of {len(ages)} pending judgments older than {max_age_h:g}h"
-                   f" (oldest {stale[0]:.0f}h): nobody is answering them — check the judge worker")
+def check_waiting(all_runs: list[tuple[datetime.datetime, list[str]]], nights: int) -> list[str]:
+    if not all_runs:
+        return ["- no run to read (fresh-run reports it)"]
+    by_day: dict[datetime.date, int | None] = {}
+    for start, lines in all_runs:                       # oldest first, so each day keeps its last run's count
+        m = first(WAITING, lines)
+        by_day[start.date()] = int(m.group(1)) if m else None
+    days = sorted(by_day, reverse=True)
+    streak = next((i for i, d in enumerate(days) if not by_day[d]), len(days))
+    latest = by_day[days[0]]
+    out = [f"- waiting after the latest run: {'not printed' if latest is None else latest}",
+           f"- nights in a row ending with judgments waiting: {streak} (warn at {nights})"]
+    if streak >= nights:
+        out.append(f"- warn: judgments left waiting for an answer {streak} nights in a row (latest {latest}):"
+                   " the judge isn't clearing them — check its `claude` login, or answer judgments/pending by hand")
     return out
 
 
@@ -166,23 +172,23 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     ap.add_argument("--out", required=True)
     ap.add_argument("--log", default="~/Library/Logs/crystal/nightly.log")
-    ap.add_argument("--max-age-hours", type=float, default=26)
+    ap.add_argument("--max-age-hours", type=float, default=30)
     ap.add_argument("--backups", default="~/crystal/backups")
-    ap.add_argument("--pending", default="~/crystal/judgments/pending")
-    ap.add_argument("--pending-max-age-hours", type=float, default=48)
+    ap.add_argument("--waiting-nights", type=int, default=3)
     ap.add_argument("--label", default="com.jingshi.crystal-nightly")
     ap.add_argument("--launchctl-print", default=None)
     a = ap.parse_args()
 
     log = Path(a.log).expanduser()
     now = datetime.datetime.now().astimezone()
-    start, run = latest_run(log) if log.is_file() else (None, [])
+    all_runs = runs(log) if log.is_file() else []
+    start, run = all_runs[-1] if all_runs else (None, [])
     sections = {
         "fresh-run": check_fresh_run(log, start, run, a.max_age_hours, now),
         "launchd": check_launchd(a.label, Path(a.launchctl_print).expanduser() if a.launchctl_print else None),
         "backup": check_backup(Path(a.backups).expanduser(), run, start is not None, now.date()),
         "judge": check_judge(run, start is not None),
-        "pending": check_pending(Path(a.pending).expanduser(), a.pending_max_age_hours, time.time()),
+        "waiting": check_waiting(all_runs, a.waiting_nights),
     }
 
     text = [f"# crystal-nightly — derived step log, {now.isoformat(timespec='seconds')}",
@@ -194,9 +200,12 @@ def main() -> int:
     tmp = out.with_name(f".{out.name}.tmp")
     tmp.write_text("\n".join(text), encoding="utf-8")
     os.replace(tmp, out)
-    errors = [n for n, lines in sections.items() if any(ln.startswith("- error:") for ln in lines)]
-    print(f"crystal-nightly: {len(sections) - len(errors)}/{len(sections)} checks clean"
-          + (f" (failing: {', '.join(errors)})" if errors else "") + f" → {out}")
+    flagged = {kind: [n for n, lines in sections.items() if any(ln.startswith(f"- {kind}:") for ln in lines)]
+               for kind in ("error", "warn")}
+    print(f"crystal-nightly: {len(sections) - len(flagged['error']) - len(flagged['warn'])}/{len(sections)} checks clean"
+          + "".join(f" ({label}: {', '.join(flagged[kind])})"
+                    for kind, label in (("error", "failing"), ("warn", "warning")) if flagged[kind])
+          + f" → {out}")
     return 0
 
 
