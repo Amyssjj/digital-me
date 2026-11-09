@@ -6,6 +6,7 @@ worker's cwd (the wiki root) rather than /tmp."""
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -234,7 +235,8 @@ def test_agent_steps_read_staging_with_paged_read_not_cat() -> None:
     for key, fields in (("compile-extract", ("wiki_manifest", "prompt")),
                         ("taste-distill", ("principles_manifest", "body"))):
         prompt = steps[key]["promptTemplate"]
-        assert "Read tool ONLY" in prompt
+        assert "with the Read tool, in pages" in prompt
+        assert "Read tool ONLY" not in prompt
         assert "`offset`/`limit`" in prompt
         assert "with `cat` ONLY" not in prompt
         assert "Do NOT use Bash" in prompt
@@ -242,3 +244,22 @@ def test_agent_steps_read_staging_with_paged_read_not_cat() -> None:
         for field in fields:
             assert f"`{field}`" in prompt
     assert "`transcript_index`" in steps["taste-distill"]["promptTemplate"]
+
+
+def test_agent_steps_give_codex_a_shell_read_of_their_staging_file() -> None:
+    """claude-code-cli falls back to codex-cli when the Claude login lapses, and
+    Codex has no Read tool. With a Read-only prompt it handed off empty
+    `entries`/`outcomes` on 2026-11-07..09 while every task showed completed."""
+    staging_var = re.compile(r"\{\{\w*staging_path\}\}")
+    shell_read = re.compile(r"`sed -n '1,\d+p' (\{\{\w+\}\})`")
+    agent_steps = [s for s in _workflow("nightly.json")["steps"]
+                   if s.get("dispatch", {}).get("agentId")]
+    assert [s["stepKey"] for s in agent_steps] == ["compile-extract", "taste-distill"]
+    for step in agent_steps:
+        key, prompt = step["stepKey"], step["promptTemplate"]
+        assert "If you have no Read tool (you are the Codex fallback)" in prompt, key
+        read = shell_read.search(prompt)
+        assert read, key
+        assert read.group(1) == staging_var.search(prompt).group(0), key
+        assert "omitted or truncated" in prompt, key
+        assert "run nothing else" in prompt, key
