@@ -40,7 +40,7 @@
     "@modelcontextprotocol/sdk": "^1.32.2",
     "better-sqlite3": "^13.0.3",
     "express": "^5.3.0",
-    "framer-motion": "^13.4.0",
+    "framer-motion": "^14.9.1",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "react-markdown": "^10.1.0",
