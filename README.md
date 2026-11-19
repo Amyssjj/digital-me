@@ -199,10 +199,16 @@ When the brain wants to run a step via a CLI (claude, codex), it looks up an *al
 cli_exec_aliases:
   claude-code-cli:
     binary: claude
-    args: ["-p", "--allowedTools", "Bash,Read,Write", "{{prompt}}"]
+    args:
+      - "-p"
+      - "{{prompt}}"
+      - "--allowedTools"
+      - "mcp__digital-me-brain__tasks,mcp__digital-me-brain__memory_search,Bash,Read,Write"
     env: { OPENCLAW_AGENT_ID: claude-code }
     timeoutMs: 1800000
 ```
+
+A headless CLI denies every tool it isn't granted, so allow the brain tools the worker asks for: `memory_search`, and `tasks` for the handoff. Brain tools are named after the `digital-me-brain` MCP server. Aliases that still say `openclaw-brain` are rewritten when the task is created. `--allowedTools` takes a list, so put `{{prompt}}` before it, or after another flag; otherwise claude reads the prompt as one more tool name.
 
 Then a workflow step like:
 
