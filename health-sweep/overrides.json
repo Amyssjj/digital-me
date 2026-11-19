@@ -22,23 +22,5 @@
     "check": "text-contrast",
     "sel": "body",
     "note": "gradient page background: effBg walk resolves transparent \u2192 reads [0,0,0]; RGB contrast math is UNMEASURABLE here, not failing (real render is dark-on-light, visibly AA+). Known adapter limitation (same class as motus-ai-web video hero). Revisit when the capture adapter samples pixels. 2026-07-03."
-  },
-  {
-    "gate": "O1",
-    "check": "schedule-failed",
-    "sel": "708c9948-3461-4093-851a-c0148f1cab33",
-    "reason": "nightly-health-sweep last cron fire (2026-07-11 03:30) predates the capture fixes; fleet re-run green same day (11/11 SHIP) and a manual workflow re-run was dispatched 2026-07-12. RETIRE this override after the 2026-07-13 03:30 fire records completed."
-  },
-  {
-    "gate": "O2",
-    "check": "step-error",
-    "sel": "dream-cycle#crosslink",
-    "reason": "Known + fixed: generate_overviews taste-domain ENOENT (wiki/storytelling missing). Fix in digital-me PR #49; deploys on merge + main-checkout pull. The 07-12 log entry predates deploy. RETIRE once a post-merge nightly log shows crosslink clean."
-  },
-  {
-    "gate": "O1",
-    "check": "schedule-failed",
-    "sel": "94c103ae-f4b8-44d5-bf5d-fc3fed1ecfcb",
-    "reason": "engine-roadmap-session re-enabled 2026-07-12 with the v3 stall-guard workflow; last_status still shows the final v2-era failure (07-11). RETIRE after the first v3 fire (2026-07-13 04:00 PT) records completed \u2014 if it fails again, the v3 guard needs another look and this override must NOT be renewed."
   }
 ]
